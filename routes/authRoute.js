@@ -94,15 +94,6 @@ router.post("/verify-otp", authController.verifyOtp);
  *               - email
  *               - password
  *               - confirmPassword
- *               - firstName
- *               - lastName
- *               - phoneNumber
- *               - dob
- *               - gender
- *               - provinceName
- *               - districtName
- *               - wardName
- *               - address
  *               - role
  *             properties:
  *               email:
@@ -117,35 +108,6 @@ router.post("/verify-otp", authController.verifyOtp);
  *                 type: string
  *                 format: password
  *                 example: "Abc@123456"
- *               firstName:
- *                 type: string
- *                 example: "Van"
- *               lastName:
- *                 type: string
- *                 example: "Nguyen"
- *               phoneNumber:
- *                 type: string
- *                 example: "0987654321"
- *               dob:
- *                 type: string
- *                 format: date
- *                 example: "1998-10-12"
- *               gender:
- *                 type: string
- *                 enum: [male, female]
- *                 example: "male"
- *               provinceName:
- *                 type: string
- *                 example: "Hà Nội"
- *               districtName:
- *                 type: string
- *                 example: "Quận Cầu Giấy"
- *               wardName:
- *                 type: string
- *                 example: "Phường Dịch Vọng"
- *               address:
- *                 type: string
- *                 example: "Số 123 đường Trần Duy Hưng"
  *               role:
  *                 type: string
  *                 enum: [resident, landlord]

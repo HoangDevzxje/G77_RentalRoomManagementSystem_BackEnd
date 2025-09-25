@@ -137,15 +137,6 @@ const register = async (req, res) => {
         email,
         password,
         confirmPassword,
-        firstName,
-        lastName,
-        phoneNumber,
-        dob,
-        gender,
-        provinceName,
-        districtName,
-        wardName,
-        address,
         role
     } = req.body;
     try {
@@ -160,10 +151,10 @@ const register = async (req, res) => {
         if (errMsg !== null) {
             return res.status(400).json({ message: errMsg });
         }
-        const checkPhone = validateUtils.validatePhone(phoneNumber);
-        if (checkPhone !== null) {
-            return res.status(400).json({ message: checkPhone });
-        }
+        // const checkPhone = validateUtils.validatePhone(phoneNumber);
+        // if (checkPhone !== null) {
+        //     return res.status(400).json({ message: checkPhone });
+        // }
 
         const storedOtp = otpStore[email]?.["register"];
         if (!storedOtp || !storedOtp.isVerified)
