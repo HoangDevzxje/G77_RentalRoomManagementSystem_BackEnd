@@ -1,8 +1,7 @@
 const mongoose = require('mongoose');
 
 const userInformationSchema = new mongoose.Schema({
-    firstName: { type: String },
-    lastName: { type: String },
+    fullName: { type: String, required: true },
     phoneNumber: { type: String },
     dob: { type: Date },
     gender: { type: String, enum: ["male", "female", "other"] },
