@@ -55,7 +55,8 @@ const sendOtp = async (req, res) => {
         .json({ message: "Không thể gửi email. Vui lòng thử lại!" });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
+      status: true,
       message: `OTP đã được gửi để ${
         type === "register" ? "đăng ký" : "đặt lại mật khẩu"
       }!`,
@@ -86,7 +87,10 @@ const verifyOtp = (req, res) => {
   }
 
   storedOtp.isVerified = true;
-  res.status(200).json({ message: "OTP xác thực thành công!" });
+  res.status(200).json({
+    status: true,
+    message: "OTP xác thực thành công!",
+  });
 };
 const refreshToken = async (req, res) => {
   try {
@@ -205,39 +209,79 @@ const register = async (req, res) => {
         "Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.",
       data: {
         email,
-      }
+      },
     });
   } catch (error) {
     console.error("Lỗi đăng ký:", error);
     res.status(500).json({ message: "Lỗi hệ thống!" });
   }
 };
+// const resetPassword = async (req, res) => {
+//   const { email, newPassword } = req.body;
+
+//   const storedOtp = otpStore[email]?.["reset-password"];
+//   if (!storedOtp || !storedOtp.isVerified)
+//     return res.status(400).json({ message: "Chưa xác thực OTP!" });
+
+//   if (Date.now() > storedOtp.expiresAt) {
+//     delete otpStore[email]["reset-password"];
+//     return res.status(400).json({ message: "OTP đã hết hạn!" });
+//   }
+
+//   delete otpStore[email]["resetPassword"];
+
+//   const errMsg = validateUtils.validatePassword(newPassword);
+//   if (errMsg !== null) {
+//     return res.status(400).json({ message: errMsg });
+//   }
+//   const hashedPassword = await bcrypt.hash(newPassword, 10);
+//   try {
+//     await Account.updateOne({ email }, { password: hashedPassword });
+//     res.status(200).json({ message: "Mật khẩu đã được cập nhật thành công!" });
+//   } catch (error) {
+//     res.status(500).json({ message: "Lỗi hệ thống!" });
+//   }
+// };
+
 const resetPassword = async (req, res) => {
-  const { email, newPassword } = req.body;
+  const { email, newPassword, confirmNewPassword } = req.body;
 
   const storedOtp = otpStore[email]?.["reset-password"];
-  if (!storedOtp || !storedOtp.isVerified)
+  if (!storedOtp || !storedOtp.isVerified) {
     return res.status(400).json({ message: "Chưa xác thực OTP!" });
+  }
 
   if (Date.now() > storedOtp.expiresAt) {
     delete otpStore[email]["reset-password"];
     return res.status(400).json({ message: "OTP đã hết hạn!" });
   }
 
-  delete otpStore[email]["resetPassword"];
+  // Xóa OTP sau khi dùng
+  delete otpStore[email]["reset-password"];
 
+  // Kiểm tra confirm password
+  if (newPassword !== confirmNewPassword) {
+    return res.status(400).json({ message: "Mật khẩu xác nhận không khớp!" });
+  }
+
+  // Kiểm tra độ mạnh mật khẩu
   const errMsg = validateUtils.validatePassword(newPassword);
   if (errMsg !== null) {
     return res.status(400).json({ message: errMsg });
   }
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
   try {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
     await Account.updateOne({ email }, { password: hashedPassword });
-    res.status(200).json({ message: "Mật khẩu đã được cập nhật thành công!" });
+    res.status(200).json({ 
+      status: true,
+      message: "Mật khẩu đã được cập nhật thành công!"
+     });
   } catch (error) {
     res.status(500).json({ message: "Lỗi hệ thống!" });
   }
 };
+
 const login = async (req, res) => {
   const { email, password } = req.body;
   try {
