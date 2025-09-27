@@ -174,19 +174,8 @@ const register = async (req, res) => {
 
         // Tạo UserInformation
         const userInfo = new UserInformation({
-            firstName,
-            lastName,
-            phoneNumber,
-            dob,
-            gender,
-            address: [
-                {
-                    address,
-                    provinceName,
-                    districtName,
-                    wardName,
-                },
-            ],
+            // Để trống hoặc giá trị mặc định
+            // User có thể cập nhật sau
         });
         await userInfo.save();
 
