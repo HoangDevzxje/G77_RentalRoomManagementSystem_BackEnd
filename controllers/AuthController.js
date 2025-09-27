@@ -151,10 +151,6 @@ const register = async (req, res) => {
         if (errMsg !== null) {
             return res.status(400).json({ message: errMsg });
         }
-        // const checkPhone = validateUtils.validatePhone(phoneNumber);
-        // if (checkPhone !== null) {
-        //     return res.status(400).json({ message: checkPhone });
-        // }
 
         const storedOtp = otpStore[email]?.["register"];
         if (!storedOtp || !storedOtp.isVerified)
@@ -172,19 +168,11 @@ const register = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Tạo UserInformation
-        const userInfo = new UserInformation({
-            // Để trống hoặc giá trị mặc định
-            // User có thể cập nhật sau
-        });
-        await userInfo.save();
-
         // Tạo Account
         const account = new Account({
             email,
             password: hashedPassword,
             role: role || "resident",
-            userInfo: userInfo._id,
         });
         await account.save();
 
