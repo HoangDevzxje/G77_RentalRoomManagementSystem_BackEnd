@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const FloorCtrl = require("../controllers/FloorController");
+const checkSubscription = require("../middleware/checkSubscription");
 
 router.get(
   "/",
@@ -12,8 +13,8 @@ router.get(
   checkAuthorize(["admin", "landlord", "resident"]),
   FloorCtrl.getById
 );
-router.post("/", checkAuthorize(["admin", "landlord"]), FloorCtrl.create);
-router.put("/:id", checkAuthorize(["admin", "landlord"]), FloorCtrl.update);
-router.delete("/:id", checkAuthorize(["admin", "landlord"]), FloorCtrl.remove);
+router.post("/", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.create);
+router.put("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.update);
+router.delete("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.remove);
 
 module.exports = router;

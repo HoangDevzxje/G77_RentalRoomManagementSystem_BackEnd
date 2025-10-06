@@ -40,41 +40,36 @@ const getById = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, address, description, landlordId } = req.body;
-    const ownerId =
-      req.user.role === "landlord" ? req.user._id : landlordId || req.user._id;
-    const doc = await Building.create({
+    const { name, address, eIndexType, ePrice, wIndexType, wPrice, description } = req.body;
+    const building = new Building({
       name,
       address,
+      eIndexType,
+      ePrice,
+      wIndexType,
+      wPrice,
       description,
-      landlordId: ownerId,
+      landlordId: req.user._id,
     });
-    res.status(201).json(doc);
-  } catch (e) {
-    res.status(400).json({ message: e.message });
+    await building.save();
+    res.status(201).json({ success: true, data: building });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 };
 
 const update = async (req, res) => {
   try {
-    const doc = await Building.findById(req.params.id);
-    if (!doc)
-      return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
-
-    const isOwner =
-      req.user.role === "admin" ||
-      (req.user.role === "landlord" &&
-        String(doc.landlordId) === String(req.user._id));
-    if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
-
-    const { name, address, description } = req.body;
-    if (name !== undefined) doc.name = name;
-    if (address !== undefined) doc.address = address;
-    if (description !== undefined) doc.description = description;
-    await doc.save();
-    res.json(doc);
-  } catch (e) {
-    res.status(400).json({ message: e.message });
+    const building = await Building.findById(req.params.id);
+    if (!building) return res.status(404).json({ message: 'Không tìm thấy tòa nhà' });
+    if (req.user.role !== 'landlord' && String(building.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Không có quyền' });
+    }
+    Object.assign(building, req.body);
+    await building.save();
+    res.json({ success: true, data: building });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 };
 
