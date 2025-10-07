@@ -3,6 +3,7 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
 const FloorCtrl = require("../controllers/FloorController");
 const checkSubscription = require("../middleware/checkSubscription");
 
+
 /**
  * @swagger
  * tags:
@@ -271,6 +272,13 @@ router.get("/:id", checkAuthorize(["admin", "landlord", "resident"]), FloorCtrl.
  */
 router.post("/", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.create);
 
+router.post(
+  "/quick-create",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.quickCreate
+);
+
 /**
  * @swagger
  * /floors/{id}:
@@ -472,5 +480,6 @@ router.put("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, Flo
  *                   example: Lỗi hệ thống!
  */
 router.delete("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.remove);
+
 
 module.exports = router;

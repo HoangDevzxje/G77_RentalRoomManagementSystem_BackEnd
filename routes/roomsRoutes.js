@@ -367,6 +367,13 @@ router.get("/:id", checkAuthorize(["admin", "landlord", "resident"]), RoomCtrl.g
  */
 router.post("/", checkAuthorize(["admin", "landlord"]), RoomCtrl.create);
 
+router.post(
+  "/quick-create",
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.quickCreate
+);
+
+
 /**
  * @swagger
  * /rooms/{id}:
@@ -508,6 +515,7 @@ router.post("/", checkAuthorize(["admin", "landlord"]), RoomCtrl.create);
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
+
 router.put("/:id", checkAuthorize(["admin", "landlord"]), RoomCtrl.update);
 
 /**

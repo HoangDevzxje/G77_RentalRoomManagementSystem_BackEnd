@@ -1,4 +1,4 @@
-// controllers/FloorController.js
+const mongoose = require("mongoose");
 const Building = require("../models/Building");
 const Floor = require("../models/Floor");
 const Room = require("../models/Room");
@@ -92,4 +92,71 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, getById, create, update, remove };
+const quickCreate = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const {
+      buildingId,
+      fromLevel,
+      toLevel,
+      count,
+      startLevel,
+      labelTemplate = "Tầng {level}",
+      description,
+    } = req.body;
+
+    if (!buildingId)
+      return res.status(400).json({ message: "buildingId là bắt buộc" });
+    const b = await Building.findById(buildingId);
+    if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
+
+    const isOwner =
+      req.user.role === "admin" ||
+      (req.user.role === "landlord" &&
+        String(b.landlordId) === String(req.user._id));
+    if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
+
+    // Xác định danh sách level cần tạo
+    let levels = [];
+    if (fromLevel != null && toLevel != null) {
+      if (+fromLevel > +toLevel)
+        return res.status(400).json({ message: "fromLevel phải <= toLevel" });
+      for (let lv = +fromLevel; lv <= +toLevel; lv++) levels.push(lv);
+    } else if (count != null && startLevel != null) {
+      for (let i = 0; i < +count; i++) levels.push(+startLevel + i);
+    } else {
+      return res
+        .status(400)
+        .json({ message: "Cần (fromLevel,toLevel) hoặc (count,startLevel)" });
+    }
+
+    // Lấy level đã tồn tại
+    const existing = await Floor.find({ buildingId }).select("level").lean();
+    const existSet = new Set(existing.map((x) => x.level));
+
+    const toInsert = levels
+      .filter((lv) => !existSet.has(lv))
+      .map((lv) => ({
+        buildingId,
+        level: lv,
+        label: labelTemplate.replace("{level}", String(lv)),
+        description,
+      }));
+
+    let created = [];
+    if (toInsert.length) {
+      created = await Floor.insertMany(toInsert, { session });
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+    return res.status(201).json({ createdCount: created.length, created });
+  } catch (e) {
+    await session.abortTransaction();
+    session.endSession();
+    return res.status(400).json({ message: e.message });
+  }
+};
+
+module.exports = { list, getById, create, update, remove, quickCreate };

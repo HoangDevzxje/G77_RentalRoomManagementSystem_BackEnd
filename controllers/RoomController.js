@@ -1,4 +1,4 @@
-// controllers/RoomController.js
+const mongoose = require("mongoose");
 const Building = require("../models/Building");
 const Floor = require("../models/Floor");
 const Room = require("../models/Room");
@@ -153,4 +153,106 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, getById, create, update, remove };
+// helper render template
+function renderRoomNumber(tpl, { block, floorLevel, seq }) {
+  // hỗ trợ {block} {floor} {seq} {seq:02}
+  let out = tpl.replace("{block}", block ?? "");
+  out = out.replace("{floor}", floorLevel != null ? String(floorLevel) : "");
+  // padding cho seq
+  out = out.replace(/\{seq(?::(\d+))?\}/g, (_m, p1) => {
+    const pad = p1 ? parseInt(p1, 10) : 0;
+    let s = String(seq);
+    return pad ? s.padStart(pad, "0") : s;
+  });
+  return out;
+}
+
+const quickCreate = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const {
+      buildingId,
+      floorId,
+      floorIds,
+      perFloor = 1,
+      seqStart = 1,
+      roomNumberTemplate = "{floor}{seq:02}",
+      templateVars = {},
+      defaults = {},
+      skipExisting = true,
+    } = req.body;
+
+    if (!buildingId)
+      return res.status(400).json({ message: "buildingId là bắt buộc" });
+
+    const b = await Building.findById(buildingId);
+    if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
+    const isOwner =
+      req.user.role === "admin" ||
+      (req.user.role === "landlord" &&
+        String(b.landlordId) === String(req.user._id));
+    if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
+
+    // Xác định danh sách floors
+    let floors = [];
+    if (floorId) {
+      const f = await Floor.findById(floorId);
+      if (!f) return res.status(404).json({ message: "Không tìm thấy tầng" });
+      if (String(f.buildingId) !== String(buildingId))
+        return res
+          .status(400)
+          .json({ message: "floorId không thuộc buildingId" });
+      floors = [f];
+    } else if (Array.isArray(floorIds) && floorIds.length) {
+      floors = await Floor.find({ _id: { $in: floorIds }, buildingId });
+      if (floors.length !== floorIds.length)
+        return res.status(400).json({ message: "Có floorId không hợp lệ" });
+    } else {
+      return res.status(400).json({ message: "Cần floorId hoặc floorIds" });
+    }
+
+    // Tập roomNumber đã tồn tại để tránh trùng (theo building)
+    const existRooms = await Room.find({ buildingId })
+      .select("roomNumber")
+      .lean();
+    const existSet = new Set(existRooms.map((x) => x.roomNumber));
+
+    const docs = [];
+    for (const f of floors) {
+      for (let i = 0; i < perFloor; i++) {
+        const seq = seqStart + i;
+        const roomNumber = renderRoomNumber(roomNumberTemplate, {
+          block: templateVars.block,
+          floorLevel: f.level,
+          seq,
+        });
+
+        if (skipExisting && existSet.has(roomNumber)) continue;
+
+        docs.push({
+          buildingId,
+          floorId: f._id,
+          roomNumber,
+          area: defaults.area ?? undefined,
+          price: defaults.price ?? undefined,
+          maxTenants: defaults.maxTenants ?? 1,
+          status: defaults.status ?? "available",
+          description: defaults.description,
+        });
+        existSet.add(roomNumber);
+      }
+    }
+
+    const created = docs.length ? await Room.insertMany(docs, { session }) : [];
+    await session.commitTransaction();
+    session.endSession();
+    return res.status(201).json({ createdCount: created.length, created });
+  } catch (e) {
+    await session.abortTransaction();
+    session.endSession();
+    return res.status(400).json({ message: e.message });
+  }
+};
+
+module.exports = { list, getById, create, update, remove, quickCreate };
