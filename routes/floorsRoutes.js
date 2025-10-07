@@ -13,8 +13,29 @@ router.get(
   checkAuthorize(["admin", "landlord", "resident"]),
   FloorCtrl.getById
 );
-router.post("/", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.create);
-router.put("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.update);
-router.delete("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.remove);
+router.post(
+  "/",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.create
+);
+router.post(
+  "/quick-create",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.quickCreate
+);
+router.put(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.update
+);
+router.delete(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.remove
+);
 
 module.exports = router;

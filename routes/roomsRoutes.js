@@ -13,6 +13,11 @@ router.get(
   RoomCtrl.getById
 );
 router.post("/", checkAuthorize(["admin", "landlord"]), RoomCtrl.create);
+router.post(
+  "/quick-create",
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.quickCreate
+);
 router.put("/:id", checkAuthorize(["admin", "landlord"]), RoomCtrl.update);
 router.delete("/:id", checkAuthorize(["admin", "landlord"]), RoomCtrl.remove);
 

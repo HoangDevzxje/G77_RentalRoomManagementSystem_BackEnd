@@ -1,16 +1,32 @@
 const mongoose = require("mongoose");
 
-const floorSchema = new mongoose.Schema({
-  buildingId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Building",
-    required: true,
+const floorSchema = new mongoose.Schema(
+  {
+    buildingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Building",
+      required: true,
+      index: true,
+    },
+    label: { type: String, required: true, trim: true },
+    level: { type: Number, required: true }, // ví dụ: 1, 2, 3...
+    description: String,
   },
-  label: { type: String, required: true }, // Tên tầng hiển thị (ví dụ: "Tầng 5")
-  level: { type: Number, required: true }, // Số tầng (để sort)
-  description: { type: String }, // Ghi chú: khu vực thang máy, block A,...
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
+  { timestamps: true }
+);
+
+// mỗi tòa chỉ có 1 level cụ thể
+floorSchema.index({ buildingId: 1, level: 1 }, { unique: true });
+// (tuỳ chọn) mỗi tòa không trùng label tầng
+// floorSchema.index({ buildingId: 1, label: 1 }, { unique: true });
+
+floorSchema.set("toJSON", {
+  virtuals: true,
+  versionKey: false,
+  transform: (_, ret) => {
+    ret.id = ret._id;
+    delete ret._id;
+  },
 });
 
 module.exports = mongoose.model("Floor", floorSchema);
