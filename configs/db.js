@@ -26,6 +26,7 @@ DB.connectDB = async () => {
             process.exit(1); // Dừng chương trình
         }
     }
+    await Account.initializeAdmin();
 };
 
 module.exports = DB;
