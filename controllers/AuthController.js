@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 const bcrypt = require("bcryptjs");
 const otpGenerator = require("otp-generator");
 const sendEmail = require("../utils/sendMail");
-const Account = require("../models/Account");
+const { Account } = require("../models/Account");
 const UserInformation = require("../models/UserInformation");
 const generateToken = require("../utils/generalToken");
 const verifyEmail = require("../utils/verifyMail");
@@ -312,6 +312,7 @@ const login = async (req, res) => {
     });
 
     return res.status(200).json({
+      status: true,
       message: "Đăng nhập thành công",
       accessToken,
       role: user.role,
