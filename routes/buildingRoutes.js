@@ -112,7 +112,11 @@ const checkSubscription = require("../middleware/checkSubscription");
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.get("/", checkAuthorize(["admin", "landlord", "resident"]), BuildingCtrl.list);
+router.get(
+  "/",
+  checkAuthorize(["admin", "landlord", "resident"]),
+  BuildingCtrl.list
+);
 
 /**
  * @swagger
@@ -210,7 +214,11 @@ router.get("/", checkAuthorize(["admin", "landlord", "resident"]), BuildingCtrl.
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.get("/:id", checkAuthorize(["admin", "landlord", "resident"]), BuildingCtrl.getById);
+router.get(
+  "/:id",
+  checkAuthorize(["admin", "landlord", "resident"]),
+  BuildingCtrl.getById
+);
 
 /**
  * @swagger
@@ -340,7 +348,12 @@ router.get("/:id", checkAuthorize(["admin", "landlord", "resident"]), BuildingCt
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.post("/", checkAuthorize(["landlord"]), checkSubscription, BuildingCtrl.create);
+router.post(
+  "/",
+  checkAuthorize(["landlord"]),
+  checkSubscription,
+  BuildingCtrl.create
+);
 
 /**
  * @swagger
@@ -484,7 +497,12 @@ router.post("/", checkAuthorize(["landlord"]), checkSubscription, BuildingCtrl.c
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.put("/:id", checkAuthorize(["landlord"]), checkSubscription, BuildingCtrl.update);
+router.put(
+  "/:id",
+  checkAuthorize(["landlord"]),
+  checkSubscription,
+  BuildingCtrl.update
+);
 
 /**
  * @swagger
@@ -564,6 +582,16 @@ router.put("/:id", checkAuthorize(["landlord"]), checkSubscription, BuildingCtrl
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.delete("/:id", checkAuthorize(["landlord"]), checkSubscription, BuildingCtrl.remove);
+router.delete(
+  "/:id",
+  checkAuthorize(["landlord"]),
+  checkSubscription,
+  BuildingCtrl.remove
+);
+router.post(
+  "/quick-setup",
+  checkAuthorize(["admin", "landlord"]),
+  BuildingCtrl.quickSetup
+);
 
 module.exports = router;

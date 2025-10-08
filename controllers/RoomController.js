@@ -169,8 +169,9 @@ function renderRoomNumber(tpl, { block, floorLevel, seq }) {
 
 const quickCreate = async (req, res) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
   try {
+    await session.startTransaction();
+
     const {
       buildingId,
       floorId,
@@ -185,16 +186,19 @@ const quickCreate = async (req, res) => {
 
     if (!buildingId)
       return res.status(400).json({ message: "buildingId là bắt buộc" });
+    if (perFloor <= 0)
+      return res.status(400).json({ message: "perFloor phải > 0" });
 
     const b = await Building.findById(buildingId);
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
+
     const isOwner =
       req.user.role === "admin" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    // Xác định danh sách floors
+    // Lấy danh sách floors
     let floors = [];
     if (floorId) {
       const f = await Floor.findById(floorId);
@@ -212,13 +216,15 @@ const quickCreate = async (req, res) => {
       return res.status(400).json({ message: "Cần floorId hoặc floorIds" });
     }
 
-    // Tập roomNumber đã tồn tại để tránh trùng (theo building)
+    // Set roomNumber đã có (theo tòa)
     const existRooms = await Room.find({ buildingId })
       .select("roomNumber")
       .lean();
     const existSet = new Set(existRooms.map((x) => x.roomNumber));
 
     const docs = [];
+    const skippedRoomNumbers = [];
+
     for (const f of floors) {
       for (let i = 0; i < perFloor; i++) {
         const seq = seqStart + i;
@@ -228,7 +234,10 @@ const quickCreate = async (req, res) => {
           seq,
         });
 
-        if (skipExisting && existSet.has(roomNumber)) continue;
+        if (skipExisting && existSet.has(roomNumber)) {
+          skippedRoomNumbers.push(roomNumber);
+          continue;
+        }
 
         docs.push({
           buildingId,
@@ -240,19 +249,51 @@ const quickCreate = async (req, res) => {
           status: defaults.status ?? "available",
           description: defaults.description,
         });
+
+        // thêm ngay vào set để tránh trùng trong chính request này
         existSet.add(roomNumber);
       }
     }
 
-    const created = docs.length ? await Room.insertMany(docs, { session }) : [];
+    // Không có gì để tạo
+    if (!docs.length) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        message:
+          "Tất cả roomNumber yêu cầu đã tồn tại, không có phòng nào được tạo.",
+        createdCount: 0,
+        skippedCount: skippedRoomNumbers.length,
+        skippedRoomNumbers,
+        created: [],
+      });
+    }
+
+    // Tạo hàng loạt; ordered:false để không fail cả batch nếu trùng race-condition
+    let created = [];
+    try {
+      created = await Room.insertMany(docs, { session, ordered: false });
+    } catch (err) {
+      // Nếu có duplicate do race-condition, vẫn commit các bản ghi hợp lệ
+      // err.writeErrors có thể chứa thông tin từng dòng lỗi
+      if (err.code !== 11000 && !err.writeErrors) throw err;
+    }
+
     await session.commitTransaction();
-    session.endSession();
-    return res.status(201).json({ createdCount: created.length, created });
+
+    return res.status(201).json({
+      message: "Tạo nhanh phòng thành công.",
+      createdCount: created.length,
+      skippedCount: skippedRoomNumbers.length,
+      skippedRoomNumbers,
+      created,
+    });
   } catch (e) {
     await session.abortTransaction();
-    session.endSession();
     return res.status(400).json({ message: e.message });
+  } finally {
+    session.endSession();
   }
 };
+
 
 module.exports = { list, getById, create, update, remove, quickCreate };
