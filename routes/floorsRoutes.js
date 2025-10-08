@@ -3,7 +3,6 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
 const FloorCtrl = require("../controllers/FloorController");
 const checkSubscription = require("../middleware/checkSubscription");
 
-
 /**
  * @swagger
  * tags:
@@ -77,7 +76,11 @@ const checkSubscription = require("../middleware/checkSubscription");
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.get("/", checkAuthorize(["admin", "landlord", "resident"]), FloorCtrl.list);
+router.get(
+  "/",
+  checkAuthorize(["admin", "landlord", "resident"]),
+  FloorCtrl.list
+);
 
 /**
  * @swagger
@@ -153,7 +156,11 @@ router.get("/", checkAuthorize(["admin", "landlord", "resident"]), FloorCtrl.lis
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.get("/:id", checkAuthorize(["admin", "landlord", "resident"]), FloorCtrl.getById);
+router.get(
+  "/:id",
+  checkAuthorize(["admin", "landlord", "resident"]),
+  FloorCtrl.getById
+);
 
 /**
  * @swagger
@@ -270,12 +277,17 @@ router.get("/:id", checkAuthorize(["admin", "landlord", "resident"]), FloorCtrl.
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.post("/", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.create);
+router.post(
+  "/",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.create
+);
 
 router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord"]),
-  checkSubscription,
+
   FloorCtrl.quickCreate
 );
 
@@ -394,7 +406,12 @@ router.post(
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.put("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.update);
+router.put(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.update
+);
 
 /**
  * @swagger
@@ -479,7 +496,11 @@ router.put("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, Flo
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.delete("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FloorCtrl.remove);
-
+router.delete(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.remove
+);
 
 module.exports = router;
