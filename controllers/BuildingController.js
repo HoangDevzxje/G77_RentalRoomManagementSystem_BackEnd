@@ -40,7 +40,15 @@ const getById = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, address, eIndexType, ePrice, wIndexType, wPrice, description } = req.body;
+    const {
+      name,
+      address,
+      eIndexType,
+      ePrice,
+      wIndexType,
+      wPrice,
+      description,
+    } = req.body;
     const building = new Building({
       name,
       address,
@@ -58,12 +66,173 @@ const create = async (req, res) => {
   }
 };
 
+// helper render room number
+function renderRoomNumber(tpl, { block, floorLevel, seq }) {
+  let out = tpl.replace("{block}", block ?? "");
+  out = out.replace("{floor}", floorLevel != null ? String(floorLevel) : "");
+  out = out.replace(/\{seq(?::(\d+))?\}/g, (_m, p1) => {
+    const pad = p1 ? parseInt(p1, 10) : 0;
+    const s = String(seq);
+    return pad ? s.padStart(pad, "0") : s;
+  });
+  return out;
+}
+
+const quickSetup = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const {
+      name,
+      address,
+      landlordId: landlordIdInput,
+      floors,
+      rooms,
+      dryRun = false,
+      idempotencyKey,
+    } = req.body;
+
+    // Idempotency (tuỳ chọn): lưu tạm trong collection riêng nếu bạn muốn
+    // Ở đây demo: bỏ qua.
+
+    // Xác định landlordId
+    const landlordId =
+      req.user.role === "landlord"
+        ? req.user._id
+        : landlordIdInput || req.user._id;
+
+    // 1) Tạo Building
+    const building = new Building({ name, address, landlordId });
+    if (!dryRun) await building.save({ session });
+
+    // 2) Tạo Floors
+    let createdFloors = [];
+    if (floors?.count && floors?.startLevel != null) {
+      const levels = Array.from(
+        { length: +floors.count },
+        (_, i) => +floors.startLevel + i
+      );
+      const existing = await Floor.find({ buildingId: building._id })
+        .select("level")
+        .lean();
+      const existSet = new Set(existing.map((x) => x.level));
+
+      const toInsert = levels
+        .filter((lv) => !existSet.has(lv))
+        .map((lv) => ({
+          buildingId: building._id,
+          level: lv,
+          label: (floors.labelTemplate || "Tầng {level}").replace(
+            "{level}",
+            String(lv)
+          ),
+          description: floors.description,
+        }));
+
+      if (!dryRun && toInsert.length) {
+        createdFloors = await Floor.insertMany(toInsert, { session });
+      } else {
+        createdFloors = toInsert.map((x) => ({
+          ...x,
+          _id: new mongoose.Types.ObjectId(),
+        })); // giả lập khi dryRun
+      }
+    }
+
+    // 3) Tạo Rooms mỗi tầng
+    let createdRooms = [];
+    if (rooms?.perFloor && createdFloors.length) {
+      const {
+        perFloor,
+        seqStart = 1,
+        roomNumberTemplate = "{floor}{seq:02}",
+        defaults = {},
+        templateVars = {},
+      } = rooms;
+
+      // tập roomNumber đã có (mới tạo building → rỗng; nhưng để an toàn)
+      const existRooms = await Room.find({ buildingId: building._id })
+        .select("roomNumber")
+        .lean();
+      const existSet = new Set(existRooms.map((x) => x.roomNumber));
+
+      const roomDocs = [];
+      for (const f of createdFloors) {
+        for (let i = 0; i < perFloor; i++) {
+          const seq = seqStart + i;
+          const roomNumber = renderRoomNumber(roomNumberTemplate, {
+            block: templateVars.block,
+            floorLevel: f.level,
+            seq,
+          });
+          if (existSet.has(roomNumber)) continue;
+          roomDocs.push({
+            buildingId: building._id,
+            floorId: f._id,
+            roomNumber,
+            area: defaults.area ?? undefined,
+            price: defaults.price ?? undefined,
+            maxTenants: defaults.maxTenants ?? 1,
+            status: defaults.status ?? "available",
+            description: defaults.description,
+          });
+          existSet.add(roomNumber);
+        }
+      }
+      if (!dryRun && roomDocs.length) {
+        createdRooms = await Room.insertMany(roomDocs, { session });
+      } else {
+        createdRooms = roomDocs.map((x) => ({
+          ...x,
+          _id: new mongoose.Types.ObjectId(),
+        })); // giả lập khi dryRun
+      }
+    }
+
+    if (dryRun) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(200).json({
+        dryRun: true,
+        preview: {
+          building,
+          floors: createdFloors,
+          rooms: createdRooms,
+        },
+      });
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+    return res.status(201).json({
+      message: "Tạo tòa + tầng + phòng thành công",
+      building,
+      floors: createdFloors,
+      rooms: createdRooms,
+    });
+  } catch (e) {
+    await session.abortTransaction();
+    session.endSession();
+    if (e.code === 11000) {
+      return res.status(409).json({
+        message: "Trùng dữ liệu (unique index). Vui lòng kiểm tra.",
+        error: e.message,
+      });
+    }
+    return res.status(400).json({ message: e.message });
+  }
+};
+
 const update = async (req, res) => {
   try {
     const building = await Building.findById(req.params.id);
-    if (!building) return res.status(404).json({ message: 'Không tìm thấy tòa nhà' });
-    if (req.user.role !== 'landlord' && String(building.landlordId) !== String(req.user._id)) {
-      return res.status(403).json({ message: 'Không có quyền' });
+    if (!building)
+      return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+    if (
+      req.user.role !== "landlord" &&
+      String(building.landlordId) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ message: "Không có quyền" });
     }
     Object.assign(building, req.body);
     await building.save();
@@ -99,4 +268,4 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, getById, create, update, remove };
+module.exports = { list, getById, create, quickSetup, update, remove };

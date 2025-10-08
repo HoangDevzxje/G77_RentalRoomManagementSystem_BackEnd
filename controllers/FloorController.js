@@ -105,19 +105,20 @@ const quickCreate = async (req, res) => {
       labelTemplate = "Tầng {level}",
       description,
     } = req.body;
-
     if (!buildingId)
       return res.status(400).json({ message: "buildingId là bắt buộc" });
+
     const b = await Building.findById(buildingId);
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
 
+    // Quyền
     const isOwner =
       req.user.role === "admin" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    // Xác định danh sách level cần tạo
+    // Tập levels cần tạo
     let levels = [];
     if (fromLevel != null && toLevel != null) {
       if (+fromLevel > +toLevel)
@@ -131,10 +132,10 @@ const quickCreate = async (req, res) => {
         .json({ message: "Cần (fromLevel,toLevel) hoặc (count,startLevel)" });
     }
 
-    // Lấy level đã tồn tại
+    // Lấy level đã có
     const existing = await Floor.find({ buildingId }).select("level").lean();
     const existSet = new Set(existing.map((x) => x.level));
-
+    const skippedLevels = levels.filter((lv) => existSet.has(lv));
     const toInsert = levels
       .filter((lv) => !existSet.has(lv))
       .map((lv) => ({
@@ -151,10 +152,32 @@ const quickCreate = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
-    return res.status(201).json({ createdCount: created.length, created });
+
+    if (!created.length) {
+      return res.status(409).json({
+        message: "Tất cả level yêu cầu đã tồn tại, không có tầng nào được tạo.",
+        createdCount: 0,
+        createdLevels: [],
+        skippedLevels,
+      });
+    }
+
+    return res.status(201).json({
+      message: "Tạo nhanh tầng thành công.",
+      createdCount: created.length,
+      createdLevels: created.map((d) => d.level),
+      skippedLevels,
+    });
   } catch (e) {
     await session.abortTransaction();
     session.endSession();
+    // Bắt duplicate index nếu có race
+    if (e.code === 11000) {
+      return res.status(409).json({
+        message: "Một số level bị trùng (unique index). Vui lòng thử lại.",
+        error: e.message,
+      });
+    }
     return res.status(400).json({ message: e.message });
   }
 };
