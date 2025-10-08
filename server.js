@@ -13,7 +13,7 @@ const port = process.env.PORT || 9999;
 
 const swaggerOptions = {
   definition: {
-    openapi: "3.0.0",
+    openapi: "3.0.3",
     info: {
       title: "RRMS API",
       version: "1.0.0",
@@ -21,16 +21,28 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: process.env.BASE_URL || `http://localhost:${port}`,
+        url: process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`,
       },
     ],
+    components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
+    },
   },
   apis: ["./routes/*.js"],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-
+app.get("/swagger.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.send(swaggerDocs);
+});
 app.use(
   cors({
     origin: true,
@@ -39,7 +51,7 @@ app.use(
 );
 
 app.use(express.json());
-
+app.use(express.urlencoded({ extended: true }));
 routes(app);
 
 DB.connectDB()
