@@ -287,7 +287,7 @@ router.post(
 router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord"]),
-
+  checkSubscription,
   FloorCtrl.quickCreate
 );
 

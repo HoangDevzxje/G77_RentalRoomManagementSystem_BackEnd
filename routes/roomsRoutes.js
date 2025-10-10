@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const RoomCtrl = require("../controllers/RoomController");
+const checkSubscription = require("../middleware/checkSubscription");
 /**
  * @swagger
  * tags:
@@ -130,7 +131,11 @@ const RoomCtrl = require("../controllers/RoomController");
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.get("/", checkAuthorize(["admin", "landlord", "resident"]), RoomCtrl.list);
+router.get(
+  "/",
+  checkAuthorize(["admin", "landlord", "resident"]),
+  RoomCtrl.list
+);
 
 /**
  * @swagger
@@ -219,7 +224,11 @@ router.get("/", checkAuthorize(["admin", "landlord", "resident"]), RoomCtrl.list
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.get("/:id", checkAuthorize(["admin", "landlord", "resident"]), RoomCtrl.getById);
+router.get(
+  "/:id",
+  checkAuthorize(["admin", "landlord", "resident"]),
+  RoomCtrl.getById
+);
 
 /**
  * @swagger
@@ -370,9 +379,9 @@ router.post("/", checkAuthorize(["admin", "landlord"]), RoomCtrl.create);
 router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   RoomCtrl.quickCreate
 );
-
 
 /**
  * @swagger
@@ -516,7 +525,12 @@ router.post(
  *                   example: Lỗi hệ thống!
  */
 
-router.put("/:id", checkAuthorize(["admin", "landlord"]), RoomCtrl.update);
+router.put(
+  "/:id",
+  checkSubscription,
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.update
+);
 
 /**
  * @swagger
@@ -591,6 +605,11 @@ router.put("/:id", checkAuthorize(["admin", "landlord"]), RoomCtrl.update);
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.delete("/:id", checkAuthorize(["admin", "landlord"]), RoomCtrl.remove);
+router.delete(
+  "/:id",
+  checkSubscription,
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.remove
+);
 
 module.exports = router;
