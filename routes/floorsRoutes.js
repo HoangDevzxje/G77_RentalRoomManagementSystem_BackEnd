@@ -280,14 +280,14 @@ router.get(
 router.post(
   "/",
   checkAuthorize(["admin", "landlord"]),
-
+  checkSubscription,
   FloorCtrl.create
 );
 
 router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord"]),
-
+  checkSubscription,
   FloorCtrl.quickCreate
 );
 

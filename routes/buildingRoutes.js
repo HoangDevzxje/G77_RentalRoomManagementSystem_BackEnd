@@ -591,6 +591,7 @@ router.delete(
 router.post(
   "/quick-setup",
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   BuildingCtrl.quickSetup
 );
 
