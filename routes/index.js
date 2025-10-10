@@ -4,6 +4,7 @@ const floorRoutes = require("./floorsRoutes");
 const roomRoutes = require("./roomsRoutes");
 const packageRoutes = require("./packageRoutes");
 const subscriptionRoutes = require("./subscriptionRoutes");
+const furnitureRoutes = require("./furnitureRoutes");
 const routes = (app) => {
     app.use('/auth', authRoutes);
     app.use("/buildings", buildingRoutes);
@@ -11,6 +12,7 @@ const routes = (app) => {
     app.use("/rooms", roomRoutes);
     app.use("/subscriptions", subscriptionRoutes);
     app.use("/packages", packageRoutes);
+    app.use("/furnitures", furnitureRoutes);
 }
 
 module.exports = routes
