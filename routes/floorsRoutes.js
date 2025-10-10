@@ -280,7 +280,7 @@ router.get(
 router.post(
   "/",
   checkAuthorize(["admin", "landlord"]),
-  checkSubscription,
+
   FloorCtrl.create
 );
 
