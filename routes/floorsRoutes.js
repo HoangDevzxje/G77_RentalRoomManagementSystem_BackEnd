@@ -25,7 +25,7 @@ const checkSubscription = require("../middleware/checkSubscription");
  *         schema:
  *           type: string
  *         description: ID của tòa nhà để lọc tầng
- *         example: 68e3fe79ec7f3071215fd040
+ *         example: 68e91c7be25f897d2da77944
  *     responses:
  *       200:
  *         description: Danh sách tầng
