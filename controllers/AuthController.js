@@ -57,9 +57,8 @@ const sendOtp = async (req, res) => {
 
     return res.status(200).json({
       status: true,
-      message: `OTP đã được gửi để ${
-        type === "register" ? "đăng ký" : "đặt lại mật khẩu"
-      }!`,
+      message: `OTP đã được gửi để ${type === "register" ? "đăng ký" : "đặt lại mật khẩu"
+        }!`,
     });
   } catch (error) {
     res.status(500).json({ message: "Lỗi hệ thống!" });
@@ -168,7 +167,6 @@ const register = async (req, res) => {
 
     // Tạo Account
     const account = new Account({
-      fullName,
       email,
       password: hashedPassword,
       role: role || "resident",
@@ -273,10 +271,10 @@ const resetPassword = async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await Account.updateOne({ email }, { password: hashedPassword });
-    res.status(200).json({ 
+    res.status(200).json({
       status: true,
       message: "Mật khẩu đã được cập nhật thành công!"
-     });
+    });
   } catch (error) {
     res.status(500).json({ message: "Lỗi hệ thống!" });
   }
