@@ -527,8 +527,8 @@ router.post(
 
 router.put(
   "/:id",
-  checkSubscription,
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   RoomCtrl.update
 );
 
@@ -607,8 +607,8 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkSubscription,
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   RoomCtrl.remove
 );
 
