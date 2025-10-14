@@ -140,11 +140,6 @@ const remove = async (req, res) => {
     if (!doc) return res.status(404).json({ message: "Không tìm thấy phòng" });
 
     const b = await Building.findById(doc.buildingId);
-    const isOwner =
-      req.user.role === "admin" ||
-      (req.user.role === "landlord" &&
-        String(b.landlordId) === String(req.user._id));
-    if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
     await doc.deleteOne();
     res.json({ success: true });
