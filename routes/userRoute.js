@@ -89,7 +89,7 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
 
 /**
  * @swagger
- * /profile:
+ * /users/profile:
  *   get:
  *     summary: Lấy thông tin hồ sơ người dùng hiện tại
  *     tags: [User]
@@ -131,7 +131,7 @@ router.get("/profile", checkAuthorize(["admin", "landlord", "resident"]), userCo
 
 /**
  * @swagger
- * /profile:
+ * users/profile:
  *   put:
  *     summary: Cập nhật thông tin hồ sơ người dùng hiện tại
  *     tags: [User]
