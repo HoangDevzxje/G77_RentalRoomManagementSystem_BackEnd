@@ -2,6 +2,23 @@ const mongoose = require("mongoose");
 const Building = require("../models/Building");
 const Floor = require("../models/Floor");
 const Room = require("../models/Room");
+const { cloudinary } = require("../cloudinary.config");
+
+//helper: lấy public_id từ Cloudinary URL
+function getCloudinaryPublicId(url) {
+  // Ví dụ URL:
+  // https://res.cloudinary.com/<cloud>/image/upload/v1699999999/rooms/123/169...-abc.webp
+  // public_id cần là: rooms/123/169...-abc
+  try {
+    const u = new URL(url);
+    const afterUpload = u.pathname.split("/upload/")[1]; // v169.../rooms/123/169...-abc.webp
+    if (!afterUpload) return null;
+    const noVersion = afterUpload.replace(/^v\d+\//, ""); // rooms/123/169...-abc.webp
+    return noVersion.replace(/\.[^/.]+$/, ""); // bỏ .webp
+  } catch (_) {
+    return null;
+  }
+}
 
 const list = async (req, res) => {
   try {
@@ -40,7 +57,7 @@ const getById = async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 };
-
+// ----------------- CREATE (có upload) -----------------
 const create = async (req, res) => {
   try {
     const {
@@ -53,6 +70,7 @@ const create = async (req, res) => {
       status,
       description,
     } = req.body;
+
     const [b, f] = await Promise.all([
       Building.findById(buildingId),
       Floor.findById(floorId),
@@ -71,6 +89,11 @@ const create = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
+    // Lấy URL ảnh từ Cloudinary (secure_url nằm ở file.path)
+    const imageUrls = Array.isArray(req.files)
+      ? req.files.map((f) => f.path) // secure_url
+      : [];
+
     const doc = await Room.create({
       buildingId,
       floorId,
@@ -80,10 +103,112 @@ const create = async (req, res) => {
       maxTenants,
       status,
       description,
+      images: imageUrls,
     });
     res.status(201).json(doc);
   } catch (e) {
     res.status(400).json({ message: e.message });
+  }
+};
+
+// ----------------- ADD IMAGES -----------------
+const addImages = async (req, res) => {
+  try {
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ message: "Không tìm thấy phòng" });
+
+    const b = await Building.findById(room.buildingId);
+    const isOwner =
+      req.user.role === "admin" ||
+      (req.user.role === "landlord" &&
+        String(b.landlordId) === String(req.user._id));
+    if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
+
+    const imageUrls = Array.isArray(req.files)
+      ? req.files.map((f) => f.path)
+      : [];
+    if (!imageUrls.length)
+      return res.status(400).json({ message: "Không có ảnh để thêm" });
+
+    room.images = [...(room.images || []), ...imageUrls];
+    await room.save();
+    res.json({ message: "Đã thêm ảnh", images: room.images });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// ----------------- REMOVE IMAGES -----------------
+const removeImages = async (req, res) => {
+  try {
+    const { urls = [] } = req.body; // danh sách URL muốn xóa
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ message: "Cần truyền mảng 'urls' để xóa" });
+    }
+
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ message: "Không tìm thấy phòng" });
+
+    const b = await Building.findById(room.buildingId);
+    const isOwner =
+      req.user.role === "admin" ||
+      (req.user.role === "landlord" &&
+        String(b.landlordId) === String(req.user._id));
+    if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
+
+    // Xóa Cloudinary theo public_id
+    const publicIds = urls.map((u) => getCloudinaryPublicId(u)).filter(Boolean);
+
+    if (publicIds.length) {
+      // Xóa nhiều resource cùng lúc
+      await cloudinary.api.delete_resources(publicIds, {
+        resource_type: "image",
+      });
+    }
+
+    // Xóa URL khỏi room.images
+    room.images = (room.images || []).filter((u) => !urls.includes(u));
+    await room.save();
+
+    res.json({
+      message: "Đã xóa ảnh",
+      images: room.images,
+      deleted: urls.length,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// ----------------- REMOVE ROOM (xóa luôn ảnh) -----------------
+const remove = async (req, res) => {
+  try {
+    const doc = await Room.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: "Không tìm thấy phòng" });
+
+    const b = await Building.findById(doc.buildingId);
+    const isOwner =
+      req.user.role === "admin" ||
+      (req.user.role === "landlord" &&
+        String(b.landlordId) === String(req.user._id));
+    if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
+
+    // Xóa ảnh Cloudinary nếu có
+    if (Array.isArray(doc.images) && doc.images.length) {
+      const publicIds = doc.images
+        .map((u) => getCloudinaryPublicId(u))
+        .filter(Boolean);
+      if (publicIds.length) {
+        await cloudinary.api.delete_resources(publicIds, {
+          resource_type: "image",
+        });
+      }
+    }
+
+    await doc.deleteOne();
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
 
@@ -99,7 +224,9 @@ const update = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    const {
+    // -------- Parse body (multipart + fields) --------
+    // removeUrls có thể là JSON string nếu client gửi form-data
+    let {
       roomNumber,
       area,
       price,
@@ -107,8 +234,27 @@ const update = async (req, res) => {
       status,
       description,
       floorId,
+      replaceAllImages,
+      removeUrls,
     } = req.body;
 
+    // Chuẩn hóa kiểu dữ liệu
+    if (typeof replaceAllImages === "string") {
+      replaceAllImages = ["true", "1", "yes", "on"].includes(
+        replaceAllImages.toLowerCase()
+      );
+    }
+    if (typeof removeUrls === "string") {
+      try {
+        removeUrls = JSON.parse(removeUrls);
+      } catch {
+        // fallback: chuỗi đơn -> mảng 1 phần tử
+        removeUrls = [removeUrls];
+      }
+    }
+    if (!Array.isArray(removeUrls)) removeUrls = [];
+
+    // -------- Validate floorId nếu đổi tầng --------
     if (floorId) {
       const f = await Floor.findById(floorId);
       if (!f) return res.status(404).json({ message: "Không tìm thấy tầng" });
@@ -120,6 +266,7 @@ const update = async (req, res) => {
       doc.floorId = floorId;
     }
 
+    // -------- Cập nhật các field primitive --------
     if (roomNumber !== undefined) doc.roomNumber = roomNumber;
     if (area !== undefined) doc.area = area;
     if (price !== undefined) doc.price = price;
@@ -127,24 +274,46 @@ const update = async (req, res) => {
     if (status !== undefined) doc.status = status;
     if (description !== undefined) doc.description = description;
 
+    // -------- Ảnh: remove → replaceAll → add --------
+    // 1) XÓA ẢNH THEO DANH SÁCH removeUrls
+    if (removeUrls.length) {
+      const publicIds = removeUrls
+        .map((u) => getCloudinaryPublicId(u))
+        .filter(Boolean);
+      if (publicIds.length) {
+        await cloudinary.api.delete_resources(publicIds, {
+          resource_type: "image",
+        });
+      }
+      doc.images = (doc.images || []).filter((u) => !removeUrls.includes(u));
+    }
+
+    // 2) THAY TOÀN BỘ ẢNH (optional)
+    if (replaceAllImages) {
+      // Xóa toàn bộ ảnh cũ (nếu có)
+      if (Array.isArray(doc.images) && doc.images.length) {
+        const publicIds = doc.images
+          .map((u) => getCloudinaryPublicId(u))
+          .filter(Boolean);
+        if (publicIds.length) {
+          await cloudinary.api.delete_resources(publicIds, {
+            resource_type: "image",
+          });
+        }
+      }
+      doc.images = [];
+    }
+
+    // 3) THÊM ẢNH MỚI (nếu upload kèm theo)
+    if (Array.isArray(req.files) && req.files.length) {
+      const newUrls = req.files.map((f) => f.path); // secure_url
+      doc.images = [...(doc.images || []), ...newUrls];
+    }
+
     await doc.save();
     res.json(doc);
   } catch (e) {
     res.status(400).json({ message: e.message });
-  }
-};
-
-const remove = async (req, res) => {
-  try {
-    const doc = await Room.findById(req.params.id);
-    if (!doc) return res.status(404).json({ message: "Không tìm thấy phòng" });
-
-    const b = await Building.findById(doc.buildingId);
-
-    await doc.deleteOne();
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
   }
 };
 
@@ -290,5 +459,13 @@ const quickCreate = async (req, res) => {
   }
 };
 
-
-module.exports = { list, getById, create, update, remove, quickCreate };
+module.exports = {
+  list,
+  getById,
+  create,
+  update,
+  remove,
+  addImages,
+  removeImages,
+  quickCreate,
+};

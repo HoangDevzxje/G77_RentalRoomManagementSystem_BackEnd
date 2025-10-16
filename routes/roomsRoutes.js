@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const RoomCtrl = require("../controllers/RoomController");
 const checkSubscription = require("../middleware/checkSubscription");
+const { uploadMultiple, uploadSingle } = require("../cloudinary.config");
 /**
  * @swagger
  * tags:
@@ -374,8 +375,17 @@ router.get(
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.post("/", checkAuthorize(["admin", "landlord"]), RoomCtrl.create);
+router.post(
+  "/",
+  checkAuthorize(["admin", "landlord"]),
+  uploadMultiple,
+  RoomCtrl.create
+);
 
+// Thêm ảnh cho phòng (upload thêm)
+router.post("/:id/images", uploadMultiple, RoomCtrl.addImages);
+// Xóa ảnh (truyền danh sách URL muốn xóa)
+router.delete("/:id/images", RoomCtrl.removeImages);
 router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord"]),
@@ -529,6 +539,7 @@ router.put(
   "/:id",
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
+  uploadMultiple,
   RoomCtrl.update
 );
 
