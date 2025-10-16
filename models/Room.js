@@ -15,6 +15,7 @@ const roomSchema = new mongoose.Schema(
       index: true,
     },
     roomNumber: { type: String, required: true, trim: true }, // "A501", "B201"...
+    images: [String],
     area: Number,
     price: { type: Number, required: true },
     maxTenants: { type: Number, default: 1 },
