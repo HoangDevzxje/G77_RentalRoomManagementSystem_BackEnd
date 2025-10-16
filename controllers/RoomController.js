@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const Building = require("../models/Building");
 const Floor = require("../models/Floor");
 const Room = require("../models/Room");
-const { cloudinary } = require("../cloudinary.config");
+const { cloudinary } = require("../configs/cloudinary");
 
 //helper: lấy public_id từ Cloudinary URL
 function getCloudinaryPublicId(url) {
