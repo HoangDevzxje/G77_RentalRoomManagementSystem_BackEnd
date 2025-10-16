@@ -5,33 +5,33 @@ const RoomFurnitureCtrl = require("../controllers/RoomFurnitureController");
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const checkSubscription = require("../middleware/checkSubscription");
 
-// FURNITURE
-router.post("/", checkAuthorize(["admin", "landlord"]), checkSubscription,FurnitureCtrl.create);
-router.get("/", checkAuthorize(["admin", "landlord"]),checkSubscription, FurnitureCtrl.getAll);
-router.get("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FurnitureCtrl.getOne);
-router.put("/:id", checkAuthorize(["admin", "landlord"]), checkSubscription, FurnitureCtrl.update);
-router.delete(
-  "/:id",
+// FURNITURE LIST/CREATE trước
+router.post(
+  "/",
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
-  FurnitureCtrl.remove
+  FurnitureCtrl.create
+);
+router.get(
+  "/",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FurnitureCtrl.getAll
 );
 
-// BUILDING FURNITURE
+// BUILDING FURNITURE (đặt TRƯỚC :id)
 router.post(
   "/building",
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
   BuildingFurnitureCtrl.create
 );
-
 router.post(
   "/building/bulk",
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
   BuildingFurnitureCtrl.bulkCreate
 );
-
 router.get(
   "/building",
   checkAuthorize(["admin", "landlord"]),
@@ -56,7 +56,6 @@ router.delete(
   checkSubscription,
   BuildingFurnitureCtrl.remove
 );
-// Áp định mức nội thất của tòa xuống các phòng
 router.post(
   "/:buildingId/apply-to-rooms",
   checkAuthorize(["admin", "landlord"]),
@@ -64,7 +63,7 @@ router.post(
   BuildingFurnitureCtrl.applyToRooms
 );
 
-// ROOM FURNITURE
+// ROOM FURNITURE (đặt TRƯỚC :id)
 router.post(
   "/room",
   checkAuthorize(["admin", "landlord"]),
@@ -94,6 +93,26 @@ router.delete(
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
   RoomFurnitureCtrl.remove
+);
+
+// Cuối cùng mới là các route theo ID của FURNITURE
+router.get(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FurnitureCtrl.getOne
+);
+router.put(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FurnitureCtrl.update
+);
+router.delete(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FurnitureCtrl.remove
 );
 
 module.exports = router;
