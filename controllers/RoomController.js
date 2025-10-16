@@ -24,6 +24,7 @@ const list = async (req, res) => {
   try {
     const { buildingId, floorId, status, q, page = 1, limit = 20 } = req.query;
     const filter = {};
+
     if (buildingId) filter.buildingId = buildingId;
     if (floorId) filter.floorId = floorId;
     if (status) filter.status = status;
@@ -36,11 +37,13 @@ const list = async (req, res) => {
       const ids = blds.map((b) => b._id);
       filter.buildingId = filter.buildingId || { $in: ids };
     }
-
     const data = await Room.find(filter)
+      .populate("buildingId", "name address description ePrice wPrice")
+      .populate("floorId", "floorNumber name")
       .sort({ createdAt: -1 })
       .skip((+page - 1) * +limit)
       .limit(+limit);
+
     const total = await Room.countDocuments(filter);
     res.json({ data, total, page: +page, limit: +limit });
   } catch (e) {
@@ -50,13 +53,20 @@ const list = async (req, res) => {
 
 const getById = async (req, res) => {
   try {
-    const doc = await Room.findById(req.params.id);
+    const doc = await Room.findById(req.params.id)
+      .populate(
+        "buildingId",
+        "name address description ePrice wPrice eIndexType wIndexType"
+      )
+      .populate("floorId", "floorNumber name");
+
     if (!doc) return res.status(404).json({ message: "Không tìm thấy phòng" });
     res.json(doc);
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
 };
+
 // ----------------- CREATE (có upload) -----------------
 const create = async (req, res) => {
   try {
