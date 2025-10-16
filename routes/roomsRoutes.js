@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const RoomCtrl = require("../controllers/RoomController");
 const checkSubscription = require("../middleware/checkSubscription");
-const { uploadMultiple, uploadSingle } = require("../cloudinary.config");
+const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
 /**
  * @swagger
  * tags:
