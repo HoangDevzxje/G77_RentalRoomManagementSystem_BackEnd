@@ -13,7 +13,7 @@ exports.create = async (req, res) => {
 // Lấy danh sách
 exports.getAll = async (req, res) => {
   try {
-    const list = await Furniture.find().sort({ createdAt: -1 });
+    const list = await Furniture.find({ isDeleted: false });
     res.json(list);
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -8,6 +8,7 @@ const furnitureSchema = new mongoose.Schema(
     warrantyMonths: { type: Number },
     description: String,
     status: { type: String, enum: ["active", "inactive"], default: "active" },
+    isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
