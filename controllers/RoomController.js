@@ -39,7 +39,7 @@ const list = async (req, res) => {
     }
     const data = await Room.find(filter)
       .populate("buildingId", "name address description ePrice wPrice")
-      .populate("floorId", "floorNumber name")
+      .populate("floorId", "floorNumber label")
       .sort({ createdAt: -1 })
       .skip((+page - 1) * +limit)
       .limit(+limit);
@@ -58,7 +58,7 @@ const getById = async (req, res) => {
         "buildingId",
         "name address description ePrice wPrice eIndexType wIndexType"
       )
-      .populate("floorId", "floorNumber name");
+      .populate("floorId", "floorNumber label");
 
     if (!doc) return res.status(404).json({ message: "Không tìm thấy phòng" });
     res.json(doc);
