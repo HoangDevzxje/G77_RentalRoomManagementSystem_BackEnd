@@ -21,7 +21,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`,
+        url: process.env.BASE_URL || `http://localhost:${port}`,
       },
     ],
     components: {
@@ -37,12 +37,7 @@ const swaggerOptions = {
   apis: ["./routes/*.js"],
 };
 
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-app.get("/swagger.json", (req, res) => {
-  res.setHeader("Content-Type", "application/json");
-  res.send(swaggerDocs);
-});
+// Cấu hình CORS trước tiên
 app.use(
   cors({
     origin: true,
@@ -52,6 +47,19 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Swagger setup
+const swaggerDocs = swaggerJsDoc(swaggerOptions);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs, {
+  swaggerOptions: {
+    persistAuthorization: true,
+  }
+}));
+app.get("/swagger.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.send(swaggerDocs);
+});
+
 routes(app);
 
 DB.connectDB()
