@@ -741,7 +741,7 @@ router.post(
  */
 router.get(
   "/room",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "resident"]),
   checkSubscription,
   RoomFurnitureCtrl.getAll
 );
@@ -780,7 +780,7 @@ router.get(
  */
 router.get(
   "/room/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "resident"]),
   checkSubscription,
   RoomFurnitureCtrl.getOne
 );
