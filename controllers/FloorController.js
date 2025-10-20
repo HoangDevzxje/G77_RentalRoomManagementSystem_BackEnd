@@ -27,7 +27,7 @@ const getById = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { buildingId, label, level, description } = req.body;
+    const { buildingId, level, description } = req.body;
     const b = await Building.findById(buildingId);
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
 
@@ -37,7 +37,7 @@ const create = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    const doc = await Floor.create({ buildingId, label, level, description });
+    const doc = await Floor.create({ buildingId, level, description });
     res.status(201).json(doc);
   } catch (e) {
     res.status(400).json({ message: e.message });
@@ -56,8 +56,7 @@ const update = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    const { label, level, description } = req.body;
-    if (label !== undefined) doc.label = label;
+    const { level, description } = req.body;
     if (level !== undefined) doc.level = level;
     if (description !== undefined) doc.description = description;
     await doc.save();
@@ -102,7 +101,7 @@ const quickCreate = async (req, res) => {
       toLevel,
       count,
       startLevel,
-      labelTemplate = "Tầng {level}",
+
       description,
     } = req.body;
     if (!buildingId)
@@ -141,7 +140,7 @@ const quickCreate = async (req, res) => {
       .map((lv) => ({
         buildingId,
         level: lv,
-        label: labelTemplate.replace("{level}", String(lv)),
+
         description,
       }));
 

@@ -8,7 +8,6 @@ const floorSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    label: { type: String, required: true, trim: true },
     level: { type: Number, required: true }, // ví dụ: 1, 2, 3...
     description: String,
   },
