@@ -31,6 +31,8 @@ const buildingServiceSchema = new mongoose.Schema(
     chargeType: {
       type: String,
       enum: ["perRoom", "perPerson", "included", "fixed"],
+      //included: đã bao gồm trong tiền thuê phòng
+      //fixed: Phí cố định toàn tòa nhà
       default: "fixed",
     },
 
