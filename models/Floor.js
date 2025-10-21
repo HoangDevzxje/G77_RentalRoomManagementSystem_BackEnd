@@ -16,7 +16,7 @@ const floorSchema = new mongoose.Schema(
 
 // mỗi tòa chỉ có 1 level cụ thể
 floorSchema.index({ buildingId: 1, level: 1 }, { unique: true });
-// (tuỳ chọn) mỗi tòa không trùng label tầng
+
 // floorSchema.index({ buildingId: 1, label: 1 }, { unique: true });
 
 floorSchema.set("toJSON", {
