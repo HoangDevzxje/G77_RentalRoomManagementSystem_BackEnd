@@ -5,8 +5,9 @@ const Room = require("../models/Room");
 
 const list = async (req, res) => {
   try {
-    const { q, page = 1, limit = 20 } = req.query;
+    const { q, page = 1, limit = 20, includeDeleted = "false" } = req.query;
     const filter = {};
+    if (includeDeleted !== "true") filter.isDeleted = false;
     if (q) filter.name = { $regex: q, $options: "i" };
     if (req.user.role === "landlord") filter.landlordId = req.user._id;
 
@@ -49,8 +50,7 @@ const getById = async (req, res) => {
         populate: { path: "userInfo", select: "fullName phone" },
       })
       .lean();
-
-    if (!doc)
+    if (!doc || doc.isDeleted)
       return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
 
     if (
@@ -76,7 +76,6 @@ const getById = async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 };
-
 
 const create = async (req, res) => {
   try {
@@ -277,6 +276,133 @@ const update = async (req, res) => {
   }
 };
 
+const softDelete = async (req, res) => {
+  try {
+    const { force } = req.query;
+    const id = req.params.id;
+
+    const doc = await Building.findById(id).select("landlordId isDeleted");
+    if (!doc || doc.isDeleted)
+      return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+    if (
+      req.user.role === "landlord" &&
+      String(doc.landlordId) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
+
+    if (force === "true" && req.user.role === "admin") {
+      await Promise.all([
+        Room.deleteMany({ buildingId: id }),
+        Floor.deleteMany({ buildingId: id }),
+        Building.deleteOne({ _id: id }),
+      ]);
+      return res.json({ message: "Đã xóa vĩnh viễn (force)" });
+    }
+
+    // Soft delete + cascade mềm xuống Floor/Room
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const now = new Date();
+      await Building.updateOne(
+        { _id: id },
+        { $set: { isDeleted: true, deletedAt: now } },
+        { session }
+      );
+      await Floor.updateMany(
+        { buildingId: id },
+        { $set: { isDeleted: true, deletedAt: now } },
+        { session }
+      );
+      await Room.updateMany(
+        { buildingId: id },
+        { $set: { isDeleted: true, deletedAt: now } },
+        { session }
+      );
+      await session.commitTransaction();
+      session.endSession();
+      res.json({ message: "Đã xóa mềm tòa nhà (cascade floor/room)" });
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      throw err;
+    }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+const restore = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const doc = await Building.findById(id).select("landlordId isDeleted");
+    if (!doc || !doc.isDeleted)
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy hoặc chưa bị xóa" });
+    if (
+      req.user.role === "landlord" &&
+      String(doc.landlordId) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      await Building.updateOne(
+        { _id: id },
+        { $set: { isDeleted: false, deletedAt: null } },
+        { session }
+      );
+      await Floor.updateMany(
+        { buildingId: id },
+        { $set: { isDeleted: false, deletedAt: null } },
+        { session }
+      );
+      await Room.updateMany(
+        { buildingId: id },
+        { $set: { isDeleted: false, deletedAt: null } },
+        { session }
+      );
+      await session.commitTransaction();
+      session.endSession();
+      res.json({ message: "Đã khôi phục tòa nhà (cascade floor/room)" });
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      throw err;
+    }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+const updateStatus = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { status } = req.body;
+    if (!["active", "inactive"].includes(status)) {
+      return res.status(400).json({ message: "Giá trị status không hợp lệ" });
+    }
+
+    const doc = await Building.findById(id).select("landlordId isDeleted");
+    if (!doc || doc.isDeleted)
+      return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+    if (
+      req.user.role === "landlord" &&
+      String(doc.landlordId) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
+
+    await Building.updateOne({ _id: id }, { $set: { status } });
+    res.json({ message: "Cập nhật trạng thái thành công" });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
 const remove = async (req, res) => {
   try {
     const doc = await Building.findById(req.params.id);
@@ -303,4 +429,14 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, getById, create, quickSetup, update, remove };
+module.exports = {
+  list,
+  getById,
+  create,
+  quickSetup,
+  update,
+  softDelete,
+  restore,
+  updateStatus,
+  remove,
+};
