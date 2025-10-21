@@ -24,8 +24,25 @@ const buildingSchema = new mongoose.Schema(
     },
     wPrice: { type: Number, default: 0 }, // giá nước trên 1m3 hoặc 1 người
     description: { type: String }, // Mô tả thêm (optional)
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
+      index: true,
+    },
   },
   { timestamps: true }
 );
+buildingSchema.set("toJSON", {
+  virtuals: true,
+  versionKey: false,
+  transform: (_doc, ret) => {
+    ret.id = ret._id;
+    delete ret._id;
+  },
+});
 
+buildingSchema.index({ landlordId: 1, name: 1 });
 module.exports = mongoose.model("Building", buildingSchema);

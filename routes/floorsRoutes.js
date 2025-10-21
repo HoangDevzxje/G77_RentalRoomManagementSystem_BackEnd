@@ -498,9 +498,24 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin"]),
   checkSubscription,
   FloorCtrl.remove
+);
+router.delete(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  FloorCtrl.softDelete
+);
+router.post(
+  "/:id/restore",
+  checkAuthorize(["admin", "landlord"]),
+  FloorCtrl.restore
+);
+router.patch(
+  "/:id/status",
+  checkAuthorize(["admin", "landlord"]),
+  FloorCtrl.updateStatus
 );
 
 module.exports = router;
