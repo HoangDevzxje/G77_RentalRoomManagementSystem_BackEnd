@@ -16,7 +16,6 @@ const regulationSchema = new mongoose.Schema(
     },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     effectiveFrom: { type: Date },
-    effectiveTo: { type: Date },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Account" },
   },
   { timestamps: true }

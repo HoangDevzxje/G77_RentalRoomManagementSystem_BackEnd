@@ -19,8 +19,7 @@ exports.getList = async (req, res) => {
 // POST: Landlord tạo quy định mới
 exports.create = async (req, res) => {
   try {
-    const { buildingId, title, description, type, effectiveFrom, effectiveTo } =
-      req.body;
+    const { buildingId, title, description, type, effectiveFrom } = req.body;
     if (!buildingId || !title || !description)
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
 
@@ -44,7 +43,6 @@ exports.create = async (req, res) => {
       description,
       type,
       effectiveFrom,
-      effectiveTo,
       createdBy: req.user._id,
     });
 
