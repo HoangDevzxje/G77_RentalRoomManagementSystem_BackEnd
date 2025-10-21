@@ -588,6 +588,167 @@ router.delete(
   checkSubscription,
   BuildingCtrl.remove
 );
+/**
+ * @swagger
+ * /buildings/quick-setup:
+ *   post:
+ *     summary: Thiết lập nhanh tòa nhà
+ *     description: Tạo tòa nhà với cấu hình mặc định và thiết lập sẵn các tầng, phòng cơ bản (admin, landlord, yêu cầu subscription active).
+ *     tags: [Building]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - address
+ *               - floors
+ *               - roomsPerFloor
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Tòa nhà A
+ *               address:
+ *                 type: string
+ *                 example: 123 Đường Láng, Hà Nội
+ *               floors:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 20
+ *                 example: 5
+ *                 description: Số tầng của tòa nhà
+ *               roomsPerFloor:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 50
+ *                 example: 10
+ *                 description: Số phòng mỗi tầng
+ *               eIndexType:
+ *                 type: string
+ *                 enum: [per_room, per_person, per_kwh]
+ *                 example: per_room
+ *               ePrice:
+ *                 type: number
+ *                 example: 1500
+ *               wIndexType:
+ *                 type: string
+ *                 enum: [per_room, per_person, per_m3]
+ *                 example: per_person
+ *               wPrice:
+ *                 type: number
+ *                 example: 20000
+ *               description:
+ *                 type: string
+ *                 example: Tòa nhà 5 tầng, gần trung tâm.
+ *     responses:
+ *       201:
+ *         description: Tòa nhà được tạo thành công với cấu hình mặc định
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     building:
+ *                       type: object
+ *                       properties:
+ *                         _id:
+ *                           type: string
+ *                           example: 68e3fe79ec7f3071215fd040
+ *                         name:
+ *                           type: string
+ *                           example: Tòa nhà A
+ *                         address:
+ *                           type: string
+ *                           example: 123 Đường Láng, Hà Nội
+ *                         landlordId:
+ *                           type: string
+ *                           example: 68d7dad6cadcf51ed611e121
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                           example: 2025-10-07T00:50:00.000Z
+ *                     floors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd041
+ *                           floorNumber:
+ *                             type: integer
+ *                             example: 1
+ *                           buildingId:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd040
+ *                     rooms:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd042
+ *                           roomNumber:
+ *                             type: string
+ *                             example: 101
+ *                           floorId:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd041
+ *                           buildingId:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd040
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Dữ liệu không hợp lệ!
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *       403:
+ *         description: Không có quyền hoặc subscription hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Gói dịch vụ đã hết hạn hoặc không tồn tại!
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
 router.post(
   "/quick-setup",
   checkAuthorize(["admin", "landlord"]),
