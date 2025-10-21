@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const RoomCtrl = require("../controllers/RoomController");
 const checkSubscription = require("../middleware/checkSubscription");
+const checkBuildingActive = require("../middleware/checkBuildingActive");
 const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
 /**
  * @swagger
@@ -378,6 +379,7 @@ router.get(
 router.post(
   "/",
   checkAuthorize(["admin", "landlord"]),
+  checkBuildingActive,
   uploadMultiple,
   RoomCtrl.create
 );
@@ -390,6 +392,7 @@ router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
+  checkBuildingActive,
   RoomCtrl.quickCreate
 );
 
@@ -618,9 +621,23 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin"]),
   checkSubscription,
   RoomCtrl.remove
 );
-
+router.delete(
+  "/:id",
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.softDelete
+);
+router.post(
+  "/:id/restore",
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.restore
+);
+router.patch(
+  "/:id/active",
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.updateActive
+);
 module.exports = router;

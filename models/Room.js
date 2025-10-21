@@ -26,6 +26,9 @@ const roomSchema = new mongoose.Schema(
       index: true,
     },
     description: String,
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
+    active: { type: Boolean, default: true, index: true },
   },
   { timestamps: true }
 );
@@ -38,8 +41,14 @@ roomSchema.pre("validate", async function (next) {
   try {
     if (!this.isModified("floorId") && !this.isModified("buildingId"))
       return next();
+
     const Floor = this.model("Floor");
-    const f = await Floor.findById(this.floorId).select("buildingId").lean();
+    const sess = typeof this.$session === "function" ? this.$session() : null;
+
+    let q = Floor.findById(this.floorId).select("buildingId").lean();
+    if (sess) q = q.session(sess);
+
+    const f = await q;
     if (!f) return next(new Error("floorId không tồn tại"));
     if (String(f.buildingId) !== String(this.buildingId)) {
       return next(new Error("floorId không thuộc buildingId đã chọn"));

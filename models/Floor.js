@@ -8,17 +8,22 @@ const floorSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    label: { type: String, required: true, trim: true },
     level: { type: Number, required: true }, // ví dụ: 1, 2, 3...
     description: String,
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
+      index: true,
+    },
   },
   { timestamps: true }
 );
 
 // mỗi tòa chỉ có 1 level cụ thể
 floorSchema.index({ buildingId: 1, level: 1 }, { unique: true });
-// (tuỳ chọn) mỗi tòa không trùng label tầng
-// floorSchema.index({ buildingId: 1, label: 1 }, { unique: true });
 
 floorSchema.set("toJSON", {
   virtuals: true,

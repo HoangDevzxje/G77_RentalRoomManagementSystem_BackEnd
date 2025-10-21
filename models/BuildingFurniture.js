@@ -13,7 +13,6 @@ const buildingFurnitureSchema = new mongoose.Schema(
       required: true,
     },
     quantityPerRoom: { type: Number, default: 1 }, // số lượng áp cho mỗi phòng
-    totalQuantity: { type: Number, default: 0 }, // số lượng tổng trong tòa (nếu cần)
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     notes: String,
   },

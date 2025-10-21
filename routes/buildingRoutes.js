@@ -584,7 +584,22 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["landlord"]),
+  checkAuthorize(["admin", "landlord"]),
+  BuildingCtrl.softDelete
+);
+router.post(
+  "/:id/restore",
+  checkAuthorize(["admin", "landlord"]),
+  BuildingCtrl.restore
+);
+router.patch(
+  "/:id/status",
+  checkAuthorize(["admin", "landlord"]),
+  BuildingCtrl.updateStatus
+);
+router.delete(
+  "/:id",
+  checkAuthorize(["admin"]),
   checkSubscription,
   BuildingCtrl.remove
 );
