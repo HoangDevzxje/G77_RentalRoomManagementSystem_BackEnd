@@ -1,4 +1,4 @@
-// controllers/BuildingController.js
+const mongoose = require("mongoose");
 const Building = require("../models/Building");
 const Floor = require("../models/Floor");
 const Room = require("../models/Room");
@@ -13,9 +13,28 @@ const list = async (req, res) => {
     const data = await Building.find(filter)
       .sort({ createdAt: -1 })
       .skip((+page - 1) * +limit)
-      .limit(+limit);
+      .limit(+limit)
+      .populate({
+        path: "landlordId",
+        select: "email role userInfo",
+        populate: { path: "userInfo", select: "fullName phone" },
+      })
+      .lean(); // để trả về object thuần, dễ map
+
+    // Tuỳ ý: flatten thông tin landlord cho FE dễ dùng
+    const items = data.map((b) => ({
+      ...b,
+      landlord: {
+        id: b.landlordId?._id,
+        email: b.landlordId?.email,
+        role: b.landlordId?.role,
+        fullName: b.landlordId?.userInfo?.fullName,
+        phone: b.landlordId?.userInfo?.phone,
+      },
+    }));
+
     const total = await Building.countDocuments(filter);
-    res.json({ data, total, page: +page, limit: +limit });
+    res.json({ data: items, total, page: +page, limit: +limit });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -23,20 +42,41 @@ const list = async (req, res) => {
 
 const getById = async (req, res) => {
   try {
-    const doc = await Building.findById(req.params.id);
+    const doc = await Building.findById(req.params.id)
+      .populate({
+        path: "landlordId",
+        select: "email role userInfo",
+        populate: { path: "userInfo", select: "fullName phone" },
+      })
+      .lean();
+
     if (!doc)
       return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+
     if (
       req.user.role === "landlord" &&
-      String(doc.landlordId) !== String(req.user._id)
+      String(doc.landlordId?._id) !== String(req.user._id)
     ) {
       return res.status(403).json({ message: "Không có quyền" });
     }
-    res.json(doc);
+
+    const result = {
+      ...doc,
+      landlord: {
+        id: doc.landlordId?._id,
+        email: doc.landlordId?.email,
+        role: doc.landlordId?.role,
+        fullName: doc.landlordId?.userInfo?.fullName,
+        phone: doc.landlordId?.userInfo?.phone,
+      },
+    };
+
+    res.json(result);
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
 };
+
 
 const create = async (req, res) => {
   try {
@@ -68,11 +108,14 @@ const create = async (req, res) => {
 
 // helper render room number
 function renderRoomNumber(tpl, { block, floorLevel, seq }) {
-  let out = tpl.replace("{block}", block ?? "");
-  out = out.replace("{floor}", floorLevel != null ? String(floorLevel) : "");
+  const floorStr = floorLevel != null ? String(floorLevel) : "";
+  let out = String(tpl);
+  out = out.replace(/\{block\}/g, block ?? "");
+  out = out.replace(/\{floorLevel\}/g, floorStr);
+  out = out.replace(/\{floor\}/g, floorStr);
   out = out.replace(/\{seq(?::(\d+))?\}/g, (_m, p1) => {
     const pad = p1 ? parseInt(p1, 10) : 0;
-    const s = String(seq);
+    const s = String(seq ?? "");
     return pad ? s.padStart(pad, "0") : s;
   });
   return out;
@@ -89,11 +132,7 @@ const quickSetup = async (req, res) => {
       floors,
       rooms,
       dryRun = false,
-      idempotencyKey,
     } = req.body;
-
-    // Idempotency (tuỳ chọn): lưu tạm trong collection riêng nếu bạn muốn
-    // Ở đây demo: bỏ qua.
 
     // Xác định landlordId
     const landlordId =
@@ -122,10 +161,6 @@ const quickSetup = async (req, res) => {
         .map((lv) => ({
           buildingId: building._id,
           level: lv,
-          label: (floors.labelTemplate || "Tầng {level}").replace(
-            "{level}",
-            String(lv)
-          ),
           description: floors.description,
         }));
 
