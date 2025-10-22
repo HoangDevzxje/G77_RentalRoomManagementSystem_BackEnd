@@ -496,16 +496,19 @@ router.put(
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
+
+router.delete(
+  "/:id/soft",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.softDelete
+);
+
 router.delete(
   "/:id",
   checkAuthorize(["admin"]),
   checkSubscription,
   FloorCtrl.remove
-);
-router.delete(
-  "/:id",
-  checkAuthorize(["admin", "landlord"]),
-  FloorCtrl.softDelete
 );
 router.post(
   "/:id/restore",
