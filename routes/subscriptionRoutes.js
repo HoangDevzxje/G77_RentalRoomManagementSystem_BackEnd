@@ -305,5 +305,139 @@ router.get('/return', subscriptionController.paymentCallback);
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-router.get('/', checkAuthorize(['landlord']), subscriptionController.list);
+router.get('/', checkAuthorize(['landlord', 'admin']), subscriptionController.list);
+
+/**
+ * @swagger
+ * /subscriptions/history:
+ *   get:
+ *     summary: Lấy lịch sử mua gói của landlord
+ *     description: Trả về danh sách tất cả các gói mà landlord đã mua, bao gồm thông tin chi tiết của từng gói và trạng thái thanh toán.
+ *     tags: [Subscription]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending_payment, active, expired]
+ *         description: Lọc theo trạng thái gói đăng ký
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Trang hiện tại (phân trang)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 10
+ *         description: Số lượng kết quả mỗi trang
+ *     responses:
+ *       200:
+ *         description: Lấy lịch sử gói thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 count:
+ *                   type: integer
+ *                   example: 2
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: 6717cfc7f7a12345c9b8c912
+ *                       packageId:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: 6717cf80d3c3bb238ed9a9e3
+ *                           name:
+ *                             type: string
+ *                             example: Gói Cao Cấp
+ *                           price:
+ *                             type: number
+ *                             example: 300000
+ *                           durationDays:
+ *                             type: number
+ *                             example: 30
+ *                           description:
+ *                             type: string
+ *                             example: Gói cao cấp cho phép quản lý 50 phòng trong 30 ngày
+ *                       startDate:
+ *                         type: string
+ *                         format: date-time
+ *                         example: 2025-10-20T10:00:00.000Z
+ *                       endDate:
+ *                         type: string
+ *                         format: date-time
+ *                         example: 2025-11-20T10:00:00.000Z
+ *                       status:
+ *                         type: string
+ *                         enum: [pending_payment, active, expired]
+ *                         example: active
+ *                       paymentId:
+ *                         type: string
+ *                         example: VN123456789
+ *                       transactionRef:
+ *                         type: string
+ *                         example: 20251020100000
+ *                       amount:
+ *                         type: number
+ *                         example: 300000
+ *                       paymentMethod:
+ *                         type: string
+ *                         enum: [vnpay, momo, manual]
+ *                         example: vnpay
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: 2025-10-20T09:58:00.000Z
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: 2025-10-20T10:05:00.000Z
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *       403:
+ *         description: Không có quyền (chỉ landlord)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Bạn không có quyền truy cập lịch sử mua gói!
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
+router.get('/history', checkAuthorize(['landlord']), subscriptionController.getByLandlordId);
 module.exports = router;

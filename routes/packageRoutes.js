@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const packageController = require('../controllers/PackageController');
+const packageController = require('../controllers/Admin/PackageController');
 const { checkAuthorize } = require('../middleware/authMiddleware');
 /**
  * @swagger
