@@ -7,7 +7,6 @@ const subscriptionSchema = new mongoose.Schema({
     endDate: { type: Date },
     status: { type: String, enum: ['active', 'expired', 'pending_payment'], default: 'active' },
     paymentId: { type: String },
-    transactionRef: { type: String, unique: true },
     amount: { type: Number },
     paymentMethod: { type: String, enum: ['vnpay', 'momo', 'manual'], default: 'vnpay' },
 }, { timestamps: true });

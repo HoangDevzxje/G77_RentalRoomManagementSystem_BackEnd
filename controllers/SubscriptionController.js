@@ -36,7 +36,15 @@ const buy = async (req, res) => {
         const pkg = await Package.findById(packageId);
         if (!pkg) return res.status(404).json({ message: 'Không tìm thấy gói dịch vụ' });
 
-
+        const sub = new Subscription({
+            landlordId: req.user._id,
+            packageId: pkg._id,
+            startDate: new Date(),
+            status: 'pending_payment',
+            amount: pkg.price,
+            paymentMethod: 'vnpay',
+        });
+        await sub.save();
 
         let ipAddr =
             req.headers['x-forwarded-for'] ||
@@ -61,15 +69,6 @@ const buy = async (req, res) => {
 
         vnp_Params = sortObject(vnp_Params);
 
-        const sub = new Subscription({
-            landlordId: req.user._id,
-            packageId: pkg._id,
-            startDate: new Date(),
-            status: 'pending_payment',
-            amount: vnp_Params.vnp_Amount,
-            transactionRef: vnp_Params.vnp_TxnRef,
-        });
-        await sub.save();
         const signData = qs.stringify(vnp_Params, { encode: false });
         const hmac = crypto.createHmac('sha512', VNP_HASHSECRET);
         const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
@@ -81,7 +80,6 @@ const buy = async (req, res) => {
         res.status(400).json({ message: err.message });
     }
 };
-
 const paymentCallback = async (req, res) => {
     try {
         let vnp_Params = req.query;
