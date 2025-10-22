@@ -161,16 +161,36 @@ const quickSetup = async (req, res) => {
       floors,
       rooms,
       dryRun = false,
+      eIndexType = "byNumber",
+      ePrice = 0,
+      wIndexType = "byNumber",
+      wPrice = 0,
     } = req.body;
 
-    // Xác định landlordId
+    const validIdx = (v) => ["byNumber", "byPerson", "included"].includes(v);
+    if (!validIdx(eIndexType) || !validIdx(wIndexType)) {
+      return res
+        .status(400)
+        .json({ message: "eIndexType/wIndexType không hợp lệ" });
+    }
+    if (ePrice < 0 || wPrice < 0) {
+      return res.status(400).json({ message: "ePrice/wPrice phải >= 0" });
+    }
+
     const landlordId =
       req.user.role === "landlord"
         ? req.user._id
         : landlordIdInput || req.user._id;
 
-    // 1) Tạo Building
-    const building = new Building({ name, address, landlordId });
+    const building = new Building({
+      name,
+      address,
+      landlordId,
+      eIndexType,
+      ePrice,
+      wIndexType,
+      wPrice,
+    });
     if (!dryRun) await building.save({ session });
 
     // 2) Tạo Floors
@@ -203,7 +223,19 @@ const quickSetup = async (req, res) => {
       }
     }
 
-    // 3) Tạo Rooms mỗi tầng
+    const existed = await Building.exists({
+      landlordId,
+      name: name.trim(),
+      isDeleted: false,
+    });
+    if (existed) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(409)
+        .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
+    }
+
     let createdRooms = [];
     if (rooms?.perFloor && createdFloors.length) {
       const {
@@ -214,11 +246,42 @@ const quickSetup = async (req, res) => {
         templateVars = {},
       } = rooms;
 
-      // tập roomNumber đã có (mới tạo building → rỗng; nhưng để an toàn)
+      // tập roomNumber đã có
       const existRooms = await Room.find({ buildingId: building._id })
         .select("roomNumber")
         .lean();
       const existSet = new Set(existRooms.map((x) => x.roomNumber));
+
+      // chuẩn hóa & validate defaults
+      const dArea = defaults.area != null ? Number(defaults.area) : undefined;
+      if (dArea != null && Number.isNaN(dArea)) {
+        return res.status(400).json({ message: "defaults.area phải là số" });
+      }
+      const dPrice =
+        defaults.price != null ? Number(defaults.price) : undefined;
+      if (dPrice != null && (Number.isNaN(dPrice) || dPrice < 0)) {
+        return res
+          .status(400)
+          .json({ message: "defaults.price phải là số >= 0" });
+      }
+      const dMax =
+        defaults.maxTenants != null
+          ? Math.max(1, Number(defaults.maxTenants))
+          : 1;
+      const dStatus = defaults.status ?? "available";
+      if (!["available", "rented", "maintenance"].includes(dStatus)) {
+        return res
+          .status(400)
+          .json({ message: "defaults.status không hợp lệ" });
+      }
+
+      const dEStart = defaults.eStart != null ? Number(defaults.eStart) : 0;
+      const dWStart = defaults.wStart != null ? Number(defaults.wStart) : 0;
+      if (dEStart < 0 || dWStart < 0) {
+        return res
+          .status(400)
+          .json({ message: "defaults.eStart/wStart phải >= 0" });
+      }
 
       const roomDocs = [];
       for (const f of createdFloors) {
@@ -234,11 +297,13 @@ const quickSetup = async (req, res) => {
             buildingId: building._id,
             floorId: f._id,
             roomNumber,
-            area: defaults.area ?? undefined,
-            price: defaults.price ?? undefined,
-            maxTenants: defaults.maxTenants ?? 1,
-            status: defaults.status ?? "available",
+            area: dArea,
+            price: dPrice,
+            maxTenants: dMax,
+            status: dStatus,
             description: defaults.description,
+            eStart: dEStart,
+            wStart: dWStart,
           });
           existSet.add(roomNumber);
         }
@@ -249,7 +314,7 @@ const quickSetup = async (req, res) => {
         createdRooms = roomDocs.map((x) => ({
           ...x,
           _id: new mongoose.Types.ObjectId(),
-        })); // giả lập khi dryRun
+        }));
       }
     }
 
@@ -258,11 +323,7 @@ const quickSetup = async (req, res) => {
       session.endSession();
       return res.status(200).json({
         dryRun: true,
-        preview: {
-          building,
-          floors: createdFloors,
-          rooms: createdRooms,
-        },
+        preview: { building, floors: createdFloors, rooms: createdRooms },
       });
     }
 

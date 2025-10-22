@@ -44,5 +44,8 @@ buildingSchema.set("toJSON", {
   },
 });
 
-buildingSchema.index({ landlordId: 1, name: 1 });
+buildingSchema.index(
+  { landlordId: 1, name: 1, isDeleted: 1 },
+  { unique: true, partialFilterExpression: { isDeleted: false } }
+);
 module.exports = mongoose.model("Building", buildingSchema);
