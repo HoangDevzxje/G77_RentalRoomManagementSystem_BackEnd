@@ -89,6 +89,33 @@ const create = async (req, res) => {
       wPrice,
       description,
     } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ message: "Thiếu tên tòa nhà" });
+    }
+
+    if (!address) {
+      return res.status(400).json({ message: "Thiếu địa chỉ tòa nhà" });
+    }
+
+    if (ePrice !== undefined && ePrice !== null) {
+      if (isNaN(ePrice)) {
+        return res.status(400).json({ message: "Tiền điện không hợp lệ" });
+      }
+      if (Number(ePrice) < 0) {
+        return res.status(400).json({ message: "Tiền điện không hợp lệ" });
+      }
+    }
+
+    if (wPrice !== undefined && wPrice !== null) {
+      if (isNaN(wPrice)) {
+        return res.status(400).json({ message: "Tiền nước không hợp lệ" });
+      }
+      if (Number(wPrice) < 0) {
+        return res.status(400).json({ message: "Tiền nước không hợp lệ" });
+      }
+    }
+
     const building = new Building({
       name,
       address,
@@ -99,7 +126,9 @@ const create = async (req, res) => {
       description,
       landlordId: req.user._id,
     });
+
     await building.save();
+
     res.status(201).json({ success: true, data: building });
   } catch (err) {
     res.status(400).json({ message: err.message });
