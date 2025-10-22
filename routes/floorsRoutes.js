@@ -620,6 +620,14 @@ router.put(
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
+
+router.delete(
+  "/:id/soft",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  FloorCtrl.softDelete
+);
+
 router.delete(
   "/:id/hard-delete",
   checkAuthorize(["admin"]),

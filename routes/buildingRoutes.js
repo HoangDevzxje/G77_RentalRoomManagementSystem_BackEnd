@@ -583,7 +583,7 @@ router.put(
  *                   example: Lỗi hệ thống!
  */
 router.delete(
-  "/:id",
+  "/:id/soft",
   checkAuthorize(["admin", "landlord"]),
   BuildingCtrl.softDelete
 );

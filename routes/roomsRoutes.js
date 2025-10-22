@@ -626,8 +626,9 @@ router.delete(
   RoomCtrl.remove
 );
 router.delete(
-  "/:id",
+  "/:id/soft",
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   RoomCtrl.softDelete
 );
 router.post(
