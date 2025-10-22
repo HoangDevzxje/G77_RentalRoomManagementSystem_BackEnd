@@ -18,7 +18,7 @@ const list = async (req, res) => {
       .limit(+limit)
       .populate({
         path: "landlordId",
-        select: "email role userInfo",
+        select: "email role userInfo fullName",
         populate: { path: "userInfo", select: "fullName phone" },
       })
       .lean(); // để trả về object thuần, dễ map
@@ -47,7 +47,7 @@ const getById = async (req, res) => {
     const doc = await Building.findById(req.params.id)
       .populate({
         path: "landlordId",
-        select: "email role userInfo",
+        select: "email role userInfo fullName",
         populate: { path: "userInfo", select: "fullName phone" },
       })
       .lean();

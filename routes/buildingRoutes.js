@@ -608,7 +608,7 @@ router.delete(
  * /buildings/quick-setup:
  *   post:
  *     summary: Thiết lập nhanh tòa nhà
- *     description: Tạo tòa nhà với cấu hình mặc định và thiết lập sẵn các tầng, phòng cơ bản (admin, landlord, yêu cầu subscription active).
+ *     description: Tạo tòa nhà với cấu hình mặc định và thiết lập sẵn các tầng, phòng cơ bản (admin, landlord, yêu cầu subscription active). Hỗ trợ dry-run để xem trước kết quả.
  *     tags: [Building]
  *     security:
  *       - BearerAuth: []
@@ -622,55 +622,111 @@ router.delete(
  *               - name
  *               - address
  *               - floors
- *               - roomsPerFloor
+ *               - rooms
  *             properties:
  *               name:
  *                 type: string
  *                 example: Tòa nhà A
+ *                 description: Tên tòa nhà
  *               address:
  *                 type: string
  *                 example: 123 Đường Láng, Hà Nội
+ *                 description: Địa chỉ tòa nhà
+ *               landlordId:
+ *                 type: string
+ *                 example: 68d7dad6cadcf51ed611e121
+ *                 description: ID của landlord (chỉ admin mới có thể chỉ định)
  *               floors:
- *                 type: integer
- *                 minimum: 1
- *                 maximum: 20
- *                 example: 5
- *                 description: Số tầng của tòa nhà
- *               roomsPerFloor:
- *                 type: integer
- *                 minimum: 1
- *                 maximum: 50
- *                 example: 10
- *                 description: Số phòng mỗi tầng
- *               eIndexType:
- *                 type: string
- *                 enum: [per_room, per_person, per_kwh]
- *                 example: per_room
- *               ePrice:
- *                 type: number
- *                 example: 1500
- *               wIndexType:
- *                 type: string
- *                 enum: [per_room, per_person, per_m3]
- *                 example: per_person
- *               wPrice:
- *                 type: number
- *                 example: 20000
- *               description:
- *                 type: string
- *                 example: Tòa nhà 5 tầng, gần trung tâm.
+ *                 type: object
+ *                 required:
+ *                   - count
+ *                   - startLevel
+ *                 properties:
+ *                   count:
+ *                     type: integer
+ *                     minimum: 1
+ *                     maximum: 20
+ *                     example: 5
+ *                     description: Số tầng cần tạo
+ *                   startLevel:
+ *                     type: integer
+ *                     example: 1
+ *                     description: Tầng bắt đầu (1 = tầng trệt, 2 = tầng 1, ...)
+ *                   description:
+ *                     type: string
+ *                     example: Tầng dành cho sinh viên
+ *                     description: Mô tả chung cho các tầng
+ *               rooms:
+ *                 type: object
+ *                 required:
+ *                   - perFloor
+ *                 properties:
+ *                   perFloor:
+ *                     type: integer
+ *                     minimum: 1
+ *                     maximum: 50
+ *                     example: 10
+ *                     description: Số phòng mỗi tầng
+ *                   seqStart:
+ *                     type: integer
+ *                     default: 1
+ *                     example: 1
+ *                     description: Số thứ tự bắt đầu cho phòng
+ *                   roomNumberTemplate:
+ *                     type: string
+ *                     default: "{floor}{seq:02}"
+ *                     example: "{floor}{seq:02}"
+ *                     description: Template tạo số phòng (hỗ trợ {floor}, {seq}, {block})
+ *                   defaults:
+ *                     type: object
+ *                     properties:
+ *                       area:
+ *                         type: number
+ *                         example: 25.5
+ *                         description: Diện tích mặc định (m²)
+ *                       price:
+ *                         type: number
+ *                         example: 2000000
+ *                         description: Giá thuê mặc định (VND)
+ *                       maxTenants:
+ *                         type: integer
+ *                         default: 1
+ *                         example: 2
+ *                         description: Số người tối đa
+ *                       status:
+ *                         type: string
+ *                         enum: [available, occupied, maintenance]
+ *                         default: available
+ *                         example: available
+ *                         description: Trạng thái phòng
+ *                       description:
+ *                         type: string
+ *                         example: Phòng cho sinh viên
+ *                         description: Mô tả phòng
+ *                   templateVars:
+ *                     type: object
+ *                     properties:
+ *                       block:
+ *                         type: string
+ *                         example: A
+ *                         description: Ký hiệu block (dùng trong template)
+ *               dryRun:
+ *                 type: boolean
+ *                 default: false
+ *                 example: false
+ *                 description: Chế độ xem trước (không tạo dữ liệu thực)
  *     responses:
- *       201:
- *         description: Tòa nhà được tạo thành công với cấu hình mặc định
+ *       200:
+ *         description: Xem trước kết quả (dry-run mode)
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 success:
+ *                 dryRun:
  *                   type: boolean
  *                   example: true
- *                 data:
+ *                 preview:
  *                   type: object
  *                   properties:
  *                     building:
@@ -688,10 +744,6 @@ router.delete(
  *                         landlordId:
  *                           type: string
  *                           example: 68d7dad6cadcf51ed611e121
- *                         createdAt:
- *                           type: string
- *                           format: date-time
- *                           example: 2025-10-07T00:50:00.000Z
  *                     floors:
  *                       type: array
  *                       items:
@@ -700,12 +752,15 @@ router.delete(
  *                           _id:
  *                             type: string
  *                             example: 68e3fe79ec7f3071215fd041
- *                           floorNumber:
- *                             type: integer
- *                             example: 1
  *                           buildingId:
  *                             type: string
  *                             example: 68e3fe79ec7f3071215fd040
+ *                           level:
+ *                             type: integer
+ *                             example: 1
+ *                           description:
+ *                             type: string
+ *                             example: Tầng dành cho sinh viên
  *                     rooms:
  *                       type: array
  *                       items:
@@ -714,15 +769,108 @@ router.delete(
  *                           _id:
  *                             type: string
  *                             example: 68e3fe79ec7f3071215fd042
- *                           roomNumber:
- *                             type: string
- *                             example: 101
- *                           floorId:
- *                             type: string
- *                             example: 68e3fe79ec7f3071215fd041
  *                           buildingId:
  *                             type: string
  *                             example: 68e3fe79ec7f3071215fd040
+ *                           floorId:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd041
+ *                           roomNumber:
+ *                             type: string
+ *                             example: 101
+ *                           area:
+ *                             type: number
+ *                             example: 25.5
+ *                           price:
+ *                             type: number
+ *                             example: 2000000
+ *                           maxTenants:
+ *                             type: integer
+ *                             example: 2
+ *                           status:
+ *                             type: string
+ *                             example: available
+ *                           description:
+ *                             type: string
+ *                             example: Phòng cho sinh viên
+ *       201:
+ *         description: Tòa nhà được tạo thành công với cấu hình mặc định
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tạo tòa + tầng + phòng thành công
+ *                 building:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: 68e3fe79ec7f3071215fd040
+ *                     name:
+ *                       type: string
+ *                       example: Tòa nhà A
+ *                     address:
+ *                       type: string
+ *                       example: 123 Đường Láng, Hà Nội
+ *                     landlordId:
+ *                       type: string
+ *                       example: 68d7dad6cadcf51ed611e121
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: 2025-10-07T00:50:00.000Z
+ *                 floors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: 68e3fe79ec7f3071215fd041
+ *                       buildingId:
+ *                         type: string
+ *                         example: 68e3fe79ec7f3071215fd040
+ *                       level:
+ *                         type: integer
+ *                         example: 1
+ *                       description:
+ *                         type: string
+ *                         example: Tầng dành cho sinh viên
+ *                 rooms:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: 68e3fe79ec7f3071215fd042
+ *                       buildingId:
+ *                         type: string
+ *                         example: 68e3fe79ec7f3071215fd040
+ *                       floorId:
+ *                         type: string
+ *                         example: 68e3fe79ec7f3071215fd041
+ *                       roomNumber:
+ *                         type: string
+ *                         example: 101
+ *                       area:
+ *                         type: number
+ *                         example: 25.5
+ *                       price:
+ *                         type: number
+ *                         example: 2000000
+ *                       maxTenants:
+ *                         type: integer
+ *                         example: 2
+ *                       status:
+ *                         type: string
+ *                         example: available
+ *                       description:
+ *                         type: string
+ *                         example: Phòng cho sinh viên
  *       400:
  *         description: Dữ liệu không hợp lệ
  *         content:
@@ -753,6 +901,19 @@ router.delete(
  *                 message:
  *                   type: string
  *                   example: Gói dịch vụ đã hết hạn hoặc không tồn tại!
+ *       409:
+ *         description: Trùng dữ liệu (unique index)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Trùng dữ liệu (unique index). Vui lòng kiểm tra.
+ *                 error:
+ *                   type: string
+ *                   example: E11000 duplicate key error
  *       500:
  *         description: Lỗi hệ thống
  *         content:
