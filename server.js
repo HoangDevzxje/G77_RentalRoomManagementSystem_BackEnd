@@ -34,7 +34,7 @@ const swaggerOptions = {
       },
     },
   },
-  apis: ["./routes/*.js"],
+  apis: ["./routes/**/*.js"],
 };
 
 // Cấu hình CORS trước tiên

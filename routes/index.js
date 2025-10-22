@@ -8,6 +8,8 @@ const furnitureRoutes = require("./furnitureRoutes");
 const userRoutes = require("./userRoute");
 const regulationRoutes = require("./regulationRoutes");
 const buildingServiceRoutes = require("./buildingServiceRoutes");
+const postLandlord = require("././Landlord/postRoute");
+const postUser = require("././User/postRoute");
 
 const routes = (app) => {
   app.use("/auth", authRoutes);
@@ -20,6 +22,8 @@ const routes = (app) => {
   app.use("/furnitures", furnitureRoutes);
   app.use("/users", userRoutes);
   app.use("/regulations", regulationRoutes);
+  app.use("/landlords", postLandlord);
+  app.use("/posts", postUser);
 };
 
 module.exports = routes;
