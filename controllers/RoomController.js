@@ -70,7 +70,7 @@ const getById = async (req, res) => {
         "buildingId",
         "name address description ePrice wPrice eIndexType wIndexType"
       )
-      .populate("floorId", "floorNumber label")
+      .populate("floorId", "floorNumber level")
       .lean();
 
     const b = await Building.findById(r.buildingId).select(
@@ -93,6 +93,16 @@ const getById = async (req, res) => {
 
 const create = async (req, res) => {
   try {
+    // Parse JSON data from the 'data' field
+    let roomData;
+    if (req.body.data) {
+      // New format: data is in req.body.data as JSON string
+      roomData = JSON.parse(req.body.data);
+    } else {
+      // Fallback: old format for backward compatibility
+      roomData = req.body;
+    }
+    
     const {
       buildingId,
       floorId,
@@ -102,7 +112,7 @@ const create = async (req, res) => {
       maxTenants = 1,
       status = "available",
       description = "",
-    } = req.body;
+    } = roomData;
 
     const [b, f] = await Promise.all([
       Building.findById(buildingId).select("landlordId isDeleted status"),

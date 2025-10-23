@@ -38,6 +38,13 @@ const checkSubscription = require("../middleware/checkSubscription");
  *           type: integer
  *           default: 20
  *         description: Số lượng tòa nhà mỗi trang
+ *       - in: query
+ *         name: includeDeleted
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *           default: false
+ *         description: Bao gồm tòa nhà đã bị xóa mềm
  *     responses:
  *       200:
  *         description: Danh sách tòa nhà
@@ -78,6 +85,24 @@ const checkSubscription = require("../middleware/checkSubscription");
  *                       landlordId:
  *                         type: string
  *                         example: 68d7dad6cadcf51ed611e121
+ *                       landlord:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             example: 68d7dad6cadcf51ed611e121
+ *                           email:
+ *                             type: string
+ *                             example: landlord@example.com
+ *                           role:
+ *                             type: string
+ *                             example: landlord
+ *                           fullName:
+ *                             type: string
+ *                             example: Nguyễn Văn A
+ *                           phone:
+ *                             type: string
+ *                             example: 0123456789
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -169,6 +194,24 @@ router.get(
  *                 landlordId:
  *                   type: string
  *                   example: 68d7dad6cadcf51ed611e121
+ *                 landlord:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       example: 68d7dad6cadcf51ed611e121
+ *                     email:
+ *                       type: string
+ *                       example: landlord@example.com
+ *                     role:
+ *                       type: string
+ *                       example: landlord
+ *                     fullName:
+ *                       type: string
+ *                       example: Nguyễn Văn A
+ *                     phone:
+ *                       type: string
+ *                       example: 0123456789
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -506,10 +549,10 @@ router.put(
 
 /**
  * @swagger
- * /buildings/{id}:
+ * /buildings/{id}/soft:
  *   delete:
- *     summary: Xóa tòa nhà
- *     description: Xóa tòa nhà nếu không có tầng hoặc phòng liên quan (admin hoặc landlord sở hữu, yêu cầu subscription active).
+ *     summary: Xóa mềm tòa nhà
+ *     description: Xóa mềm tòa nhà và cascade xuống tầng/phòng (admin hoặc landlord sở hữu). Hỗ trợ force delete cho admin.
  *     tags: [Building]
  *     security:
  *       - BearerAuth: []
@@ -520,6 +563,13 @@ router.put(
  *         schema:
  *           type: string
  *         example: 68e3fe79ec7f3071215fd040
+ *       - in: query
+ *         name: force
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *           default: false
+ *         description: Xóa vĩnh viễn (chỉ admin, xóa cả tầng/phòng liên quan)
  *     responses:
  *       200:
  *         description: Tòa nhà được xóa thành công
@@ -528,9 +578,9 @@ router.put(
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Đã xóa mềm tòa nhà (cascade floor/room)
  *       401:
  *         description: Token không hợp lệ hoặc đã hết hạn
  *         content:
@@ -562,7 +612,7 @@ router.put(
  *                   type: string
  *                   example: Không tìm thấy tòa nhà!
  *       409:
- *         description: Có tầng hoặc phòng liên quan
+ *         description: Có tầng hoặc phòng liên quan (chỉ khi không dùng force)
  *         content:
  *           application/json:
  *             schema:
@@ -587,11 +637,171 @@ router.delete(
   checkAuthorize(["admin", "landlord"]),
   BuildingCtrl.softDelete
 );
+/**
+ * @swagger
+ * /buildings/{id}/restore:
+ *   post:
+ *     summary: Khôi phục tòa nhà
+ *     description: Khôi phục tòa nhà đã bị xóa mềm và cascade xuống tầng/phòng (admin hoặc landlord sở hữu).
+ *     tags: [Building]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 68e3fe79ec7f3071215fd040
+ *     responses:
+ *       200:
+ *         description: Tòa nhà được khôi phục thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã khôi phục tòa nhà (cascade floor/room)
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *       403:
+ *         description: Không có quyền
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không có quyền!
+ *       404:
+ *         description: Không tìm thấy tòa nhà hoặc chưa bị xóa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy hoặc chưa bị xóa
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
 router.post(
   "/:id/restore",
   checkAuthorize(["admin", "landlord"]),
   BuildingCtrl.restore
 );
+/**
+ * @swagger
+ * /buildings/{id}/status:
+ *   patch:
+ *     summary: Cập nhật trạng thái tòa nhà
+ *     description: Cập nhật trạng thái tòa nhà (active/inactive) (admin hoặc landlord sở hữu).
+ *     tags: [Building]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 68e3fe79ec7f3071215fd040
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
+ *                 example: active
+ *                 description: Trạng thái tòa nhà
+ *     responses:
+ *       200:
+ *         description: Trạng thái được cập nhật thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Cập nhật trạng thái thành công
+ *       400:
+ *         description: Giá trị status không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Giá trị status không hợp lệ
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *       403:
+ *         description: Không có quyền
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không có quyền!
+ *       404:
+ *         description: Không tìm thấy tòa nhà
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy tòa nhà!
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
 router.patch(
   "/:id/status",
   checkAuthorize(["admin", "landlord"]),
@@ -599,7 +809,7 @@ router.patch(
 );
 router.delete(
   "/:id",
-  checkAuthorize(["admin"]),
+  checkAuthorize(["admin", "landlord"]),
   checkSubscription,
   BuildingCtrl.remove
 );
