@@ -348,9 +348,13 @@ const quickCreate = async (req, res) => {
     if (!buildingId)
       return res.status(400).json({ message: "buildingId là bắt buộc" });
 
-    const b = await Building.findById(buildingId);
-    if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
-
+    const b = await Building.findById(buildingId)
+      .select("landlordId isDeleted status")
+      .session(session);
+    if (!b || b.isDeleted)
+      return res.status(404).json({ message: "Không tìm thấy tòa" });
+    if (b.status === "inactive")
+      return res.status(403).json({ message: "Tòa đang tạm dừng hoạt động" });
     // Quyền
     const isOwner =
       req.user.role === "admin" ||
@@ -373,7 +377,10 @@ const quickCreate = async (req, res) => {
     }
 
     // Lấy level đã có
-    const existing = await Floor.find({ buildingId }).select("level").lean();
+    const existing = await Floor.find({ buildingId, isDeleted: false })
+      .select("level")
+      .session(session)
+      .lean();
     const existSet = new Set(existing.map((x) => x.level));
     const skippedLevels = levels.filter((lv) => existSet.has(lv));
     const toInsert = levels
@@ -387,7 +394,7 @@ const quickCreate = async (req, res) => {
 
     let created = [];
     if (toInsert.length) {
-      created = await Floor.insertMany(toInsert, { session });
+      created = await Floor.insertMany(toInsert, { session, ordered: false });
     }
 
     await session.commitTransaction();
