@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const packageController = require('../controllers/PackageController');
-const { checkAuthorize } = require('../middleware/authMiddleware');
+const packageController = require('../../controllers/Admin/PackageController');
+const { checkAuthorize } = require('../../middleware/authMiddleware');
 /**
  * @swagger
  * tags:
@@ -11,7 +11,7 @@ const { checkAuthorize } = require('../middleware/authMiddleware');
 
 /**
  * @swagger
- * /packages:
+ * /admin/packages:
  *   post:
  *     summary: Tạo gói dịch vụ mới
  *     description: Tạo một gói dịch vụ mới (chỉ admin).
@@ -119,7 +119,7 @@ router.post('/', checkAuthorize(['admin']), packageController.create);
 
 /**
  * @swagger
- * /packages:
+ * /admin/packages:
  *   get:
  *     summary: Lấy danh sách gói dịch vụ
  *     description: Lấy tất cả gói dịch vụ (landlord/admin).
@@ -182,7 +182,7 @@ router.get('/', checkAuthorize(['landlord', 'admin']), packageController.list);
 
 /**
  * @swagger
- * /packages/{id}:
+ * /admin/packages/{id}:
  *   get:
  *     summary: Lấy chi tiết gói dịch vụ
  *     description: Lấy thông tin một gói dịch vụ theo ID (landlord/admin).
@@ -260,7 +260,7 @@ router.get('/:id', checkAuthorize(['landlord', 'admin']), packageController.getB
 
 /**
  * @swagger
- * /packages/{id}:
+ * /admin/packages/{id}:
  *   put:
  *     summary: Cập nhật gói dịch vụ
  *     description: Cập nhật thông tin gói dịch vụ (chỉ admin).
@@ -380,7 +380,7 @@ router.put('/:id', checkAuthorize(['admin']), packageController.update);
 
 /**
  * @swagger
- * /packages/{id}:
+ * /admin/packages/{id}:
  *   delete:
  *     summary: Xóa gói dịch vụ
  *     description: Xóa gói dịch vụ nếu không có subscription liên quan (chỉ admin).

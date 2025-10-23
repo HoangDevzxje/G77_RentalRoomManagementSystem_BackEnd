@@ -41,6 +41,8 @@ const buy = async (req, res) => {
             packageId: pkg._id,
             startDate: new Date(),
             status: 'pending_payment',
+            amount: pkg.price,
+            paymentMethod: 'vnpay',
         });
         await sub.save();
 
@@ -78,7 +80,6 @@ const buy = async (req, res) => {
         res.status(400).json({ message: err.message });
     }
 };
-
 const paymentCallback = async (req, res) => {
     try {
         let vnp_Params = req.query;
@@ -134,5 +135,25 @@ const list = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+const getByLandlordId = async (req, res) => {
+    try {
+        const landlordId = req.user._id;
 
-module.exports = { buy, paymentCallback, list };
+        const subscriptions = await Subscription.find({ landlordId })
+            .populate('packageId', 'name price durationDays description roomLimit')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            data: subscriptions,
+        });
+    } catch (err) {
+        console.error('Lỗi khi lấy lịch sử gói:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Không thể lấy lịch sử gói đăng ký',
+            error: err.message,
+        });
+    }
+};
+module.exports = { buy, paymentCallback, list, getByLandlordId };

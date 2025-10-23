@@ -26,7 +26,7 @@ const swaggerOptions = {
     ],
     components: {
       securitySchemes: {
-        BearerAuth: {
+        bearerAuth: {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
@@ -34,7 +34,7 @@ const swaggerOptions = {
       },
     },
   },
-  apis: ["./routes/*.js"],
+  apis: ["./routes/**/*.js"],
 };
 
 // Cấu hình CORS trước tiên

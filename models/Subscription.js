@@ -7,7 +7,8 @@ const subscriptionSchema = new mongoose.Schema({
     endDate: { type: Date },
     status: { type: String, enum: ['active', 'expired', 'pending_payment'], default: 'active' },
     paymentId: { type: String },
-    createdAt: { type: Date, default: Date.now },
-});
+    amount: { type: Number },
+    paymentMethod: { type: String, enum: ['vnpay', 'momo', 'manual'], default: 'vnpay' },
+}, { timestamps: true });
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);

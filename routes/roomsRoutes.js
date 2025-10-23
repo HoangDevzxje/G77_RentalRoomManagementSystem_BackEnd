@@ -477,6 +477,24 @@ router.post(
   RoomCtrl.create
 );
 
+// Thêm ảnh cho phòng (upload thêm)
+router.post(
+  "/:id/images",
+  checkAuthorize(["admin", "landlord"]),
+  checkBuildingActive,
+  uploadMultiple,
+  RoomCtrl.addImages
+);
+// Xóa ảnh (truyền danh sách URL muốn xóa)
+router.delete("/:id/images", RoomCtrl.removeImages);
+router.post(
+  "/quick-create",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  checkBuildingActive,
+  RoomCtrl.quickCreate
+);
+
 /**
  * @swagger
  * /rooms/{id}:

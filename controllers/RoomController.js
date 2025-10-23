@@ -51,7 +51,7 @@ const list = async (req, res) => {
     }
     const data = await Room.find(filter)
       .populate("buildingId", "name address description ePrice wPrice")
-      .populate("floorId", "floorNumber label")
+      .populate("floorId", "floorNumber")
       .sort({ createdAt: -1 })
       .skip((+page - 1) * +limit)
       .limit(+limit);
@@ -114,10 +114,20 @@ const create = async (req, res) => {
       description = "",
     } = roomData;
 
+    if (
+      !mongoose.isValidObjectId(buildingId) ||
+      !mongoose.isValidObjectId(floorId)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "buildingId/floorId không hợp lệ" });
+    }
+
     const [b, f] = await Promise.all([
       Building.findById(buildingId).select("landlordId isDeleted status"),
       Floor.findById(floorId).select("buildingId isDeleted status"),
     ]);
+
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
     if (b.isDeleted)
       return res.status(404).json({ message: "Tòa nhà đã bị xóa" });
@@ -126,7 +136,11 @@ const create = async (req, res) => {
         .status(403)
         .json({ message: "Tòa nhà đang tạm dừng hoạt động" });
 
-    if (!f) return res.status(404).json({ message: "Không tìm thấy tầng" });
+    if (!f) {
+      return res.status(404).json({
+        message: "Không tìm thấy tầng (floorId sai hoặc không tồn tại)",
+      });
+    }
     if (f.isDeleted) return res.status(404).json({ message: "Tầng đã bị xóa" });
     if (f.status === "inactive")
       return res.status(403).json({ message: "Tầng đang tạm dừng hoạt động" });
@@ -143,7 +157,7 @@ const create = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    //validate inputs
+    // validate inputs
     const numPrice = Number(price);
     if (Number.isNaN(numPrice) || numPrice < 0) {
       return res.status(400).json({ message: "price phải là số >= 0" });
@@ -157,9 +171,10 @@ const create = async (req, res) => {
     if (!allowedStatus.includes(status)) {
       return res.status(400).json({ message: "status không hợp lệ" });
     }
-    // Lấy URL ảnh từ Cloudinary (secure_url nằm ở file.path)
+
+    // Ảnh
     const imageUrls = Array.isArray(req.files)
-      ? req.files.map((f) => f.path) // secure_url
+      ? req.files.map((f) => f.path)
       : [];
 
     const doc = await Room.create({
@@ -180,7 +195,9 @@ const create = async (req, res) => {
         message: "Trùng số phòng trong tòa (unique {buildingId, roomNumber})",
       });
     }
-    res.status(400).json({ message: e.message });
+
+    console.error("Create room error:", e);
+    res.status(500).json({ message: e.message || "Internal Server Error" });
   }
 };
 
@@ -639,7 +656,10 @@ const quickCreate = async (req, res) => {
     if (!allowedStatus.includes(initStatus)) {
       return res.status(400).json({ message: "defaults.status không hợp lệ" });
     }
-
+    const numEStart =
+      defaults.eStart != null ? Math.max(0, Number(defaults.eStart)) : 0;
+    const numWStart =
+      defaults.wStart != null ? Math.max(0, Number(defaults.wStart)) : 0;
     // 4) Lấy các roomNumber đã có trong tòa (để tránh trùng)
     const existRooms = await Room.find({ buildingId, isDeleted: false })
       .select("roomNumber")
@@ -673,6 +693,8 @@ const quickCreate = async (req, res) => {
           maxTenants: numMaxTenants,
           status: initStatus,
           description: defaults.description,
+          eStart: numEStart,
+          wStart: numWStart,
         });
 
         existSet.add(roomNumber); // tránh trùng trong chính batch
