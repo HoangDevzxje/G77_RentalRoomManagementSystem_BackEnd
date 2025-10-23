@@ -2,7 +2,7 @@ const authRoutes = require("./authRoute");
 const buildingRoutes = require("./buildingRoutes");
 const floorRoutes = require("./floorsRoutes");
 const roomRoutes = require("./roomsRoutes");
-const packageRoutes = require("./packageRoutes");
+const packageRoutes = require("././Admin/packageRoutes");
 const subscriptionRoutes = require("./subscriptionRoutes");
 const furnitureRoutes = require("./furnitureRoutes");
 const userRoutes = require("./userRoute");
@@ -19,7 +19,7 @@ const routes = (app) => {
   app.use("/floors", floorRoutes);
   app.use("/rooms", roomRoutes);
   app.use("/subscriptions", subscriptionRoutes);
-  app.use("/packages", packageRoutes);
+  app.use("/admin", packageRoutes);
   app.use("/furnitures", furnitureRoutes);
   app.use("/users", userRoutes);
   app.use("/regulations", regulationRoutes);
