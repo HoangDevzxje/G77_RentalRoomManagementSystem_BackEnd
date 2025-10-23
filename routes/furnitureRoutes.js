@@ -428,38 +428,6 @@ router.get(
   BuildingFurnitureCtrl.getAll
 );
 
-/**
- * @swagger
- * /furnitures/building/{id}:
- *   get:
- *     tags: [Building Furniture]
- *     summary: Lấy chi tiết một cấu hình nội thất tòa nhà
- *     description: Lấy thông tin chi tiết của một cấu hình nội thất trong tòa nhà
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: ID của cấu hình nội thất tòa nhà
- *     responses:
- *       200:
- *         description: Lấy thông tin thành công
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/BuildingFurniture'
- *       400:
- *         description: ID không hợp lệ
- *       401:
- *         description: Chưa xác thực
- *       403:
- *         description: Không có quyền truy cập
- *       404:
- *         description: Không tìm thấy
- */
 router.get(
   "/building/:id",
   checkAuthorize(["admin", "landlord"]),

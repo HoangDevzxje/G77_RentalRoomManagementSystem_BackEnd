@@ -196,14 +196,191 @@ exports.bulkCreate = async (req, res) => {
 // Lấy danh sách theo tòa
 exports.getAll = async (req, res) => {
   try {
-    const { buildingId } = req.query;
-    const filter = buildingId ? { buildingId } : {};
-    const list = await BuildingFurniture.find(filter).populate(
-      "buildingId furnitureId"
-    );
-    res.json(list);
+    const { buildingId, withStats = "true" } = req.query;
+
+    // 1) Nếu chưa chọn tòa: trả danh sách tất cả (không thống kê) để tránh 400
+    if (!buildingId) {
+      const buildingFilter =
+        req.user?.role === "landlord" ? { landlordId: req.user._id } : {};
+      const buildings = await Building.find(buildingFilter)
+        .select("_id name address description")
+        .lean();
+
+      if (!buildings.length) return res.json([]);
+
+      const buildingIds = buildings.map((b) => b._id);
+
+      // có thể bật populate nhẹ
+      const list = await BuildingFurniture.find({
+        buildingId: { $in: buildingIds },
+      })
+        .populate("buildingId", "name address description")
+        .populate("furnitureId", "name")
+        .sort({ createdAt: -1 });
+
+      return res.json(list);
+    }
+
+    // 2) Có buildingId: kiểm tra quyền
+    const building = await Building.findById(buildingId).lean();
+    if (!building)
+      return res.status(404).json({ message: "Không tìm thấy tòa" });
+
+    const isOwner =
+      req.user?.role === "admin" ||
+      (req.user?.role === "landlord" &&
+        String(building.landlordId) === String(req.user._id));
+
+    if (!isOwner) {
+      return res
+        .status(403)
+        .json({ message: "Không có quyền truy cập tòa này" });
+    }
+
+    if (withStats === "true") {
+      const data = await BuildingFurniture.aggregate([
+        { $match: { buildingId: new mongoose.Types.ObjectId(buildingId) } },
+
+        // Rooms của tòa (không lọc hết nếu không có isDeleted)
+        {
+          $lookup: {
+            from: "rooms",
+            let: { bId: "$buildingId" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ["$buildingId", "$$bId"] },
+                  $or: [
+                    { isDeleted: { $exists: false } },
+                    { isDeleted: false },
+                  ],
+                },
+              },
+              { $project: { _id: 1 } },
+            ],
+            as: "rooms",
+          },
+        },
+        { $addFields: { totalRooms: { $size: "$rooms" } } },
+
+        // RoomFurniture (overrides) trùng furnitureId trong các room của tòa
+        {
+          $lookup: {
+            from: "roomfurnitures", // đảm bảo đúng tên collection
+            let: { roomIds: "$rooms._id", fId: "$furnitureId" }, // furnitureId là ObjectId
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $in: ["$roomId", "$$roomIds"] },
+                      { $eq: ["$furnitureId", "$$fId"] },
+                    ],
+                  },
+                },
+              },
+              { $project: { _id: 1, quantity: 1, roomId: 1 } },
+            ],
+            as: "overrides",
+          },
+        },
+
+        // TÍNH TOÁN: dùng $reduce để cộng quantity trong overrides
+        {
+          $set: {
+            // số phòng đã tùy chỉnh / theo mặc định
+            roomsOverridden: { $size: "$overrides" },
+            roomsByDefault: {
+              $subtract: ["$totalRooms", { $size: "$overrides" }],
+            },
+
+            // Tổng số lượng thực tế = sum(override.quantity) + quantityPerRoom * roomsByDefault
+            totalQuantityActual: {
+              $add: [
+                {
+                  $reduce: {
+                    input: "$overrides",
+                    initialValue: 0,
+                    in: {
+                      $add: ["$$value", { $ifNull: ["$$this.quantity", 0] }],
+                    },
+                  },
+                },
+                {
+                  $multiply: [
+                    { $ifNull: ["$quantityPerRoom", 0] },
+                    {
+                      $ifNull: [
+                        { $subtract: ["$totalRooms", { $size: "$overrides" }] },
+                        0,
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+
+        // Join tên furniture & building để hiển thị
+        {
+          $lookup: {
+            from: "furnitures",
+            localField: "furnitureId",
+            foreignField: "_id",
+            as: "furniture",
+          },
+        },
+        { $unwind: "$furniture" },
+        {
+          $lookup: {
+            from: "buildings",
+            localField: "buildingId",
+            foreignField: "_id",
+            as: "building",
+          },
+        },
+        { $unwind: "$building" },
+
+        // Output gọn + (tạm expose sumOverrideQty để bạn kiểm tra)
+        {
+          $project: {
+            _id: 1,
+            buildingId: 1,
+            furnitureId: 1,
+            quantityPerRoom: 1,
+            status: 1,
+            notes: 1,
+            createdAt: 1,
+            updatedAt: 1,
+
+            "building.name": 1,
+            "building.address": 1,
+            "building.description": 1,
+            "furniture.name": 1,
+
+            totalRooms: 1,
+            roomsOverridden: 1,
+            roomsByDefault: 1,
+            sumOverrideQty: 1, // ← giúp debug, OK rồi có thể bỏ
+            totalQuantityActual: 1,
+          },
+        },
+        { $sort: { createdAt: -1 } },
+      ]);
+
+      return res.json(data);
+    }
+
+    // 4) Không withStats: find + populate (nhẹ)
+    const list = await BuildingFurniture.find({ buildingId })
+      .populate("buildingId", "name address description")
+      .populate("furnitureId", "name")
+      .sort({ createdAt: -1 });
+
+    return res.json(list);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -247,16 +424,6 @@ exports.remove = async (req, res) => {
 
 /**
  * Áp dụng cấu hình nội thất của tòa cho phòng
- *
- * Body:
- * {
- *   "furnitureIds": ["...","..."],   // optional - nếu bỏ trống sẽ lấy tất cả cấu hình nội thất ACTIVE của tòa
- *   "roomIds": ["...","..."],        // optional - nếu bỏ trống sẽ áp cho tất cả phòng trong tòa (hoặc theo floorIds)
- *   "floorIds": ["...","..."],       // optional - lọc phòng theo tầng
- *   "mode": "set" | "increment",     // default "set"
- *   "overrideQty": 2,                // optional - nếu có sẽ dùng thay vì quantityPerRoom trong BuildingFurniture
- *   "dryRun": false                  // optional - chỉ preview, không ghi DB
- * }
  */
 exports.applyToRooms = async (req, res) => {
   const session = await mongoose.startSession();
