@@ -10,6 +10,7 @@ const regulationRoutes = require("./regulationRoutes");
 const buildingServiceRoutes = require("./buildingServiceRoutes");
 const postLandlord = require("././Landlord/postRoute");
 const postUser = require("././User/postRoute");
+const accountAdmin = require("././Admin/accountRoute");
 
 const routes = (app) => {
   app.use("/auth", authRoutes);
@@ -24,6 +25,7 @@ const routes = (app) => {
   app.use("/regulations", regulationRoutes);
   app.use("/landlords", postLandlord);
   app.use("/posts", postUser);
+  app.use("/admin", accountAdmin);
 };
 
 module.exports = routes;
