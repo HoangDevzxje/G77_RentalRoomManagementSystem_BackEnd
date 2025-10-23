@@ -1,6 +1,5 @@
-const router = require('express').Router();
+const router = require("express").Router();
 const postController = require("../../controllers/User/PostController");
-
 
 /**
  * @swagger
@@ -15,7 +14,7 @@ const postController = require("../../controllers/User/PostController");
  *   get:
  *     summary: Lấy danh sách bài đăng trọ đang hoạt động
  *     description: |
- *       Trả về danh sách các bài đăng có trạng thái **active**, chưa bị xóa và không phải bản nháp.  
+ *       Trả về danh sách các bài đăng có trạng thái **active**, chưa bị xóa và không phải bản nháp.
  *       Có thể tìm kiếm theo tiêu đề hoặc địa chỉ và hỗ trợ phân trang.
  *     tags: [Post for User]
  *     parameters:
@@ -127,5 +126,108 @@ const postController = require("../../controllers/User/PostController");
  *                   type: string
  *                   example: Lỗi hệ thống khi lấy danh sách bài đăng!
  */
+
+/**
+ * @swagger
+ * /posts/{id}:
+ *   get:
+ *     summary: Lấy chi tiết bài đăng trọ
+ *     description: |
+ *       Trả về thông tin chi tiết của một bài đăng có trạng thái **active**, chưa bị xóa và không phải bản nháp.
+ *       Nếu bài đăng không thuộc tòa nhà cụ thể, buildingId sẽ trả về null.
+ *     tags: [Post for User]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: 6717e5c3f1a8b4e567123abc
+ *         description: ID của bài đăng
+ *     responses:
+ *       200:
+ *         description: Lấy chi tiết bài đăng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: 6717e5c3f1a8b4e567123abc
+ *                     title:
+ *                       type: string
+ *                       example: Phòng trọ 25m² gần ĐH Bách Khoa
+ *                     slug:
+ *                       type: string
+ *                       example: phong-tro-25m2-gan-dh-bach-khoa
+ *                     description:
+ *                       type: string
+ *                     address:
+ *                       type: string
+ *                       example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
+ *                     area:
+ *                       type: number
+ *                       example: 25
+ *                     price:
+ *                       type: number
+ *                       example: 3000000
+ *                     images:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     landlordId:
+ *                       type: object
+ *                       properties:
+ *                         _id:
+ *                           type: string
+ *                         fullName:
+ *                           type: string
+ *                         phone:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                     buildingId:
+ *                       oneOf:
+ *                         - type: object
+ *                           properties:
+ *                             _id:
+ *                               type: string
+ *                             name:
+ *                               type: string
+ *                             address:
+ *                               type: string
+ *                             description:
+ *                               type: string
+ *                             eIndexType:
+ *                               type: string
+ *                               enum: [byNumber, included]
+ *                             ePrice:
+ *                               type: number
+ *                             wIndexType:
+ *                               type: string
+ *                               enum: [byNumber, byPerson, included]
+ *                             wPrice:
+ *                               type: number
+ *                         - type: "null"
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Bài đăng không tồn tại hoặc không có quyền truy cập
+ *       500:
+ *         description: Lỗi hệ thống khi lấy chi tiết bài đăng
+ */
 router.get("/", postController.list);
+router.get("/:id", postController.detail);
+
 module.exports = router;
