@@ -385,7 +385,13 @@ router.post(
 );
 
 // Thêm ảnh cho phòng (upload thêm)
-router.post("/:id/images", uploadMultiple, RoomCtrl.addImages);
+router.post(
+  "/:id/images",
+  checkAuthorize(["admin", "landlord"]),
+  checkBuildingActive,
+  uploadMultiple,
+  RoomCtrl.addImages
+);
 // Xóa ảnh (truyền danh sách URL muốn xóa)
 router.delete("/:id/images", RoomCtrl.removeImages);
 router.post(
