@@ -12,7 +12,7 @@ const roomFurnitureSchema = new mongoose.Schema(
       ref: "Furniture",
       required: true,
     },
-    quantity: { type: Number, default: 1 },
+    quantity: { type: Number, default: 1, min: 0 },
     condition: {
       type: String,
       enum: ["good", "damaged", "under_repair"],
