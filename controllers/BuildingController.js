@@ -38,7 +38,7 @@ const list = async (req, res) => {
     const total = await Building.countDocuments(filter);
     res.json({ data: items, total, page: +page, limit: +limit });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: e.message.message });
   }
 };
 
@@ -97,7 +97,18 @@ const create = async (req, res) => {
     if (!address) {
       return res.status(400).json({ message: "Thiếu địa chỉ tòa nhà" });
     }
-
+    const existed = await Building.exists({
+      landlordId,
+      name: name.trim(),
+      isDeleted: false,
+    });
+    if (existed) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(409)
+        .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
+    }
     if (ePrice !== undefined && ePrice !== null) {
       if (isNaN(ePrice)) {
         return res.status(400).json({ message: "Tiền điện không hợp lệ" });
@@ -131,7 +142,7 @@ const create = async (req, res) => {
 
     res.status(201).json({ success: true, data: building });
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: err.message.message });
   }
 };
 
@@ -353,6 +364,18 @@ const update = async (req, res) => {
     const building = await Building.findById(req.params.id);
     if (!building)
       return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+    const existed = await Building.exists({
+      landlordId,
+      name: name.trim(),
+      isDeleted: false,
+    });
+    if (existed) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(409)
+        .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
+    }
     if (
       req.user.role !== "landlord" &&
       String(building.landlordId) !== String(req.user._id)
