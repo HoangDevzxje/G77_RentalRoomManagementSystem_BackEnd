@@ -39,23 +39,26 @@ const generateDescription = async (req, res) => {
 
 const createPost = async (req, res) => {
     try {
-        const { title, price, area, address, description, buildingId, isDraft } = req.body;
+        const { title, price, area, address, description, buildingId } = req.body;
+        let { isDraft } = req.body;
+
+        isDraft = (isDraft === 'true' || isDraft === true);
 
         if (!title || !price || !area || !address || !description) {
             return res.status(400).json({ message: 'Thiếu thông tin bài đăng!' });
         }
         const imageUrls = req.files?.map(file => file.path) || [];
-        console.log("Uploaded images:", imageUrls);
+
         const post = new Post({
             landlordId: req.user._id,
             buildingId: buildingId || null,
             title,
             description,
             address,
-            price,
-            area,
+            price: Number(price),
+            area: Number(area),
             images: imageUrls,
-            isDraft: !!isDraft,
+            isDraft,
             status: isDraft ? 'hidden' : 'active',
         });
 

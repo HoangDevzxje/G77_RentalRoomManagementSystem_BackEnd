@@ -45,77 +45,18 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
  *               description:
  *                 type: string
  *                 example: Gói Premium cho phép quản lý tối đa 50 phòng trong 30 ngày.
+ *               type:
+ *                 type: string
+ *                 enum: [trial, paid]
+ *                 example: paid
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
  *     responses:
  *       201:
  *         description: Gói dịch vụ được tạo thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                       example: 68d7dad6cadcf51ed611e123
- *                     name:
- *                       type: string
- *                       example: Premium Package
- *                     price:
- *                       type: number
- *                       example: 500000
- *                     durationDays:
- *                       type: number
- *                       example: 30
- *                     roomLimit:
- *                       type: number
- *                       example: 50
- *                     description:
- *                       type: string
- *                       example: Gói Premium cho phép quản lý tối đa 50 phòng trong 30 ngày.
- *                     createdBy:
- *                       type: string
- *                       example: 68d7dad6cadcf51ed611e121
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- *                       example: 2025-10-07T00:26:00.000Z
- *       400:
- *         description: Dữ liệu không hợp lệ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Dữ liệu không hợp lệ!
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Token không hợp lệ hoặc đã hết hạn!
- *       403:
- *         description: Không có quyền (không phải admin)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Bạn không có quyền thực hiện hành động này!
  */
-router.post('/', checkAuthorize(['admin']), packageController.create);
+router.post('/packages', checkAuthorize(['admin']), packageController.create);
 
 /**
  * @swagger
@@ -129,56 +70,8 @@ router.post('/', checkAuthorize(['admin']), packageController.create);
  *     responses:
  *       200:
  *         description: Danh sách gói dịch vụ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       _id:
- *                         type: string
- *                         example: 68d7dad6cadcf51ed611e123
- *                       name:
- *                         type: string
- *                         example: Premium Package
- *                       price:
- *                         type: number
- *                         example: 500000
- *                       durationDays:
- *                         type: number
- *                         example: 30
- *                       roomLimit:
- *                         type: number
- *                         example: 50
- *                       description:
- *                         type: string
- *                         example: Gói Premium cho phép quản lý tối đa 50 phòng trong 30 ngày.
- *                       createdBy:
- *                         type: string
- *                         example: 68d7dad6cadcf51ed611e121
- *                       createdAt:
- *                         type: string
- *                         format: date-time
- *                         example: 2025-10-07T00:26:00.000Z
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Token không hợp lệ hoặc đã hết hạn!
  */
-router.get('/', checkAuthorize(['landlord', 'admin']), packageController.list);
+router.get('/packages', checkAuthorize(['landlord', 'admin']), packageController.list);
 
 /**
  * @swagger
@@ -195,68 +88,11 @@ router.get('/', checkAuthorize(['landlord', 'admin']), packageController.list);
  *         required: true
  *         schema:
  *           type: string
- *         example: 68d7dad6cadcf51ed611e123
  *     responses:
  *       200:
  *         description: Chi tiết gói dịch vụ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                       example: 68d7dad6cadcf51ed611e123
- *                     name:
- *                       type: string
- *                       example: Premium Package
- *                     price:
- *                       type: number
- *                       example: 500000
- *                     durationDays:
- *                       type: number
- *                       example: 30
- *                     roomLimit:
- *                       type: number
- *                       example: 50
- *                     description:
- *                       type: string
- *                       example: Gói Premium cho phép quản lý tối đa 50 phòng trong 30 ngày.
- *                     createdBy:
- *                       type: string
- *                       example: 68d7dad6cadcf51ed611e121
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- *                       example: 2025-10-07T00:26:00.000Z
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Token không hợp lệ hoặc đã hết hạn!
- *       404:
- *         description: Không tìm thấy gói dịch vụ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Không tìm thấy gói dịch vụ!
  */
-router.get('/:id', checkAuthorize(['landlord', 'admin']), packageController.getById);
+router.get('/packages/:id', checkAuthorize(['landlord', 'admin']), packageController.getById);
 
 /**
  * @swagger
@@ -273,7 +109,6 @@ router.get('/:id', checkAuthorize(['landlord', 'admin']), packageController.getB
  *         required: true
  *         schema:
  *           type: string
- *         example: 68d7dad6cadcf51ed611e123
  *     requestBody:
  *       required: true
  *       content:
@@ -283,100 +118,22 @@ router.get('/:id', checkAuthorize(['landlord', 'admin']), packageController.getB
  *             properties:
  *               name:
  *                 type: string
- *                 example: Updated Premium Package
  *               price:
  *                 type: number
- *                 example: 600000
  *               durationDays:
  *                 type: number
- *                 example: 60
  *               roomLimit:
  *                 type: number
- *                 example: 100
  *               description:
  *                 type: string
- *                 example: Gói Premium cập nhật, quản lý tối đa 100 phòng trong 60 ngày.
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
  *     responses:
  *       200:
  *         description: Gói dịch vụ được cập nhật thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                       example: 68d7dad6cadcf51ed611e123
- *                     name:
- *                       type: string
- *                       example: Updated Premium Package
- *                     price:
- *                       type: number
- *                       example: 600000
- *                     durationDays:
- *                       type: number
- *                       example: 60
- *                     roomLimit:
- *                       type: number
- *                       example: 100
- *                     description:
- *                       type: string
- *                       example: Gói Premium cập nhật, quản lý tối đa 100 phòng trong 60 ngày.
- *                     createdBy:
- *                       type: string
- *                       example: 68d7dad6cadcf51ed611e121
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- *                       example: 2025-10-07T00:26:00.000Z
- *       400:
- *         description: Dữ liệu không hợp lệ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Dữ liệu không hợp lệ!
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Token không hợp lệ hoặc đã hết hạn!
- *       403:
- *         description: Không có quyền (không phải admin)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Bạn không có quyền thực hiện hành động này!
- *       404:
- *         description: Không tìm thấy gói dịch vụ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Không tìm thấy gói dịch vụ!
  */
-router.put('/:id', checkAuthorize(['admin']), packageController.update);
+router.put('/packages/:id', checkAuthorize(['admin']), packageController.update);
 
 /**
  * @swagger
@@ -393,10 +150,78 @@ router.put('/:id', checkAuthorize(['admin']), packageController.update);
  *         required: true
  *         schema:
  *           type: string
- *         example: 68d7dad6cadcf51ed611e123
  *     responses:
  *       200:
  *         description: Gói dịch vụ được xóa thành công
+ */
+router.delete('/packages/:id', checkAuthorize(['admin']), packageController.remove);
+
+/**
+ * @swagger
+ * /admin/packages/{id}/toggle-active:
+ *   patch:
+ *     summary: Bật / tắt trạng thái hoạt động của gói dịch vụ
+ *     description: Cập nhật trạng thái isActive của gói dịch vụ (admin).
+ *     tags: [Package]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của gói dịch vụ cần thay đổi trạng thái.
+ *     responses:
+ *       200:
+ *         description: Thay đổi trạng thái thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Thay đổi trạng thái thành công
+ *                 data:
+ *                   type: object
+ *       404:
+ *         description: Không tìm thấy gói dịch vụ
+ */
+router.patch('/packages/:id/toggle-active', checkAuthorize(['admin']), packageController.updateIsActive);
+
+/**
+ * @swagger
+ * /admin/packages/{id}/change-type:
+ *   patch:
+ *     summary: Đổi loại gói dịch vụ
+ *     description: Chuyển đổi loại gói dịch vụ giữa `trial` và `paid` (chỉ admin).
+ *     tags: [Package]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của gói dịch vụ cần đổi loại.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [trial, paid]
+ *                 example: trial
+ *     responses:
+ *       200:
+ *         description: Đã đổi loại gói thành công
  *         content:
  *           application/json:
  *             schema:
@@ -405,47 +230,16 @@ router.put('/:id', checkAuthorize(['admin']), packageController.update);
  *                 success:
  *                   type: boolean
  *                   example: true
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
  *                 message:
  *                   type: string
- *                   example: Token không hợp lệ hoặc đã hết hạn!
- *       403:
- *         description: Không có quyền (không phải admin)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Bạn không có quyền thực hiện hành động này!
+ *                   example: Đã đổi loại gói sang trial
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Giá trị type không hợp lệ
  *       404:
  *         description: Không tìm thấy gói dịch vụ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Không tìm thấy gói dịch vụ!
- *       409:
- *         description: Có subscription liên quan
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Hãy xóa các subscription liên quan trước!
  */
-router.delete('/:id', checkAuthorize(['admin']), packageController.remove);
+router.patch('/packages/:id/change-type', checkAuthorize(['admin']), packageController.changeType);
 
 module.exports = router;
