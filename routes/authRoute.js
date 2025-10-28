@@ -271,13 +271,16 @@ router.post("/reset-password", authController.resetPassword);
  */
 router.post("/refresh-token", authController.refreshToken);
 
-// Đổi mật khâu
+// Đổi mật khẩu
 /**
  * @swagger
  * /auth/change-password:
  *   post:
  *     summary: Đổi mật khẩu
+ *     description: Thay đổi mật khẩu của người dùng đã đăng nhập
  *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -290,17 +293,57 @@ router.post("/refresh-token", authController.refreshToken);
  *             properties:
  *               oldPassword:
  *                 type: string
+ *                 format: password
+ *                 description: Mật khẩu hiện tại
+ *                 example: "OldPass123@"
  *               newPassword:
  *                 type: string
+ *                 format: password
+ *                 description: Mật khẩu mới
+ *                 example: "NewPass123@"
  *     responses:
  *       200:
  *         description: Đổi mật khẩu thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đổi mật khẩu thành công!"
  *       400:
- *         description: Mật khẩu cũ không đúng hoặc dữ liệu lỗi
+ *         description: Mật khẩu cũ không đúng hoặc dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Mật khẩu cũ không đúng!"
+ *       401:
+ *         description: Token không hợp lệ hoặc chưa đăng nhập
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Token không hợp lệ!"
  *       500:
  *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Lỗi hệ thống!"
  */
-router.post("/change-password", checkAuthorize(["user"]), authController.changePassword);
+router.post("/change-password", checkAuthorize(["user", "landlord"]), authController.changePassword);
 
 // /**
 //  * @swagger
