@@ -206,4 +206,65 @@ router.patch("/accounts/:id/status", checkAuthorize(["admin"]), accountControlle
  */
 router.patch("/accounts/:id/role", checkAuthorize(["admin"]), accountController.updateRole);
 
+/**
+ * @swagger
+ * /admin/accounts/{id}:
+ *   get:
+ *     summary: Lấy thông tin chi tiết của tài khoản theo ID
+ *     description: |
+ *       Trả về thông tin chi tiết của một tài khoản cụ thể dựa trên **ID** người dùng.  
+ *     tags: [Admin management account]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: 6718a9b3f1a8b4e5678abcd1
+ *         description: ID của tài khoản cần xem thông tin chi tiết
+ *     responses:
+ *       200:
+ *         description: Lấy thông tin tài khoản thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lấy thông tin tài khoản thành công
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: 6718a9b3f1a8b4e5678abcd1
+ *                     email:
+ *                       type: string
+ *                       example: user1@gmail.com
+ *                     role:
+ *                       type: string
+ *                       example: landlord
+ *                     isActivated:
+ *                       type: boolean
+ *                       example: true
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: 2025-10-22T08:15:00.000Z
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: 2025-10-22T10:30:00.000Z
+ *       404:
+ *         description: Không tìm thấy tài khoản
+ *       401:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi hệ thống khi lấy thông tin tài khoản
+ */
+router.get("/accounts/:id", checkAuthorize(["admin"]), accountController.getAccountInfo);
+
 module.exports = router;
