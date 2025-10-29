@@ -100,7 +100,7 @@ const getDetailPostByTenant = async (req, res) => {
         _id: { $in: post.roomIds },
         isDeleted: false,
       })
-        .select("_id name")
+        .select("_id name price status roomNumber")
         .lean();
     }
 
@@ -134,7 +134,10 @@ const getRoomDetailByTenant = async (req, res) => {
       _id: roomId,
       isDeleted: false,
     })
-      .populate("buildingId", "name address ePrice wPrice eIndexType wIndexType")
+      .populate(
+        "buildingId",
+        "name address ePrice wPrice eIndexType wIndexType"
+      )
       .lean();
 
     if (!room) {
@@ -146,9 +149,10 @@ const getRoomDetailByTenant = async (req, res) => {
     res.json({ success: true, data: room });
   } catch (err) {
     console.error("Error getRoomDetail:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Lỗi hệ thống khi lấy chi tiết phòng!" });
+    res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống khi lấy chi tiết phòng!",
+    });
   }
 };
 
