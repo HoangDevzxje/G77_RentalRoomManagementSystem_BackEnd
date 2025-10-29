@@ -1,7 +1,8 @@
-const Post = require("../../models/Post");
 const mongoose = require("mongoose");
+const Post = require("../../models/Post");
+const Room = require("../../models/Room");
 
-const list = async (req, res) => {
+const getAllPostsByTenant = async (req, res) => {
   try {
     const { limit = 20, page = 1, keyword } = req.query;
 
@@ -25,7 +26,8 @@ const list = async (req, res) => {
       .populate("buildingId", "name address")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     res.json({
       success: true,
@@ -45,7 +47,7 @@ const list = async (req, res) => {
   }
 };
 
-const detail = async (req, res) => {
+const getDetailPostByTenant = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -56,9 +58,27 @@ const detail = async (req, res) => {
       });
     }
 
-    let post = await Post.findOne({
+    const post = await Post.findOne({
       _id: new mongoose.Types.ObjectId(id),
-    }).lean();
+      status: "active",
+      isDeleted: false,
+      isDraft: false,
+    })
+      .populate({
+        path: "landlordId",
+        select: "email userInfo",
+        populate: {
+          path: "userInfo",
+          model: "UserInformation",
+          select: "fullName phoneNumber",
+        },
+      })
+      .populate({
+        path: "buildingId",
+        select:
+          "name address description eIndexType ePrice wIndexType wPrice amenities",
+      })
+      .lean();
 
     if (!post) {
       return res.status(404).json({
@@ -67,38 +87,73 @@ const detail = async (req, res) => {
       });
     }
 
-    if (post.landlordId) {
-      const landlord = await mongoose
-        .model("Account")
-        .findById(post.landlordId, "fullName phone email avatar")
-        .lean();
-      post.landlordId = landlord;
+    if (post.landlordId && post.landlordId.userInfo) {
+      post.landlordId.fullName = post.landlordId.userInfo.fullName;
+      post.landlordId.phoneNumber = post.landlordId.userInfo.phoneNumber;
+      delete post.landlordId.userInfo;
     }
 
-    if (post.buildingId && mongoose.Types.ObjectId.isValid(post.buildingId)) {
-      try {
-        const building = await mongoose
-          .model("Building")
-          .findById(post.buildingId)
-          .select(
-            "name address description eIndexType ePrice wIndexType wPrice amenities"
-          )
-          .lean();
-        post.buildingId = building;
-      } catch (buildingErr) {
-        post.buildingId = null;
-      }
+    let roomList = [];
+    if (post.roomIds?.length) {
+      const Room = mongoose.model("Room");
+      roomList = await Room.find({
+        _id: { $in: post.roomIds },
+        isDeleted: false,
+      })
+        .select("_id name")
+        .lean();
     }
 
     res.json({
       success: true,
-      data: post,
+      data: {
+        ...post,
+        rooms: roomList,
+      },
     });
   } catch (err) {
+    console.error("Error in post detail:", err);
     res.status(500).json({
       success: false,
       message: "Lỗi hệ thống khi lấy chi tiết bài đăng!",
     });
   }
 };
-module.exports = { list, detail };
+
+const getRoomDetailByTenant = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "ID phòng không hợp lệ!" });
+    }
+
+    const room = await Room.findOne({
+      _id: roomId,
+      isDeleted: false,
+    })
+      .populate("buildingId", "name address ePrice wPrice eIndexType wIndexType")
+      .lean();
+
+    if (!room) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy phòng!" });
+    }
+
+    res.json({ success: true, data: room });
+  } catch (err) {
+    console.error("Error getRoomDetail:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Lỗi hệ thống khi lấy chi tiết phòng!" });
+  }
+};
+
+module.exports = {
+  getAllPostsByTenant,
+  getDetailPostByTenant,
+  getRoomDetailByTenant,
+};

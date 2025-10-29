@@ -5,7 +5,7 @@ const postController = require("../../controllers/User/PostController");
  * @swagger
  * tags:
  *   - name: Post for User
- *     description: API post by User
+ *     description: API dành cho người thuê xem bài đăng trọ
  */
 
 /**
@@ -58,48 +58,39 @@ const postController = require("../../controllers/User/PostController");
  *                       title:
  *                         type: string
  *                         example: Phòng trọ 25m² gần ĐH Bách Khoa
- *                       description:
- *                         type: string
- *                         description: Mô tả ở dạng HTML
- *                         example: |
- *                           <p><b>✨ Phòng trọ mini</b> sạch sẽ, có cửa sổ thoáng mát.</p>
- *                           <p><b>Giá:</b> 3.000.000đ/tháng</p>
  *                       address:
  *                         type: string
  *                         example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
- *                       area:
- *                         type: number
- *                         example: 25
- *                       price:
- *                         type: number
- *                         example: 3000000
  *                       images:
  *                         type: array
  *                         items:
  *                           type: string
- *                           example: https://example.com/image1.jpg
+ *                       priceMin:
+ *                         type: number
+ *                         example: 2500000
+ *                       priceMax:
+ *                         type: number
+ *                         example: 3500000
+ *                       areaMin:
+ *                         type: number
+ *                         example: 20
+ *                       areaMax:
+ *                         type: number
+ *                         example: 30
  *                       landlordId:
  *                         type: object
  *                         properties:
  *                           fullName:
  *                             type: string
- *                             example: Nguyễn Văn A
  *                           phone:
  *                             type: string
- *                             example: 0909123456
  *                       buildingId:
  *                         type: object
  *                         properties:
  *                           name:
  *                             type: string
- *                             example: KTX Bách Khoa
  *                           address:
  *                             type: string
- *                             example: 12A Tô Hiến Thành, Quận 10
- *                       createdAt:
- *                         type: string
- *                         format: date-time
- *                         example: 2025-10-22T13:00:00.000Z
  *                 pagination:
  *                   type: object
  *                   properties:
@@ -117,14 +108,6 @@ const postController = require("../../controllers/User/PostController");
  *                       example: 6
  *       500:
  *         description: Lỗi hệ thống khi lấy danh sách bài đăng
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Lỗi hệ thống khi lấy danh sách bài đăng!
  */
 
 /**
@@ -133,8 +116,7 @@ const postController = require("../../controllers/User/PostController");
  *   get:
  *     summary: Lấy chi tiết bài đăng trọ
  *     description: |
- *       Trả về thông tin chi tiết của một bài đăng có trạng thái **active**, chưa bị xóa và không phải bản nháp.
- *       Nếu bài đăng không thuộc tòa nhà cụ thể, buildingId sẽ trả về null.
+ *       Trả về thông tin chi tiết của bài đăng bao gồm chủ trọ, tòa nhà, và danh sách phòng có trong bài đăng.
  *     tags: [Post for User]
  *     parameters:
  *       - in: path
@@ -160,24 +142,12 @@ const postController = require("../../controllers/User/PostController");
  *                   properties:
  *                     _id:
  *                       type: string
- *                       example: 6717e5c3f1a8b4e567123abc
  *                     title:
  *                       type: string
- *                       example: Phòng trọ 25m² gần ĐH Bách Khoa
- *                     slug:
- *                       type: string
- *                       example: phong-tro-25m2-gan-dh-bach-khoa
  *                     description:
  *                       type: string
  *                     address:
  *                       type: string
- *                       example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
- *                     area:
- *                       type: number
- *                       example: 25
- *                     price:
- *                       type: number
- *                       example: 3000000
  *                     images:
  *                       type: array
  *                       items:
@@ -185,49 +155,129 @@ const postController = require("../../controllers/User/PostController");
  *                     landlordId:
  *                       type: object
  *                       properties:
- *                         _id:
- *                           type: string
  *                         fullName:
  *                           type: string
  *                         phone:
  *                           type: string
  *                         email:
  *                           type: string
+ *                         avatar:
+ *                           type: string
  *                     buildingId:
- *                       oneOf:
- *                         - type: object
- *                           properties:
- *                             _id:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                         address:
+ *                           type: string
+ *                         description:
+ *                           type: string
+ *                         eIndexType:
+ *                           type: string
+ *                           enum: [byNumber, included]
+ *                         ePrice:
+ *                           type: number
+ *                         wIndexType:
+ *                           type: string
+ *                           enum: [byNumber, byPerson, included]
+ *                         wPrice:
+ *                           type: number
+ *                     availableRooms:
+ *                       type: array
+ *                       description: Danh sách phòng được đăng trong bài (chỉ phòng còn trống)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           area:
+ *                             type: number
+ *                           price:
+ *                             type: number
+ *                           floorNumber:
+ *                             type: integer
+ *                           description:
+ *                             type: string
+ *                           images:
+ *                             type: array
+ *                             items:
  *                               type: string
- *                             name:
- *                               type: string
- *                             address:
- *                               type: string
- *                             description:
- *                               type: string
- *                             eIndexType:
- *                               type: string
- *                               enum: [byNumber, included]
- *                             ePrice:
- *                               type: number
- *                             wIndexType:
- *                               type: string
- *                               enum: [byNumber, byPerson, included]
- *                             wPrice:
- *                               type: number
- *                         - type: "null"
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- *                     updatedAt:
- *                       type: string
- *                       format: date-time
  *       404:
- *         description: Bài đăng không tồn tại hoặc không có quyền truy cập
+ *         description: Bài đăng không tồn tại
  *       500:
  *         description: Lỗi hệ thống khi lấy chi tiết bài đăng
  */
-router.get("/", postController.list);
-router.get("/:id", postController.detail);
+
+/**
+ * @swagger
+ * /posts/rooms/{roomId}:
+ *   get:
+ *     summary: Xem chi tiết phòng trọ thuộc bài đăng
+ *     description: |
+ *       Trả về thông tin chi tiết của một phòng cụ thể (bao gồm thông tin tòa nhà).
+ *     tags: [Post for User]
+ *     parameters:
+ *       - in: path
+ *         name: roomId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: 6717a244b8234d2a1b7e3f45
+ *         description: ID của phòng cần xem chi tiết
+ *     responses:
+ *       200:
+ *         description: Lấy chi tiết phòng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     price:
+ *                       type: number
+ *                     area:
+ *                       type: number
+ *                     description:
+ *                       type: string
+ *                     images:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     buildingId:
+ *                       type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                         address:
+ *                           type: string
+ *                         ePrice:
+ *                           type: number
+ *                         wPrice:
+ *                           type: number
+ *                         eIndexType:
+ *                           type: string
+ *                         wIndexType:
+ *                           type: string
+ *       404:
+ *         description: Không tìm thấy phòng
+ *       500:
+ *         description: Lỗi hệ thống khi lấy chi tiết phòng
+ */
+
+router.get("/", postController.getAllPostsByTenant);
+router.get("/:id", postController.getDetailPostByTenant);
+router.get("/rooms/:roomId", postController.getRoomDetailByTenant);
 
 module.exports = router;
