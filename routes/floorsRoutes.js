@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const FloorCtrl = require("../controllers/FloorController");
 const checkSubscription = require("../middleware/checkSubscription");
-
+const loadFloorAndCheckParent = require("../middleware/loadFloorAndCheckParent");
 /**
  * @swagger
  * tags:
@@ -79,6 +79,7 @@ const checkSubscription = require("../middleware/checkSubscription");
 router.get(
   "/",
   checkAuthorize(["admin", "landlord", "resident"]),
+  loadFloorAndCheckParent,
   FloorCtrl.list
 );
 
@@ -159,6 +160,7 @@ router.get(
 router.get(
   "/:id",
   checkAuthorize(["admin", "landlord", "resident"]),
+  loadFloorAndCheckParent,
   FloorCtrl.getById
 );
 
@@ -280,6 +282,7 @@ router.get(
 router.post(
   "/",
   checkAuthorize(["admin", "landlord"]),
+  loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.create
 );
@@ -451,6 +454,7 @@ router.post(
 router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord"]),
+  loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.quickCreate
 );
@@ -573,6 +577,7 @@ router.post(
 router.put(
   "/:id",
   checkAuthorize(["admin", "landlord"]),
+  loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.update
 );
@@ -753,6 +758,7 @@ router.put(
 router.delete(
   "/:id/soft",
   checkAuthorize(["admin", "landlord"]),
+  loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.softDelete
 );
