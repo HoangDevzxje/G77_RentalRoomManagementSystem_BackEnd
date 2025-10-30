@@ -4,7 +4,7 @@ const userInformationSchema = new mongoose.Schema({
     fullName: { type: String },
     phoneNumber: { type: String },
     dob: { type: Date },
-    gender: { type: String, enum: ["male", "female", "other"] },
+    gender: { type: String },
 
     address: [
         {

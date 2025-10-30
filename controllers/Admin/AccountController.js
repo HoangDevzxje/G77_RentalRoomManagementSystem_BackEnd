@@ -34,6 +34,28 @@ const getAllUsers = async (req, res) => {
     }
 };
 
+const getAccountInfo = async (req, res) => {
+    try {
+        const accountId = req.params.id;
+
+        const account = await Account.findById(accountId)
+            .select("-password -accessToken -refreshToken")
+            .populate("userInfo"); 
+
+        if (!account) {
+            return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
+        }
+
+        res.status(200).json({
+            message: "Lấy thông tin cá nhân thành công!",
+            user: account
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi server!", error: error.message });
+    }
+};
+
+
 const updateRole = async (req, res) => {
     try {
         const { id } = req.params;
@@ -74,5 +96,6 @@ const channgStatusUser = async (req, res) => {
 module.exports = {
     getAllUsers,
     updateRole,
-    channgStatusUser
+    channgStatusUser,
+    getAccountInfo
 };

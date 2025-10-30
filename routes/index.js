@@ -19,7 +19,7 @@ const routes = (app) => {
   app.use("/floors", floorRoutes);
   app.use("/rooms", roomRoutes);
   app.use("/subscriptions", subscriptionRoutes);
-  app.use("/admin", packageRoutes);
+  app.use("/admin/packages", packageRoutes);
   app.use("/furnitures", furnitureRoutes);
   app.use("/users", userRoutes);
   app.use("/regulations", regulationRoutes);

@@ -11,15 +11,27 @@ const postSchema = new mongoose.Schema(
         buildingId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Building',
-            default: null,
+            required: true,
         },
+        roomIds: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Room',
+            },
+        ],
+
         title: { type: String, required: true, trim: true },
         slug: { type: String, unique: true },
         description: { type: String, required: true },
         address: { type: String, required: true },
-        price: { type: Number, required: true, min: 0 },
-        area: { type: Number, required: true, min: 1 },
+
+        priceMin: { type: Number, required: true, min: 0 },
+        priceMax: { type: Number, required: true, min: 0 },
+        areaMin: { type: Number, required: true, min: 1 },
+        areaMax: { type: Number, required: true, min: 1 },
+
         images: [{ type: String }],
+
         isDraft: { type: Boolean, default: false },
         isDeleted: { type: Boolean, default: false },
 

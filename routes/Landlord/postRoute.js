@@ -1,52 +1,92 @@
 const router = require('express').Router();
 const postController = require("../../controllers/Landlord/PostController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const { uploadMultiple, uploadSingle } = require("../../configs/cloudinary");
-
+const { uploadMultiple } = require("../../configs/cloudinary");
 
 /**
  * @swagger
  * tags:
  *   - name: Post by Landlord
- *     description: API quản lý bài đăng cho landlord
+ *     description: API quản lý bài đăng của chủ trọ
  */
 
 /**
  * @swagger
  * /landlords/posts/ai-generate:
  *   post:
- *     summary: Gợi ý nội dung mô tả bài đăng bằng AI
- *     description: Sinh phần mô tả hấp dẫn cho bài đăng cho thuê trọ dựa trên các thông tin cơ bản (title, price, area, address). Kết quả trả về ở dạng HTML có thể hiển thị trực tiếp trên trang.
+ *     summary: Gợi ý mô tả bài đăng bằng AI
+ *     description: Sinh phần mô tả hấp dẫn cho bài đăng cho thuê phòng trọ. Kết quả trả về ở dạng HTML có thể hiển thị trực tiếp trong trình duyệt hoặc trình soạn thảo.
  *     tags: [Post by Landlord]
  *     security:
  *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - title
- *               - price
- *               - area
- *               - address
- *             properties:
- *               title:
- *                 type: string
- *                 example: Phòng trọ gần ĐH Bách Khoa, sạch đẹp, an ninh
- *               price:
- *                 type: number
- *                 example: 3500000
- *               area:
- *                 type: number
- *                 example: 25
- *               address:
- *                 type: string
- *                 example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
+*         application/json:
+*           schema:
+*             type: object
+*             required:
+*               - title
+*               - address
+*             properties:
+*               title:
+*                 type: string
+*                 example: Phòng trọ mini gần ĐH Bách Khoa
+*               address:
+*                 type: string
+*                 example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
+*               minPrice:
+*                 type: number
+*                 example: 3000000
+*               maxPrice:
+*                 type: number
+*                 example: 4500000
+*               minArea:
+*                 type: number
+*                 example: 20
+*               maxArea:
+*                 type: number
+*                 example: 30
+*               buildingInfo:
+*                 type: object
+*                 properties:
+*                   eIndexType:
+*                     type: string
+*                     example: byNumber
+*                   ePrice:
+*                     type: number
+*                     example: 3500
+*                   wIndexType:
+*                     type: string
+*                     example: byPerson
+*                   wPrice:
+*                     type: number
+*                     example: 15000
+*                   services:
+*                     type: array
+*                     items:
+*                       type: object
+*                       properties:
+*                         label:
+*                           type: string
+*                           example: Internet tốc độ cao
+*                         fee:
+*                           type: number
+*                           example: 100000
+*                   regulations:
+*                     type: array
+*                     items:
+*                       type: object
+*                       properties:
+*                         title:
+*                           type: string
+*                           example: Giờ ra vào
+*                         description:
+*                           type: string
+*                           example: Tự do 24/24, có khóa vân tay
  *     responses:
  *       200:
- *         description: Thành công — Trả về mô tả được AI sinh ra ở dạng HTML
+ *         description: Mô tả được sinh ra bởi AI
  *         content:
  *           application/json:
  *             schema:
@@ -54,45 +94,43 @@ const { uploadMultiple, uploadSingle } = require("../../configs/cloudinary");
  *               properties:
  *                 success:
  *                   type: boolean
- *                   example: true
  *                 data:
  *                   type: object
  *                   properties:
  *                     aiDescription:
  *                       type: string
- *                       example: |
- *                         <p><b>🏠 Phòng trọ cao cấp</b> gần <i>ĐH Bách Khoa</i>, diện tích 25m², sạch sẽ, thoáng mát.</p>
- *                         <p>💡 Trang bị đầy đủ nội thất, an ninh đảm bảo, giờ giấc tự do.</p>
- *                         <p><b>Giá thuê:</b> 3.500.000đ/tháng</p>
- *       400:
- *         description: Thiếu thông tin yêu cầu
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Thiếu thông tin cần thiết!
- *       500:
- *         description: Lỗi hệ thống hoặc lỗi AI
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Lỗi khi gọi AI
+ *                       example: "<p>🏠 Phòng trọ đầy đủ nội thất, gần ĐH Bách Khoa...</p>"
  */
 router.post("/posts/ai-generate", checkAuthorize(["landlord"]), postController.generateDescription);
 
 /**
  * @swagger
+ * /landlords/posts/{buildingId}/info:
+ *   get:
+ *     summary: Lấy thông tin chi tiết của tòa nhà
+ *     description: "Trả về thông tin chi tiết của tòa nhà gồm: danh sách phòng trống, dịch vụ, nội quy và giá điện nước."
+ *     tags: [Post by Landlord]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: buildingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của tòa nhà
+ *     responses:
+ *       200:
+ *         description: Thông tin chi tiết của tòa nhà
+ */
+router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), postController.getBuildingInfo);
+
+/**
+ * @swagger
  * /landlords/posts:
  *   post:
- *     summary: Tạo bài đăng cho thuê trọ
- *     description: Tạo một bài đăng mới. Chủ trọ có thể nhập thủ công hoặc dùng phần mô tả đã được AI sinh ra. Hỗ trợ upload nhiều ảnh bằng multipart/form-data.
+ *     summary: Tạo bài đăng mới
+ *     description: Tạo bài đăng cho thuê phòng trọ, có thể chọn nhiều phòng và upload nhiều ảnh.
  *     tags: [Post by Landlord]
  *     security:
  *       - BearerAuth: []
@@ -102,100 +140,47 @@ router.post("/posts/ai-generate", checkAuthorize(["landlord"]), postController.g
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required:
- *               - title
- *               - description
- *               - price
- *               - area
- *               - address
+ *             required: [title, description, priceMin, priceMax, areaMin, areaMax, address, buildingId, roomIds]
  *             properties:
  *               title:
  *                 type: string
- *                 example: Phòng trọ mini full nội thất Quận 10
+ *                 example: Cho thuê phòng tầng 3, full nội thất
  *               description:
  *                 type: string
- *                 description: Mô tả ở dạng HTML (có thể được tạo bởi AI)
- *                 example: |
- *                   <p><b>✨ Phòng trọ mini</b> mới xây, diện tích 25m², trang bị đầy đủ nội thất.</p>
- *                   <p>🚿 Toilet riêng, có cửa sổ thoáng mát. <i>Phù hợp sinh viên và nhân viên văn phòng.</i></p>
- *                   <p><b>💰 Giá thuê:</b> 3.500.000đ/tháng</p>
- *               price:
+ *                 description: Nội dung mô tả ở dạng HTML
+ *               buildingId:
+ *                 type: string
+ *               roomIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["6719b244b8234d2a1b7e3f45", "6719b244b8234d2a1b7e3f46"]
+ *               priceMin:
  *                 type: number
- *                 example: 3500000
- *               area:
+ *                 example: 2500000
+ *               priceMax:
+ *                 type: number
+ *                 example: 2800000
+ *               areaMin:
+ *                 type: number
+ *                 example: 20
+ *               areaMax:
  *                 type: number
  *                 example: 25
  *               address:
  *                 type: string
  *                 example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
- *               buildingId:
- *                 type: string
- *                 example: 6717a244b8234d2a1b7e3f45
  *               isDraft:
  *                 type: boolean
  *                 example: false
  *               images:
  *                 type: array
- *                 description: Danh sách ảnh upload (có thể chọn nhiều ảnh)
  *                 items:
  *                   type: string
  *                   format: binary
  *     responses:
  *       201:
  *         description: Tạo bài đăng thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                       example: 6717a54acb312c9c4e7d22b3
- *                     title:
- *                       type: string
- *                       example: Phòng trọ mini full nội thất Quận 10
- *                     slug:
- *                       type: string
- *                       example: phong-tro-mini-full-noi-that-quan-10
- *                     address:
- *                       type: string
- *                       example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
- *                     price:
- *                       type: number
- *                       example: 3500000
- *                     area:
- *                       type: number
- *                       example: 25
- *                     status:
- *                       type: string
- *                       enum: [active, hidden, expired]
- *                       example: active
- *       400:
- *         description: Thiếu dữ liệu cần thiết
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Thiếu thông tin bài đăng!
- *       500:
- *         description: Lỗi hệ thống
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Lỗi hệ thống!
  */
 router.post("/posts", checkAuthorize(["landlord"]), uploadMultiple, postController.createPost);
 
@@ -203,14 +188,102 @@ router.post("/posts", checkAuthorize(["landlord"]), uploadMultiple, postControll
  * @swagger
  * /landlords/posts:
  *   get:
- *     summary: Lấy danh sách bài đăng của chủ trọ
- *     description: Trả về danh sách tất cả bài đăng (chưa bị xóa mềm) của chủ trọ đang đăng nhập.
+ *     summary: Lấy danh sách bài đăng của chủ trọ (có phân trang)
  *     tags: [Post by Landlord]
  *     security:
  *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 10
  *     responses:
  *       200:
- *         description: Danh sách bài đăng của chủ trọ
+ *         description: Danh sách bài đăng có phân trang
+ */
+router.get("/posts", checkAuthorize(["landlord"]), postController.listByLandlord);
+
+/**
+ * @swagger
+ * /landlords/posts/{id}:
+ *   get:
+ *     summary: Lấy chi tiết bài đăng
+ *     description: Trả về toàn bộ thông tin bài đăng, kèm thông tin tòa nhà, phòng, dịch vụ, nội quy.
+ *     tags: [Post by Landlord]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID bài đăng
+ *     responses:
+ *       200:
+ *         description: Thông tin chi tiết bài đăng
+ */
+router.get("/posts/:id", checkAuthorize(["landlord"]), postController.getPostDetail);
+
+/**
+ * @swagger
+ * /landlords/posts/{id}:
+ *   put:
+ *     summary: Cập nhật bài đăng
+ *     description: Cập nhật thông tin bài đăng (tiêu đề, mô tả, địa chỉ, tòa nhà, phòng, hình ảnh...). Nếu thay đổi danh sách phòng thì hệ thống sẽ tự động cập nhật lại giá và diện tích min/max dựa trên các phòng đã chọn.
+ *     tags: [Post by Landlord]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: ID của bài đăng cần cập nhật
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: Cập nhật bài đăng phòng trọ quận 10
+ *               description:
+ *                 type: string
+ *                 example: <p>Phòng sạch, mới sơn, có gác lửng, gần chợ Hòa Hưng.</p>
+ *               address:
+ *                 type: string
+ *                 example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
+ *               buildingId:
+ *                 type: string
+ *                 example: 6717a244b8234d2a1b7e3f45
+ *               roomIds:
+ *                 type: array
+ *                 description: Danh sách ID các phòng được liên kết với bài đăng
+ *                 items:
+ *                   type: string
+ *                 example: ["6717a244b8234d2a1b7e3f45", "6717a244b8234d2a1b7e3f46"]
+ *               isDraft:
+ *                 type: boolean
+ *                 example: false
+ *               images:
+ *                 type: array
+ *                 description: Ảnh mới (nếu có). Có thể upload nhiều ảnh cùng lúc.
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *     responses:
+ *       200:
+ *         description: Cập nhật bài đăng thành công
  *         content:
  *           application/json:
  *             schema:
@@ -219,48 +292,17 @@ router.post("/posts", checkAuthorize(["landlord"]), uploadMultiple, postControll
  *                 success:
  *                   type: boolean
  *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Cập nhật bài đăng thành công!
  *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       _id:
- *                         type: string
- *                         example: 6717e5c3f1a8b4e567123abc
- *                       title:
- *                         type: string
- *                         example: Phòng trọ 25m2 giá 2 triệu/tháng tại Quận 7
- *                       slug:
- *                         type: string
- *                         example: phong-tro-25m2-gia-2-trieu-thang-tai-quan-7
- *                       description:
- *                         type: string
- *                         example: Phòng sạch sẽ, có gác, gần ĐH Tôn Đức Thắng.
- *                       price:
- *                         type: number
- *                         example: 2000000
- *                       area:
- *                         type: number
- *                         example: 25
- *                       address:
- *                         type: string
- *                         example: 123 Nguyễn Văn Linh, Quận 7, TP.HCM
- *                       isDraft:
- *                         type: boolean
- *                         example: false
- *                       isDeleted:
- *                         type: boolean
- *                         example: false
- *                       createdAt:
- *                         type: string
- *                         format: date-time
- *                         example: 2025-10-22T13:00:00.000Z
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
+ *                   $ref: '#/components/schemas/Post'
+ *       404:
+ *         description: Không tìm thấy bài đăng
  *       500:
  *         description: Lỗi server
  */
-router.get("/posts", checkAuthorize(["landlord"]), postController.listByLandlord);
+router.put("/posts/:id", checkAuthorize(["landlord"]), uploadMultiple, postController.updatePost);
 
 /**
  * @swagger
@@ -275,38 +317,12 @@ router.get("/posts", checkAuthorize(["landlord"]), postController.listByLandlord
  *       - in: path
  *         name: id
  *         required: true
- *         description: ID của bài đăng cần xóa mềm
  *         schema:
  *           type: string
- *           example: 6717e5c3f1a8b4e567123abc
  *     responses:
  *       200:
  *         description: Xóa mềm thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Xóa bài đăng (mềm) thành công!
- *       404:
- *         description: Không tìm thấy bài đăng
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Không tìm thấy bài đăng!
- *       401:
- *         description: Token không hợp lệ hoặc hết hạn
- *       500:
- *         description: Lỗi server
  */
 router.patch("/posts/:id/soft-delete", checkAuthorize(["landlord"]), postController.softDelete);
+
 module.exports = router;

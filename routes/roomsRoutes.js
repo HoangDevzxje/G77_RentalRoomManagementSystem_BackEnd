@@ -37,8 +37,8 @@ const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
  *         name: status
  *         schema:
  *           type: string
- *           enum: [available, occupied, maintenance]
- *         description: Trạng thái phòng (available, occupied, maintenance)
+ *           enum: [available, rented, maintenance]
+ *         description: Trạng thái phòng (available - có sẵn, rented - đã thuê, maintenance - bảo trì)
  *         example: available
  *       - in: query
  *         name: q
@@ -58,6 +58,22 @@ const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
  *           type: integer
  *           default: 20
  *         description: Số lượng phòng mỗi trang
+ *       - in: query
+ *         name: includeDeleted
+ *         schema:
+ *           type: string
+ *           enum: ["true", "false"]
+ *           default: "false"
+ *         description: Bao gồm cả phòng đã xóa mềm (true/false)
+ *         example: false
+ *       - in: query
+ *         name: onlyActive
+ *         schema:
+ *           type: string
+ *           enum: ["true", "false"]
+ *           default: "false"
+ *         description: Chỉ lấy phòng đang hoạt động (true/false)
+ *         example: false
  *     responses:
  *       200:
  *         description: Danh sách phòng
@@ -75,14 +91,41 @@ const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
  *                         type: string
  *                         example: 68e3fe79ec7f3071215fd042
  *                       buildingId:
- *                         type: string
- *                         example: 68e3fe79ec7f3071215fd040
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd040
+ *                           name:
+ *                             type: string
+ *                             example: Tòa nhà A
+ *                           address:
+ *                             type: string
+ *                             example: 123 Đường ABC
+ *                           description:
+ *                             type: string
+ *                             example: Tòa nhà cao cấp
+ *                           ePrice:
+ *                             type: number
+ *                             example: 3000
+ *                           wPrice:
+ *                             type: number
+ *                             example: 15000
  *                       floorId:
- *                         type: string
- *                         example: 68e3fe79ec7f3071215fd041
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: 68e3fe79ec7f3071215fd041
+ *                           floorNumber:
+ *                             type: integer
+ *                             example: 1
+ *                           label:
+ *                             type: string
+ *                             example: Tầng 1
  *                       roomNumber:
  *                         type: string
- *                         example: 101
+ *                         example: "101"
  *                       area:
  *                         type: number
  *                         example: 25.5
@@ -94,11 +137,22 @@ const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
  *                         example: 4
  *                       status:
  *                         type: string
- *                         enum: [available, occupied, maintenance]
+ *                         enum: [available, rented, maintenance]
  *                         example: available
  *                       description:
  *                         type: string
  *                         example: Phòng 1 phòng ngủ, có ban công
+ *                       images:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         example: ["https://res.cloudinary.com/.../room1.jpg"]
+ *                       active:
+ *                         type: boolean
+ *                         example: true
+ *                       isDeleted:
+ *                         type: boolean
+ *                         example: false
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -167,14 +221,47 @@ router.get(
  *                   type: string
  *                   example: 68e3fe79ec7f3071215fd042
  *                 buildingId:
- *                   type: string
- *                   example: 68e3fe79ec7f3071215fd040
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: 68e3fe79ec7f3071215fd040
+ *                     name:
+ *                       type: string
+ *                       example: Tòa nhà A
+ *                     address:
+ *                       type: string
+ *                       example: 123 Đường ABC
+ *                     description:
+ *                       type: string
+ *                       example: Tòa nhà cao cấp
+ *                     ePrice:
+ *                       type: number
+ *                       example: 3000
+ *                     wPrice:
+ *                       type: number
+ *                       example: 15000
+ *                     eIndexType:
+ *                       type: string
+ *                       example: direct
+ *                     wIndexType:
+ *                       type: string
+ *                       example: direct
  *                 floorId:
- *                   type: string
- *                   example: 68e3fe79ec7f3071215fd041
+ *                   type: object
+ *                   properties:
+ *                     _id:
+ *                       type: string
+ *                       example: 68e3fe79ec7f3071215fd041
+ *                     floorNumber:
+ *                       type: integer
+ *                       example: 1
+ *                     label:
+ *                       type: string
+ *                       example: Tầng 1
  *                 roomNumber:
  *                   type: string
- *                   example: 101
+ *                   example: "101"
  *                 area:
  *                   type: number
  *                   example: 25.5
@@ -186,11 +273,22 @@ router.get(
  *                   example: 4
  *                 status:
  *                   type: string
- *                   enum: [available, occupied, maintenance]
+ *                   enum: [available, rented, maintenance]
  *                   example: available
  *                 description:
  *                   type: string
  *                   example: Phòng 1 phòng ngủ, có ban công
+ *                 images:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["https://res.cloudinary.com/.../room1.jpg"]
+ *                 active:
+ *                   type: boolean
+ *                   example: true
+ *                 isDeleted:
+ *                   type: boolean
+ *                   example: false
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -205,8 +303,8 @@ router.get(
  *                 message:
  *                   type: string
  *                   example: Token không hợp lệ hoặc đã hết hạn!
- *       404:
- *         description: Không tìm thấy phòng
+ *       403:
+ *         description: Không có quyền truy cập
  *         content:
  *           application/json:
  *             schema:
@@ -214,7 +312,17 @@ router.get(
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Không tìm thấy phòng!
+ *                   example: Không có quyền
+ *       404:
+ *         description: Không tìm thấy phòng hoặc tòa nhà
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tòa nhà không tồn tại
  *       500:
  *         description: Lỗi hệ thống
  *         content:
@@ -237,49 +345,34 @@ router.get(
  * /rooms:
  *   post:
  *     summary: Tạo phòng mới
- *     description: Tạo một phòng mới trong tòa nhà và tầng được chỉ định (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
+ *     description: Tạo một phòng mới trong tòa nhà và tầng được chỉ định (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active). Hỗ trợ upload ảnh kèm theo.
  *     tags: [Room]
  *     security:
  *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
- *               - buildingId
- *               - floorId
- *               - roomNumber
- *               - area
- *               - price
- *               - maxTenants
+ *               - data
  *             properties:
- *               buildingId:
+ *               data:
  *                 type: string
- *                 example: 68e3fe79ec7f3071215fd040
- *               floorId:
- *                 type: string
- *                 example: 68e3fe79ec7f3071215fd041
- *               roomNumber:
- *                 type: string
- *                 example: 101
- *               area:
- *                 type: number
- *                 example: 25.5
- *               price:
- *                 type: number
- *                 example: 3000000
- *               maxTenants:
- *                 type: integer
- *                 example: 4
- *               status:
- *                 type: string
- *                 enum: [available, occupied, maintenance]
- *                 example: available
- *               description:
- *                 type: string
- *                 example: Phòng 1 phòng ngủ, có ban công
+ *                 description: JSON string chứa thông tin phòng
+ *                 example: '{"buildingId":"68e3fe79ec7f3071215fd040","floorId":"68e3fe79ec7f3071215fd041","roomNumber":"101","area":25.5,"price":3000000,"maxTenants":4,"status":"available","description":"Phòng 1 phòng ngủ, có ban công"}'
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Danh sách ảnh phòng (tùy chọn)
+ *           encoding:
+ *             data:
+ *               contentType: application/json
+ *             images:
+ *               contentType: image/jpeg, image/png, image/webp
  *     responses:
  *       201:
  *         description: Phòng được tạo thành công
@@ -299,7 +392,7 @@ router.get(
  *                   example: 68e3fe79ec7f3071215fd041
  *                 roomNumber:
  *                   type: string
- *                   example: 101
+ *                   example: "101"
  *                 area:
  *                   type: number
  *                   example: 25.5
@@ -311,17 +404,22 @@ router.get(
  *                   example: 4
  *                 status:
  *                   type: string
- *                   enum: [available, occupied, maintenance]
+ *                   enum: [available, rented, maintenance]
  *                   example: available
  *                 description:
  *                   type: string
  *                   example: Phòng 1 phòng ngủ, có ban công
+ *                 images:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["https://res.cloudinary.com/.../room1.jpg"]
  *                 createdAt:
  *                   type: string
  *                   format: date-time
  *                   example: 2025-10-07T10:50:00.000Z
  *       400:
- *         description: Dữ liệu không hợp lệ hoặc floorId không thuộc buildingId
+ *         description: Dữ liệu không hợp lệ
  *         content:
  *           application/json:
  *             schema:
@@ -329,19 +427,9 @@ router.get(
  *               properties:
  *                 message:
  *                   type: string
- *                   example: floorId không thuộc buildingId đã chọn
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *                   example: price phải là số >= 0
  *       403:
- *         description: Không có quyền, chưa mua gói, gói hết hạn, hoặc vượt giới hạn phòng
+ *         description: Không có quyền hoặc tòa/tầng tạm dừng hoạt động
  *         content:
  *           application/json:
  *             schema:
@@ -349,12 +437,7 @@ router.get(
  *               properties:
  *                 message:
  *                   type: string
- *                   enum:
- *                     - Bạn không có quyền thực hiện hành động này!
- *                     - Bạn chưa mua gói dịch vụ!
- *                     - Gói dịch vụ đã hết hạn!
- *                     - Vượt quá giới hạn phòng. Vui lòng nâng cấp gói!
- *                   example: Bạn không có quyền thực hiện hành động này!
+ *                   example: Tòa nhà đang tạm dừng hoạt động
  *       404:
  *         description: Không tìm thấy tòa nhà hoặc tầng
  *         content:
@@ -364,7 +447,17 @@ router.get(
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Không tìm thấy tòa nhà!
+ *                   example: Không tìm thấy tòa nhà
+ *       409:
+ *         description: Trùng số phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Trùng số phòng trong tòa (unique {buildingId, roomNumber})
  *       500:
  *         description: Lỗi hệ thống
  *         content:
@@ -379,7 +472,7 @@ router.get(
 router.post(
   "/",
   checkAuthorize(["admin", "landlord"]),
-  checkBuildingActive,
+  checkSubscription,
   uploadMultiple,
   RoomCtrl.create
 );
@@ -406,8 +499,8 @@ router.post(
  * @swagger
  * /rooms/{id}:
  *   put:
- *     summary: Cập nhật phòng
- *     description: Cập nhật thông tin phòng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
+ *     summary: Cập nhật thông tin phòng
+ *     description: Cập nhật thông tin của một phòng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Room]
  *     security:
  *       - BearerAuth: []
@@ -427,26 +520,23 @@ router.post(
  *             properties:
  *               roomNumber:
  *                 type: string
- *                 example: 101
+ *                 example: "102"
  *               area:
  *                 type: number
- *                 example: 25.5
+ *                 example: 30
  *               price:
  *                 type: number
- *                 example: 3000000
+ *                 example: 3500000
  *               maxTenants:
  *                 type: integer
- *                 example: 4
+ *                 example: 5
  *               status:
  *                 type: string
- *                 enum: [available, occupied, maintenance]
- *                 example: available
+ *                 enum: [available, rented, maintenance]
+ *                 example: rented
  *               description:
  *                 type: string
- *                 example: Phòng 1 phòng ngủ, có ban công
- *               floorId:
- *                 type: string
- *                 example: 68e3fe79ec7f3071215fd041
+ *                 example: Phòng 2 phòng ngủ, có ban công rộng
  *     responses:
  *       200:
  *         description: Phòng được cập nhật thành công
@@ -455,40 +545,11 @@ router.post(
  *             schema:
  *               type: object
  *               properties:
- *                 _id:
+ *                 message:
  *                   type: string
- *                   example: 68e3fe79ec7f3071215fd042
- *                 buildingId:
- *                   type: string
- *                   example: 68e3fe79ec7f3071215fd040
- *                 floorId:
- *                   type: string
- *                   example: 68e3fe79ec7f3071215fd041
- *                 roomNumber:
- *                   type: string
- *                   example: 101
- *                 area:
- *                   type: number
- *                   example: 25.5
- *                 price:
- *                   type: number
- *                   example: 3000000
- *                 maxTenants:
- *                   type: integer
- *                   example: 4
- *                 status:
- *                   type: string
- *                   enum: [available, occupied, maintenance]
- *                   example: available
- *                 description:
- *                   type: string
- *                   example: Phòng 1 phòng ngủ, có ban công
- *                 createdAt:
- *                   type: string
- *                   format: date-time
- *                   example: 2025-10-07T10:50:00.000Z
+ *                   example: Cập nhật phòng thành công
  *       400:
- *         description: Dữ liệu không hợp lệ hoặc tầng không thuộc cùng tòa nhà
+ *         description: Dữ liệu không hợp lệ
  *         content:
  *           application/json:
  *             schema:
@@ -496,19 +557,9 @@ router.post(
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Tầng mới không thuộc cùng tòa nhà
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *                   example: price phải là số >= 0
  *       403:
- *         description: Không có quyền, chưa mua gói, gói hết hạn, hoặc vượt giới hạn phòng
+ *         description: Không có quyền
  *         content:
  *           application/json:
  *             schema:
@@ -516,14 +567,9 @@ router.post(
  *               properties:
  *                 message:
  *                   type: string
- *                   enum:
- *                     - Bạn không có quyền thực hiện hành động này!
- *                     - Bạn chưa mua gói dịch vụ!
- *                     - Gói dịch vụ đã hết hạn!
- *                     - Vượt quá giới hạn phòng. Vui lòng nâng cấp gói!
- *                   example: Bạn không có quyền thực hiện hành động này!
+ *                   example: Không có quyền
  *       404:
- *         description: Không tìm thấy phòng hoặc tầng
+ *         description: Không tìm thấy phòng
  *         content:
  *           application/json:
  *             schema:
@@ -531,7 +577,17 @@ router.post(
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Không tìm thấy phòng!
+ *                   example: Không tìm thấy phòng
+ *       409:
+ *         description: Trùng số phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Trùng số phòng trong tòa
  *       500:
  *         description: Lỗi hệ thống
  *         content:
@@ -543,12 +599,10 @@ router.post(
  *                   type: string
  *                   example: Lỗi hệ thống!
  */
-
 router.put(
   "/:id",
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
-  uploadMultiple,
   RoomCtrl.update
 );
 
@@ -556,8 +610,8 @@ router.put(
  * @swagger
  * /rooms/{id}:
  *   delete:
- *     summary: Xóa phòng
- *     description: Xóa một phòng theo ID (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
+ *     summary: Xóa vĩnh viễn phòng
+ *     description: Xóa hoàn toàn một phòng khỏi hệ thống (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Room]
  *     security:
  *       - BearerAuth: []
@@ -576,9 +630,9 @@ router.put(
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Xóa phòng thành công
  *       401:
  *         description: Token không hợp lệ hoặc đã hết hạn
  *         content:
@@ -590,7 +644,7 @@ router.put(
  *                   type: string
  *                   example: Token không hợp lệ hoặc đã hết hạn!
  *       403:
- *         description: Không có quyền, chưa mua gói, gói hết hạn, hoặc vượt giới hạn phòng
+ *         description: Không có quyền hoặc phòng đang được thuê
  *         content:
  *           application/json:
  *             schema:
@@ -598,12 +652,7 @@ router.put(
  *               properties:
  *                 message:
  *                   type: string
- *                   enum:
- *                     - Bạn không có quyền thực hiện hành động này!
- *                     - Bạn chưa mua gói dịch vụ!
- *                     - Gói dịch vụ đã hết hạn!
- *                     - Vượt quá giới hạn phòng. Vui lòng nâng cấp gói!
- *                   example: Bạn không có quyền thực hiện hành động này!
+ *                   example: Không thể xóa phòng đang được thuê
  *       404:
  *         description: Không tìm thấy phòng
  *         content:
@@ -627,24 +676,641 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["admin"]),
+  checkAuthorize(["admin", "landlord"]),
   checkSubscription,
   RoomCtrl.remove
 );
+
+/**
+ * @swagger
+ * /rooms/{id}/images:
+ *   post:
+ *     summary: Thêm ảnh cho phòng
+ *     description: Thêm một hoặc nhiều ảnh vào phòng (chỉ admin hoặc landlord sở hữu tòa nhà).
+ *     tags: [Room]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 68e3fe79ec7f3071215fd042
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Danh sách ảnh cần thêm
+ *     responses:
+ *       200:
+ *         description: Thêm ảnh thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã thêm ảnh
+ *                 images:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["https://res.cloudinary.com/.../room1.jpg", "https://res.cloudinary.com/.../room2.jpg"]
+ *       400:
+ *         description: Không có ảnh để thêm
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không có ảnh để thêm
+ *       403:
+ *         description: Không có quyền
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không có quyền
+ *       404:
+ *         description: Không tìm thấy phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy phòng
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
+router.post(
+  "/:id/images",
+  checkAuthorize(["admin", "landlord"]),
+  uploadMultiple,
+  RoomCtrl.addImages
+);
+
+/**
+ * @swagger
+ * /rooms/{id}/images:
+ *   delete:
+ *     summary: Xóa ảnh của phòng
+ *     description: Xóa một hoặc nhiều ảnh khỏi phòng (chỉ admin hoặc landlord sở hữu tòa nhà). Ảnh sẽ bị xóa khỏi Cloudinary và database.
+ *     tags: [Room]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 68e3fe79ec7f3071215fd042
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - urls
+ *             properties:
+ *               urls:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Danh sách URL ảnh cần xóa
+ *                 example: ["https://res.cloudinary.com/.../room1.jpg"]
+ *     responses:
+ *       200:
+ *         description: Xóa ảnh thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã xóa ảnh
+ *                 images:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["https://res.cloudinary.com/.../room2.jpg"]
+ *                 deleted:
+ *                   type: integer
+ *                   example: 1
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Cần truyền mảng 'urls' để xóa
+ *       403:
+ *         description: Không có quyền
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không có quyền
+ *       404:
+ *         description: Không tìm thấy phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy phòng
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
+router.delete(
+  "/:id/images",
+  checkAuthorize(["admin", "landlord"]),
+  RoomCtrl.removeImages
+);
+
+/**
+ * @swagger
+ * /rooms/quick-create:
+ *   post:
+ *     summary: Tạo nhanh nhiều phòng
+ *     description: Tạo nhiều phòng cùng lúc theo template số phòng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active). Hỗ trợ tạo phòng cho một hoặc nhiều tầng với quy tắc đánh số tự động.
+ *     tags: [Room]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - buildingId
+ *             properties:
+ *               buildingId:
+ *                 type: string
+ *                 description: ID tòa nhà
+ *                 example: "68e3fe79ec7f3071215fd040"
+ *               floorId:
+ *                 type: string
+ *                 description: ID tầng (dùng khi tạo cho 1 tầng duy nhất)
+ *                 example: "68e3fe79ec7f3071215fd041"
+ *               floorIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Danh sách ID các tầng (dùng khi tạo cho nhiều tầng)
+ *                 example: ["68e3fe79ec7f3071215fd041", "68e3fe79ec7f3071215fd042"]
+ *               perFloor:
+ *                 type: integer
+ *                 default: 1
+ *                 description: Số phòng tạo trên mỗi tầng
+ *                 example: 10
+ *               seqStart:
+ *                 type: integer
+ *                 default: 1
+ *                 description: Số thứ tự bắt đầu
+ *                 example: 1
+ *               roomNumberTemplate:
+ *                 type: string
+ *                 default: "{floor}{seq:02}"
+ *                 description: Template đánh số phòng. Có thể dùng {floor}, {seq}, {block}. Format số với :0X (ví dụ {seq:02} = 01, 02...)
+ *                 example: "{floor}{seq:02}"
+ *               templateVars:
+ *                 type: object
+ *                 properties:
+ *                   block:
+ *                     type: string
+ *                     description: Ký tự block (nếu cần)
+ *                     example: "A"
+ *                 description: Các biến bổ sung cho template
+ *               defaults:
+ *                 type: object
+ *                 properties:
+ *                   price:
+ *                     type: number
+ *                     example: 3000000
+ *                   area:
+ *                     type: number
+ *                     example: 25
+ *                   maxTenants:
+ *                     type: integer
+ *                     example: 4
+ *                   status:
+ *                     type: string
+ *                     enum: [available, rented, maintenance]
+ *                     example: available
+ *                   description:
+ *                     type: string
+ *                     example: Phòng tiêu chuẩn
+ *                 description: Các giá trị mặc định cho phòng
+ *               skipExisting:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Bỏ qua các roomNumber đã tồn tại (true) hoặc báo lỗi (false)
+ *                 example: true
+ *     responses:
+ *       201:
+ *         description: Tạo nhanh phòng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tạo nhanh phòng thành công.
+ *                 createdCount:
+ *                   type: integer
+ *                   example: 30
+ *                 skippedCount:
+ *                   type: integer
+ *                   example: 2
+ *                 skippedRoomNumbers:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["101", "102"]
+ *                 created:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       buildingId:
+ *                         type: string
+ *                       floorId:
+ *                         type: string
+ *                       roomNumber:
+ *                         type: string
+ *                       area:
+ *                         type: number
+ *                       price:
+ *                         type: number
+ *                       maxTenants:
+ *                         type: integer
+ *                       status:
+ *                         type: string
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: buildingId là bắt buộc
+ *       403:
+ *         description: Không có quyền hoặc tòa/tầng tạm dừng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tòa đang tạm dừng hoạt động
+ *       404:
+ *         description: Không tìm thấy tòa hoặc tầng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy tòa
+ *       409:
+ *         description: Tất cả roomNumber đã tồn tại
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tất cả roomNumber yêu cầu đã tồn tại, không có phòng nào được tạo.
+ *                 createdCount:
+ *                   type: integer
+ *                   example: 0
+ *                 skippedCount:
+ *                   type: integer
+ *                   example: 10
+ *                 skippedRoomNumbers:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 created:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
+router.post(
+  "/quick-create",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  checkBuildingActive,
+  RoomCtrl.quickCreate
+);
+
+/**
+ * @swagger
+ * /rooms/{id}/soft:
+ *   delete:
+ *     summary: Xóa mềm phòng
+ *     description: Đánh dấu phòng là đã xóa (soft delete) thay vì xóa vĩnh viễn (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
+ *     tags: [Room]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 68e3fe79ec7f3071215fd042
+ *     responses:
+ *       200:
+ *         description: Xóa mềm phòng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã xóa mềm phòng
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *       403:
+ *         description: Không có quyền hoặc tòa tạm dừng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tòa nhà đang tạm dừng hoạt động
+ *       404:
+ *         description: Không tìm thấy phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy phòng!
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
 router.delete(
   "/:id/soft",
   checkAuthorize(["admin", "landlord"]),
   checkSubscription,
   RoomCtrl.softDelete
 );
+
+/**
+ * @swagger
+ * /rooms/{id}/restore:
+ *   post:
+ *     summary: Khôi phục phòng đã xóa
+ *     description: Khôi phục một phòng đã bị xóa mềm (chỉ admin hoặc landlord sở hữu tòa nhà).
+ *     tags: [Room]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 68e3fe79ec7f3071215fd042
+ *     responses:
+ *       200:
+ *         description: Phòng được khôi phục thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã khôi phục phòng
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *       403:
+ *         description: Không có quyền hoặc tòa tạm dừng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Tòa nhà đang tạm dừng hoạt động
+ *       404:
+ *         description: Không tìm thấy phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy phòng!
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
 router.post(
   "/:id/restore",
   checkAuthorize(["admin", "landlord"]),
   RoomCtrl.restore
 );
+
+/**
+ * @swagger
+ * /rooms/{id}/active:
+ *   patch:
+ *     summary: Cập nhật trạng thái hoạt động phòng
+ *     description: Cập nhật trạng thái hoạt động của một phòng (chỉ admin hoặc landlord sở hữu tòa nhà).
+ *     tags: [Room]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: 68e3fe79ec7f3071215fd042
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - active
+ *             properties:
+ *               active:
+ *                 type: boolean
+ *                 example: true
+ *                 description: Trạng thái hoạt động của phòng (true = hoạt động, false = tạm dừng)
+ *     responses:
+ *       200:
+ *         description: Trạng thái hoạt động phòng được cập nhật thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Cập nhật trạng thái hoạt động của phòng thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Giá trị active phải là boolean
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token không hợp lệ hoặc đã hết hạn!
+ *       403:
+ *         description: Không có quyền thực hiện hành động này
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không có quyền
+ *       404:
+ *         description: Không tìm thấy phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Không tìm thấy phòng
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Lỗi hệ thống!
+ */
 router.patch(
   "/:id/active",
   checkAuthorize(["admin", "landlord"]),
   RoomCtrl.updateActive
 );
+
 module.exports = router;
