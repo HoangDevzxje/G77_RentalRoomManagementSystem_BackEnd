@@ -6,8 +6,15 @@ const Room = require("../models/Room");
 
 const list = async (req, res) => {
   try {
-    const { q, page = 1, limit = 20, includeDeleted = "false" } = req.query;
+    const {
+      q,
+      page = 1,
+      limit = 20,
+      includeDeleted = "false",
+      status,
+    } = req.query;
     const filter = {};
+    if (status) filter.status = String(status);
     if (includeDeleted !== "true") filter.isDeleted = false;
     if (q) filter.name = { $regex: q, $options: "i" };
     if (req.user.role === "landlord") filter.landlordId = req.user._id;
@@ -97,32 +104,26 @@ const create = async (req, res) => {
     if (!address) {
       return res.status(400).json({ message: "Thiếu địa chỉ tòa nhà" });
     }
+
     const existed = await Building.exists({
-      landlordId,
+      landlordId: req.user._id,
       name: name.trim(),
       isDeleted: false,
     });
     if (existed) {
-      await session.abortTransaction();
-      session.endSession();
       return res
         .status(409)
         .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
     }
+
     if (ePrice !== undefined && ePrice !== null) {
-      if (isNaN(ePrice)) {
-        return res.status(400).json({ message: "Tiền điện không hợp lệ" });
-      }
-      if (Number(ePrice) < 0) {
+      if (isNaN(ePrice) || Number(ePrice) < 0) {
         return res.status(400).json({ message: "Tiền điện không hợp lệ" });
       }
     }
 
     if (wPrice !== undefined && wPrice !== null) {
-      if (isNaN(wPrice)) {
-        return res.status(400).json({ message: "Tiền nước không hợp lệ" });
-      }
-      if (Number(wPrice) < 0) {
+      if (isNaN(wPrice) || Number(wPrice) < 0) {
         return res.status(400).json({ message: "Tiền nước không hợp lệ" });
       }
     }
@@ -142,7 +143,18 @@ const create = async (req, res) => {
 
     res.status(201).json({ success: true, data: building });
   } catch (err) {
-    res.status(400).json({ message: err.message.message });
+    console.error("Error creating building:", err);
+
+    const message =
+      err?.message ||
+      err?.response?.data?.message ||
+      err?.data?.message ||
+      (typeof err === "string" ? err : JSON.stringify(err));
+
+    res.status(400).json({
+      success: false,
+      message,
+    });
   }
 };
 
@@ -178,12 +190,6 @@ const quickSetup = async (req, res) => {
       wPrice = 0,
     } = req.body;
 
-    const validIdx = (v) => ["byNumber", "byPerson", "included"].includes(v);
-    if (!validIdx(eIndexType) || !validIdx(wIndexType)) {
-      return res
-        .status(400)
-        .json({ message: "eIndexType/wIndexType không hợp lệ" });
-    }
     if (ePrice < 0 || wPrice < 0) {
       return res.status(400).json({ message: "ePrice/wPrice phải >= 0" });
     }
@@ -192,6 +198,19 @@ const quickSetup = async (req, res) => {
       req.user.role === "landlord"
         ? req.user._id
         : landlordIdInput || req.user._id;
+
+    const existed = await Building.exists({
+      landlordId,
+      name: name.trim(),
+      isDeleted: false,
+    });
+    if (existed) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(409)
+        .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
+    }
 
     const building = new Building({
       name,
@@ -234,19 +253,6 @@ const quickSetup = async (req, res) => {
       }
     }
 
-    const existed = await Building.exists({
-      landlordId,
-      name: name.trim(),
-      isDeleted: false,
-    });
-    if (existed) {
-      await session.abortTransaction();
-      session.endSession();
-      return res
-        .status(409)
-        .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
-    }
-
     let createdRooms = [];
     if (rooms?.perFloor && createdFloors.length) {
       const {
@@ -286,14 +292,6 @@ const quickSetup = async (req, res) => {
           .json({ message: "defaults.status không hợp lệ" });
       }
 
-      const dEStart = defaults.eStart != null ? Number(defaults.eStart) : 0;
-      const dWStart = defaults.wStart != null ? Number(defaults.wStart) : 0;
-      if (dEStart < 0 || dWStart < 0) {
-        return res
-          .status(400)
-          .json({ message: "defaults.eStart/wStart phải >= 0" });
-      }
-
       const roomDocs = [];
       for (const f of createdFloors) {
         for (let i = 0; i < perFloor; i++) {
@@ -313,8 +311,6 @@ const quickSetup = async (req, res) => {
             maxTenants: dMax,
             status: dStatus,
             description: defaults.description,
-            eStart: dEStart,
-            wStart: dWStart,
           });
           existSet.add(roomNumber);
         }
@@ -351,7 +347,6 @@ const quickSetup = async (req, res) => {
     session.endSession();
     if (e.code === 11000) {
       return res.status(409).json({
-        message: "Trùng dữ liệu (unique index). Vui lòng kiểm tra.",
         error: e.message,
       });
     }
