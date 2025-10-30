@@ -3,8 +3,12 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
 const BuildingCtrl = require("../controllers/BuildingController");
 const checkSubscription = require("../middleware/checkSubscription");
 const checkBuildingActive = require("../middleware/checkBuildingActive");
+const multer = require("multer");
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
-router.param("id", checkBuildingActive);
 /**
  * @swagger
  * tags:
@@ -144,7 +148,19 @@ router.get(
   checkAuthorize(["admin", "landlord", "resident"]),
   BuildingCtrl.list
 );
+router.get(
+  "/import-template",
+  checkAuthorize(["admin", "landlord"]),
+  BuildingCtrl.downloadImportTemplate
+);
 
+router.post(
+  "/import-excel",
+  checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
+  upload.single("file"), // field name: file
+  BuildingCtrl.importFromExcel
+);
 /**
  * @swagger
  * /buildings/{id}:
