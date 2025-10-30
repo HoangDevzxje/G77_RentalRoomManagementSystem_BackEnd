@@ -18,7 +18,7 @@ const checkSubscription = require("../middleware/checkSubscription");
  *     description: Lấy danh sách tầng, có thể lọc theo buildingId. Landlord chỉ thấy tầng trong tòa nhà của mình.
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: buildingId
@@ -90,7 +90,7 @@ router.get(
  *     description: Lấy thông tin chi tiết của một tầng theo ID (admin, landlord, resident). Landlord chỉ thấy tầng trong tòa nhà của mình.
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -170,7 +170,7 @@ router.get(
  *     description: Tạo một tầng mới trong tòa nhà được chỉ định (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -292,7 +292,7 @@ router.post(
  *     description: Tạo nhanh nhiều tầng cho một tòa nhà (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -463,7 +463,7 @@ router.post(
  *     description: Cập nhật thông tin tầng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -585,7 +585,7 @@ router.put(
  *     description: Xóa vĩnh viễn một tầng (chỉ admin, yêu cầu subscription active).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -669,7 +669,7 @@ router.put(
  *     description: Xóa mềm một tầng (admin và landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -765,7 +765,7 @@ router.delete(
  *     description: Xóa vĩnh viễn một tầng (chỉ admin, yêu cầu subscription active).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -855,7 +855,7 @@ router.delete(
  *     description: Xóa mềm một tầng (admin và landlord sở hữu tòa nhà).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -944,7 +944,7 @@ router.delete(
  *     description: Khôi phục một tầng đã bị xóa mềm (chỉ admin hoặc landlord sở hữu tòa nhà).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -1036,7 +1036,7 @@ router.post(
  *     description: Cập nhật trạng thái của một tầng (chỉ admin hoặc landlord sở hữu tòa nhà).
  *     tags: [Floor]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

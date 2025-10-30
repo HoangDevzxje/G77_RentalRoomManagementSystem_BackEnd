@@ -160,7 +160,7 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *     description: Lấy danh sách tất cả dịch vụ của một tòa nhà cụ thể. Có thể bao gồm cả dịch vụ đã bị xóa mềm.
  *     tags: [Building Services]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -229,7 +229,7 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *     description: Tạo một dịch vụ mới cho tòa nhà. Chỉ admin và landlord sở hữu tòa nhà mới có quyền tạo.
  *     tags: [Building Services]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -312,7 +312,7 @@ router.get(
  *     description: Cập nhật thông tin của một dịch vụ cụ thể. Chỉ admin và landlord sở hữu tòa nhà mới có quyền cập nhật.
  *     tags: [Building Services]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -390,7 +390,7 @@ router.get(
  *     description: Đánh dấu xóa mềm một dịch vụ. Dịch vụ sẽ không bị xóa vĩnh viễn mà chỉ được đánh dấu là đã xóa. Chỉ admin và landlord sở hữu tòa nhà mới có quyền xóa.
  *     tags: [Building Services]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -449,7 +449,7 @@ router.get(
  *     description: Khôi phục một dịch vụ đã bị xóa mềm. Chỉ admin và landlord sở hữu tòa nhà mới có quyền khôi phục.
  *     tags: [Building Services]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId

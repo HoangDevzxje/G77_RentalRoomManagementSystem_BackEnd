@@ -140,7 +140,7 @@ const checkSubscription = require("../middleware/checkSubscription");
  *     summary: Tạo mới nội thất
  *     description: Tạo một loại nội thất mới trong hệ thống
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -202,7 +202,7 @@ router.post(
  *     summary: Lấy danh sách tất cả nội thất
  *     description: Lấy danh sách tất cả các loại nội thất trong hệ thống
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Lấy danh sách thành công
@@ -236,7 +236,7 @@ router.get(
  *     summary: Thêm nội thất vào tòa nhà
  *     description: Thêm một loại nội thất vào cấu hình của tòa nhà
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -297,7 +297,7 @@ router.post(
  *     summary: Thêm nhiều nội thất vào tòa nhà cùng lúc
  *     description: Thêm nhiều loại nội thất vào cấu hình của tòa nhà với các chế độ tạo mới hoặc cập nhật
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -398,7 +398,7 @@ router.post(
  *     summary: Lấy danh sách nội thất của tòa nhà
  *     description: Lấy danh sách cấu hình nội thất theo tòa nhà
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: buildingId
@@ -443,7 +443,7 @@ router.get(
  *     summary: Cập nhật cấu hình nội thất tòa nhà
  *     description: Cập nhật thông tin cấu hình nội thất của tòa nhà
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -498,7 +498,7 @@ router.put(
  *     summary: Xóa cấu hình nội thất tòa nhà
  *     description: Xóa một cấu hình nội thất khỏi tòa nhà
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -539,7 +539,7 @@ router.delete(
  *     summary: Áp dụng cấu hình nội thất tòa nhà cho các phòng
  *     description: Áp dụng cấu hình nội thất của tòa nhà vào các phòng cụ thể hoặc tất cả phòng trong tòa
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -627,7 +627,7 @@ router.post(
  *     summary: Thêm nội thất vào phòng
  *     description: Thêm một loại nội thất vào phòng cụ thể
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -684,7 +684,7 @@ router.post(
  *     summary: Lấy danh sách nội thất của phòng
  *     description: Lấy danh sách nội thất theo phòng
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: roomId
@@ -722,7 +722,7 @@ router.get(
  *     summary: Lấy chi tiết một nội thất trong phòng
  *     description: Lấy thông tin chi tiết của một nội thất trong phòng
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -761,7 +761,7 @@ router.get(
  *     summary: Cập nhật nội thất trong phòng
  *     description: Cập nhật thông tin nội thất của phòng
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -814,7 +814,7 @@ router.put(
  *     summary: Xóa nội thất khỏi phòng
  *     description: Xóa một nội thất khỏi phòng
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -857,7 +857,7 @@ router.delete(
  *     summary: Lấy chi tiết một nội thất
  *     description: Lấy thông tin chi tiết của một loại nội thất
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -896,7 +896,7 @@ router.get(
  *     summary: Cập nhật thông tin nội thất
  *     description: Cập nhật thông tin của một loại nội thất
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -955,7 +955,7 @@ router.put(
  *     summary: Xóa nội thất
  *     description: Xóa một loại nội thất khỏi hệ thống
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

@@ -18,7 +18,7 @@ const RegulationCtrl = require("../controllers/RegulationController");
  *     description: Lấy danh sách quy định của tòa nhà (admin, landlord, tenant đều có thể xem)
  *     tags: [Regulation]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: buildingId
@@ -122,7 +122,7 @@ router.get(
  *     description: Tạo quy định mới cho tòa nhà (chỉ admin và landlord)
  *     tags: [Regulation]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -270,7 +270,7 @@ router.post("/", checkAuthorize(["admin", "landlord"]), RegulationCtrl.create);
  *     description: Cập nhật thông tin quy định (chỉ admin và landlord)
  *     tags: [Regulation]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -416,7 +416,7 @@ router.put(
  *     description: Xóa quy định (chỉ admin và landlord)
  *     tags: [Regulation]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

@@ -19,7 +19,7 @@ const { checkAuthorize } = require('../middleware/authMiddleware');
  *     description: Tạo subscription và trả về URL thanh toán VNPay (chỉ landlord).
  *     tags: [Subscription]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -215,7 +215,7 @@ router.get('/return', subscriptionController.paymentCallback);
  *     description: Lấy tất cả subscription của landlord (chỉ landlord).
  *     tags: [Subscription]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Danh sách subscription
@@ -315,7 +315,7 @@ router.get('/', checkAuthorize(['landlord', 'admin']), subscriptionController.li
  *     description: Trả về danh sách tất cả các gói mà landlord đã mua, bao gồm thông tin chi tiết của từng gói và trạng thái thanh toán.
  *     tags: [Subscription]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: status

@@ -17,7 +17,7 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
  *     description: Tạo một gói dịch vụ mới (chỉ admin).
  *     tags: [Package]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -66,7 +66,7 @@ router.post('/packages', checkAuthorize(['admin']), packageController.create);
  *     description: Lấy tất cả gói dịch vụ (landlord/admin).
  *     tags: [Package]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Danh sách gói dịch vụ
@@ -81,7 +81,7 @@ router.get('/packages', checkAuthorize(['landlord', 'admin']), packageController
  *     description: Lấy thông tin một gói dịch vụ theo ID (landlord/admin).
  *     tags: [Package]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -102,7 +102,7 @@ router.get('/packages/:id', checkAuthorize(['landlord', 'admin']), packageContro
  *     description: Cập nhật thông tin gói dịch vụ (chỉ admin).
  *     tags: [Package]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -143,7 +143,7 @@ router.put('/packages/:id', checkAuthorize(['admin']), packageController.update)
  *     description: Xóa gói dịch vụ nếu không có subscription liên quan (chỉ admin).
  *     tags: [Package]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -164,7 +164,7 @@ router.delete('/packages/:id', checkAuthorize(['admin']), packageController.remo
  *     description: Cập nhật trạng thái isActive của gói dịch vụ (admin).
  *     tags: [Package]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -198,7 +198,7 @@ router.patch('/packages/:id/toggle-active', checkAuthorize(['admin']), packageCo
  *     description: Chuyển đổi loại gói dịch vụ giữa `trial` và `paid` (chỉ admin).
  *     tags: [Package]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

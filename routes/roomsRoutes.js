@@ -19,7 +19,7 @@ const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
  *     description: Lấy danh sách phòng với hỗ trợ phân trang và lọc theo buildingId, floorId, status, hoặc tìm kiếm theo roomNumber. Landlord chỉ thấy phòng trong tòa nhà của mình.
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: buildingId
@@ -201,7 +201,7 @@ router.get(
  *     description: Lấy thông tin chi tiết của một phòng theo ID (admin, landlord, resident). Landlord chỉ thấy phòng trong tòa nhà của mình.
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -348,7 +348,7 @@ router.get(
  *     description: Tạo một phòng mới trong tòa nhà và tầng được chỉ định (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active). Hỗ trợ upload ảnh kèm theo.
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -503,7 +503,7 @@ router.post(
  *     description: Cập nhật thông tin của một phòng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -614,7 +614,7 @@ router.put(
  *     description: Xóa hoàn toàn một phòng khỏi hệ thống (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -689,7 +689,7 @@ router.delete(
  *     description: Thêm một hoặc nhiều ảnh vào phòng (chỉ admin hoặc landlord sở hữu tòa nhà).
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -782,7 +782,7 @@ router.post(
  *     description: Xóa một hoặc nhiều ảnh khỏi phòng (chỉ admin hoặc landlord sở hữu tòa nhà). Ảnh sẽ bị xóa khỏi Cloudinary và database.
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -879,7 +879,7 @@ router.delete(
  *     description: Tạo nhiều phòng cùng lúc theo template số phòng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active). Hỗ trợ tạo phòng cho một hoặc nhiều tầng với quy tắc đánh số tự động.
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -1075,7 +1075,7 @@ router.post(
  *     description: Đánh dấu phòng là đã xóa (soft delete) thay vì xóa vĩnh viễn (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -1150,7 +1150,7 @@ router.delete(
  *     description: Khôi phục một phòng đã bị xóa mềm (chỉ admin hoặc landlord sở hữu tòa nhà).
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -1224,7 +1224,7 @@ router.post(
  *     description: Cập nhật trạng thái hoạt động của một phòng (chỉ admin hoặc landlord sở hữu tòa nhà).
  *     tags: [Room]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

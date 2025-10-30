@@ -18,7 +18,7 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *     description: Sinh phần mô tả hấp dẫn cho bài đăng cho thuê phòng trọ. Kết quả trả về ở dạng HTML có thể hiển thị trực tiếp trong trình duyệt hoặc trình soạn thảo.
  *     tags: [Post by Landlord]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -111,7 +111,7 @@ router.post("/posts/ai-generate", checkAuthorize(["landlord"]), postController.g
  *     description: "Trả về thông tin chi tiết của tòa nhà gồm: danh sách phòng trống, dịch vụ, nội quy và giá điện nước."
  *     tags: [Post by Landlord]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -133,7 +133,7 @@ router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), postControll
  *     description: Tạo bài đăng cho thuê phòng trọ, có thể chọn nhiều phòng và upload nhiều ảnh.
  *     tags: [Post by Landlord]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -191,7 +191,7 @@ router.post("/posts", checkAuthorize(["landlord"]), uploadMultiple, postControll
  *     summary: Lấy danh sách bài đăng của chủ trọ (có phân trang)
  *     tags: [Post by Landlord]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -217,7 +217,7 @@ router.get("/posts", checkAuthorize(["landlord"]), postController.listByLandlord
  *     description: Trả về toàn bộ thông tin bài đăng, kèm thông tin tòa nhà, phòng, dịch vụ, nội quy.
  *     tags: [Post by Landlord]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -239,7 +239,7 @@ router.get("/posts/:id", checkAuthorize(["landlord"]), postController.getPostDet
  *     description: Cập nhật thông tin bài đăng (tiêu đề, mô tả, địa chỉ, tòa nhà, phòng, hình ảnh...). Nếu thay đổi danh sách phòng thì hệ thống sẽ tự động cập nhật lại giá và diện tích min/max dựa trên các phòng đã chọn.
  *     tags: [Post by Landlord]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -312,7 +312,7 @@ router.put("/posts/:id", checkAuthorize(["landlord"]), uploadMultiple, postContr
  *     description: Đánh dấu bài đăng là đã xóa (isDeleted=true, status=hidden). Chỉ chủ trọ có quyền xóa bài của mình.
  *     tags: [Post by Landlord]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

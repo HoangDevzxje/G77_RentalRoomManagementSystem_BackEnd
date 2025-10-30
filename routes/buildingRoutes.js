@@ -18,7 +18,7 @@ const checkSubscription = require("../middleware/checkSubscription");
  *     description: Lấy danh sách tòa nhà với hỗ trợ phân trang và tìm kiếm theo tên (admin, landlord, resident). Landlord chỉ thấy tòa nhà của mình.
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: q
@@ -151,7 +151,7 @@ router.get(
  *     description: Lấy thông tin chi tiết của một tòa nhà theo ID (admin, landlord, resident). Landlord chỉ thấy tòa nhà của mình.
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -271,7 +271,7 @@ router.get(
  *     description: Tạo một tòa nhà mới (chỉ landlord, yêu cầu subscription active).
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -406,7 +406,7 @@ router.post(
  *     description: Cập nhật thông tin tòa nhà (chỉ landlord sở hữu tòa nhà, yêu cầu subscription active).
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -555,7 +555,7 @@ router.put(
  *     description: Xóa mềm tòa nhà và cascade xuống tầng/phòng (admin hoặc landlord sở hữu). Hỗ trợ force delete cho admin.
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -645,7 +645,7 @@ router.delete(
  *     description: Khôi phục tòa nhà đã bị xóa mềm và cascade xuống tầng/phòng (admin hoặc landlord sở hữu).
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -718,7 +718,7 @@ router.post(
  *     description: Cập nhật trạng thái tòa nhà (active/inactive) (admin hoặc landlord sở hữu).
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -821,7 +821,7 @@ router.delete(
  *     description: Tạo tòa nhà với cấu hình mặc định và thiết lập sẵn các tầng, phòng cơ bản (admin, landlord, yêu cầu subscription active). Hỗ trợ dry-run để xem trước kết quả.
  *     tags: [Building]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
