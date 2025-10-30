@@ -13,12 +13,38 @@ exports.create = async (req, res) => {
 // Lấy danh sách theo phòng
 exports.getAll = async (req, res) => {
   try {
-    const { roomId } = req.query;
-    const filter = roomId ? { roomId } : {};
-    const list = await RoomFurniture.find(filter).populate(
-      "roomId furnitureId"
-    );
-    res.json(list);
+    const { buildingId, floorId, roomId } = req.query;
+    const filter = {};
+
+    // Nếu chỉ lọc theo phòng
+    if (roomId) {
+      filter.roomId = roomId;
+    }
+
+    // Nếu lọc theo tầng hoặc tòa thì cần populate sâu để lọc
+    let query = RoomFurniture.find(filter)
+      .populate({
+        path: "roomId",
+        populate: [
+          { path: "buildingId", select: "name address" },
+          { path: "floorId", select: "name level" },
+        ],
+      })
+      .populate("furnitureId");
+
+    const list = await query;
+
+    // Nếu có filter theo building hoặc floor => lọc thêm ở cấp ứng dụng
+    const filtered = list.filter((item) => {
+      const r = item.roomId;
+      if (!r) return false;
+      if (buildingId && r.buildingId?._id?.toString() !== buildingId)
+        return false;
+      if (floorId && r.floorId?._id?.toString() !== floorId) return false;
+      return true;
+    });
+
+    res.json(filtered);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

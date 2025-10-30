@@ -30,36 +30,67 @@ const list = async (req, res) => {
       q,
       page = 1,
       limit = 20,
+
       includeDeleted = "false",
       onlyActive = "false",
     } = req.query;
-    const filter = {};
 
-    if (buildingId) filter.buildingId = buildingId;
-    if (floorId) filter.floorId = floorId;
-    if (status) filter.status = status;
-    if (q) filter.roomNumber = { $regex: q, $options: "i" };
-    if (includeDeleted !== "true") filter.isDeleted = false;
-    if (onlyActive === "true") filter.active = true;
+    const pageNum = Math.max(+page || 1, 1);
+    const limitNum = Math.max(+limit || 20, 1);
 
-    if (req.user.role === "landlord") {
-      const blds = await Building.find({ landlordId: req.user._id }).select(
-        "_id"
-      );
-      const ids = blds.map((b) => b._id);
-      filter.buildingId = filter.buildingId || { $in: ids };
+    // 1) Lấy danh sách tòa hợp lệ (active & not deleted)
+    const buildingFilter = {
+      isDeleted: false,
+      status: "active",
+      ...(buildingId ? { _id: buildingId } : {}),
+    };
+    // landlord chỉ thấy tòa của mình
+    if (req.user.role === "landlord" && !buildingId) {
+      buildingFilter.landlordId = req.user._id;
     }
-    const data = await Room.find(filter)
-      .populate("buildingId", "name address description ePrice wPrice")
-      .populate("floorId", "floorNumber")
-      .sort({ createdAt: -1 })
-      .skip((+page - 1) * +limit)
-      .limit(+limit);
+    const validBuildingIds = await Building.find(buildingFilter).distinct(
+      "_id"
+    );
+    if (!validBuildingIds.length) {
+      return res.json({ data: [], total: 0, page: pageNum, limit: limitNum });
+    }
 
-    const total = await Room.countDocuments(filter);
-    res.json({ data, total, page: +page, limit: +limit });
+    // 2) Lấy danh sách tầng hợp lệ (active & not deleted) thuộc các tòa hợp lệ
+    const floorFilter = {
+      buildingId: { $in: validBuildingIds },
+      isDeleted: false,
+      status: "active",
+      ...(floorId ? { _id: floorId } : {}),
+    };
+    const validFloorIds = await Floor.find(floorFilter).distinct("_id");
+    if (!validFloorIds.length) {
+      return res.json({ data: [], total: 0, page: pageNum, limit: limitNum });
+    }
+
+    // 3) Lọc Room — bắt buộc thuộc floor hợp lệ
+    const roomFilter = {
+      floorId: { $in: validFloorIds },
+      isDeleted: false, // room cũng không bị xoá mềm
+      ...(status ? { status } : {}),
+      ...(q ? { roomNumber: { $regex: q, $options: "i" } } : {}),
+      // Nếu FE gửi buildingId mà không gửi floorId, vẫn đã ràng buộc qua validFloorIds
+      ...(onlyActive === "true" ? { active: true } : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      Room.find(roomFilter)
+        .populate("buildingId", "name address status isDeleted")
+        .populate("floorId", "floorNumber level status isDeleted")
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      Room.countDocuments(roomFilter),
+    ]);
+
+    res.json({ data: rows, total, page: pageNum, limit: limitNum });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: e.message || "Server error" });
   }
 };
 
@@ -68,26 +99,36 @@ const getById = async (req, res) => {
     const r = await Room.findById(req.params.id)
       .populate(
         "buildingId",
-        "name address description ePrice wPrice eIndexType wIndexType"
+        "name address status isDeleted landlordId ePrice wPrice eIndexType wIndexType"
       )
-      .populate("floorId", "floorNumber")
+      .populate("floorId", "floorNumber level status isDeleted")
       .lean();
 
-    const b = await Building.findById(r.buildingId).select(
-      "landlordId isDeleted"
-    );
-    if (!b || b.isDeleted)
-      return res.status(404).json({ message: "Tòa nhà không tồn tại" });
+    if (!r || r.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy phòng" });
+    }
+
+    // Quyền landlord
     if (
       req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
+      String(r.buildingId?.landlordId) !== String(req.user._id)
     ) {
       return res.status(403).json({ message: "Không có quyền" });
     }
 
+    // ✅ Policy: Building & Floor phải active + not deleted
+    const b = r.buildingId;
+    const f = r.floorId;
+    if (!b || b.isDeleted || b.status !== "active") {
+      return res.status(410).json({ message: "Tòa không còn hoạt động" });
+    }
+    if (!f || f.isDeleted || f.status !== "active") {
+      return res.status(410).json({ message: "Tầng không còn hoạt động" });
+    }
+
     res.json(r);
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ message: e.message || "Server error" });
   }
 };
 

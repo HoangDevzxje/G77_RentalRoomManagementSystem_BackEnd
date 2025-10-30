@@ -2,7 +2,9 @@ const router = require("express").Router();
 const { checkAuthorize } = require("../middleware/authMiddleware");
 const BuildingCtrl = require("../controllers/BuildingController");
 const checkSubscription = require("../middleware/checkSubscription");
+const checkBuildingActive = require("../middleware/checkBuildingActive");
 
+router.param("id", checkBuildingActive);
 /**
  * @swagger
  * tags:

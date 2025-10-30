@@ -21,7 +21,7 @@ const roomSchema = new mongoose.Schema(
     maxTenants: { type: Number, default: 1 },
     status: {
       type: String,
-      enum: ["available", "rented", "maintenance"],
+      enum: ["available", "rented"],
       default: "available",
       index: true,
     },
