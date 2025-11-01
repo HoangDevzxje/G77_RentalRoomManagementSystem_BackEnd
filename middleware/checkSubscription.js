@@ -41,6 +41,7 @@ module.exports = async (req, res, next) => {
 
     next();
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Lỗi hệ thống: " + err.message });
   }
 };
