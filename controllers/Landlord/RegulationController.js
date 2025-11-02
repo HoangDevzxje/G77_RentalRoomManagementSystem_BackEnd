@@ -1,5 +1,5 @@
-const Regulation = require("../models/Regulation");
-const Building = require("../models/Building");
+const Regulation = require("../../models/Regulation");
+const Building = require("../../models/Building");
 
 // GET: Tenant & Landlord xem danh sách quy định
 exports.getList = async (req, res) => {

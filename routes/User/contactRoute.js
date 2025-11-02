@@ -5,7 +5,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 /**
  * @swagger
  * tags:
- *   - name: Tenant Contact Request
+ *   - name: Resident Contact Request
  *     description: Quản lý yêu cầu tạo hợp đồng của người thuê
  */
 
@@ -22,7 +22,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *       🔹 Nếu gửi từ **tòa nhà**, chỉ cần `buildingId` và `roomId`.  
  *       
  *       Hệ thống sẽ tự động xác định chủ trọ (`landlordId`) từ tòa nhà.
- *     tags: [Tenant Contact Request]
+ *     tags: [Resident Contact Request]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -124,7 +124,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *     description: |
  *       Hiển thị danh sách các yêu cầu hợp đồng mà người thuê đã gửi đến các chủ trọ.  
  *       Có thể lọc theo trạng thái (pending, accepted, rejected, cancelled).
- *     tags: [Tenant Contact Request]
+ *     tags: [Resident Contact Request]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -217,7 +217,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *     description: |
  *       Người thuê có thể hủy yêu cầu hợp đồng nếu chủ trọ chưa chấp nhận.  
  *       Trạng thái sẽ chuyển sang **cancelled**.
- *     tags: [Tenant Contact Request]
+ *     tags: [Resident Contact Request]
  *     security:
  *       - bearerAuth: []
  *     parameters:
