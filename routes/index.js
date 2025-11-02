@@ -14,6 +14,8 @@ const accountAdmin = require("././Admin/accountRoute");
 const scheduleRoute = require("././Landlord/scheduleRoute");
 const bookingRoute = require("././User/bookingRoute");
 const bookingLandlord = require("././Landlord/bookingRoute");
+const contactLandlord = require("././Landlord/contactRoute");
+const contactRoute = require("././User/contactRoute");
 
 const routes = (app) => {
   app.use("/auth", authRoutes);
@@ -29,9 +31,11 @@ const routes = (app) => {
   app.use("/landlords", postLandlord);
   app.use("/landlords/schedules", scheduleRoute);
   app.use("/landlords/bookings", bookingLandlord);
+  app.use("/landlords/contacts", contactLandlord);
   app.use("/posts", postUser);
   app.use("/admin", accountAdmin);
   app.use("/bookings", bookingRoute);
+  app.use("/contacts", contactRoute);
 };
 
 module.exports = routes;
