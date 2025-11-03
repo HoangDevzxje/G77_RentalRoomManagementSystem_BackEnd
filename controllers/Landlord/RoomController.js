@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
-const Building = require("../models/Building");
-const Floor = require("../models/Floor");
-const Room = require("../models/Room");
-const { cloudinary } = require("../configs/cloudinary");
-const renderRoomNumber = require("../utils/renderRoomNumber");
+const Building = require("../../models/Building");
+const Floor = require("../../models/Floor");
+const Room = require("../../models/Room");
+const { cloudinary } = require("../../configs/cloudinary");
+const renderRoomNumber = require("../../utils/renderRoomNumber");
 
 //helper: lấy public_id từ Cloudinary URL
 function getCloudinaryPublicId(url) {
@@ -143,7 +143,7 @@ const create = async (req, res) => {
       // Fallback: old format for backward compatibility
       roomData = req.body;
     }
-    
+
     const {
       buildingId,
       floorId,

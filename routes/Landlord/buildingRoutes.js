@@ -1,8 +1,8 @@
 const router = require("express").Router();
-const { checkAuthorize } = require("../middleware/authMiddleware");
-const BuildingCtrl = require("../controllers/BuildingController");
-const checkSubscription = require("../middleware/checkSubscription");
-const checkBuildingActive = require("../middleware/checkBuildingActive");
+const { checkAuthorize } = require("../../middleware/authMiddleware");
+const BuildingCtrl = require("../../controllers/Landlord/BuildingController");
+const checkSubscription = require("../../middleware/checkSubscription");
+const checkBuildingActive = require("../../middleware/checkBuildingActive");
 const multer = require("multer");
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -12,19 +12,19 @@ const upload = multer({
 /**
  * @swagger
  * tags:
- *   name: Building
+ *   name: Landlord Building Management
  *   description: API quản lý tòa nhà
  */
 
 /**
  * @swagger
- * /buildings:
+ * /landlords/buildings:
  *   get:
  *     summary: Lấy danh sách tòa nhà
  *     description: Lấy danh sách tòa nhà với hỗ trợ phân trang và tìm kiếm theo tên (admin, landlord, resident). Landlord chỉ thấy tòa nhà của mình.
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: q
@@ -163,13 +163,13 @@ router.post(
 );
 /**
  * @swagger
- * /buildings/{id}:
+ * /landlords/buildings/{id}:
  *   get:
  *     summary: Lấy chi tiết tòa nhà
  *     description: Lấy thông tin chi tiết của một tòa nhà theo ID (admin, landlord, resident). Landlord chỉ thấy tòa nhà của mình.
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -283,13 +283,13 @@ router.get(
 
 /**
  * @swagger
- * /buildings:
+ * /landlords/buildings:
  *   post:
  *     summary: Tạo tòa nhà mới
  *     description: Tạo một tòa nhà mới (chỉ landlord, yêu cầu subscription active).
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -418,13 +418,13 @@ router.post(
 
 /**
  * @swagger
- * /buildings/{id}:
+ * /landlords/buildings/{id}:
  *   put:
  *     summary: Cập nhật tòa nhà
  *     description: Cập nhật thông tin tòa nhà (chỉ landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -567,13 +567,13 @@ router.put(
 
 /**
  * @swagger
- * /buildings/{id}/soft:
+ * /landlords/buildings/{id}/soft:
  *   delete:
  *     summary: Xóa mềm tòa nhà
  *     description: Xóa mềm tòa nhà và cascade xuống tầng/phòng (admin hoặc landlord sở hữu). Hỗ trợ force delete cho admin.
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -657,13 +657,13 @@ router.delete(
 );
 /**
  * @swagger
- * /buildings/{id}/restore:
+ * /landlords/buildings/{id}/restore:
  *   post:
  *     summary: Khôi phục tòa nhà
  *     description: Khôi phục tòa nhà đã bị xóa mềm và cascade xuống tầng/phòng (admin hoặc landlord sở hữu).
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -730,13 +730,13 @@ router.post(
 );
 /**
  * @swagger
- * /buildings/{id}/status:
+ * /landlords/buildings/{id}/status:
  *   patch:
  *     summary: Cập nhật trạng thái tòa nhà
  *     description: Cập nhật trạng thái tòa nhà (active/inactive) (admin hoặc landlord sở hữu).
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -833,13 +833,13 @@ router.delete(
 );
 /**
  * @swagger
- * /buildings/quick-setup:
+ * /landlords/buildings/quick-setup:
  *   post:
  *     summary: Thiết lập nhanh tòa nhà
  *     description: Tạo tòa nhà với cấu hình mặc định và thiết lập sẵn các tầng, phòng cơ bản (admin, landlord, yêu cầu subscription active). Hỗ trợ dry-run để xem trước kết quả.
- *     tags: [Building]
+ *     tags: [Landlord Building Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:

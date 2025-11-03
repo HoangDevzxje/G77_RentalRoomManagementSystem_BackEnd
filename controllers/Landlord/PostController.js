@@ -3,14 +3,12 @@ const Room = require('../../models/Room');
 const Building = require('../../models/Building');
 const BuildingService = require('../../models/BuildingService');
 const Regulation = require('../../models/Regulation');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const mongoose = require("mongoose");
 
 const getBuildingInfo = async (req, res) => {
     try {
         const { buildingId } = req.params;
         const landlordId = req.user._id;
-        console.log(buildingId);
         const building = await Building.findOne({
             _id: buildingId,
             landlordId,
@@ -189,70 +187,99 @@ const generateDescription = async (req, res) => {
         const {
             title,
             address,
-            minPrice,
-            maxPrice,
-            minArea,
-            maxArea,
-            buildingInfo
+            priceMin,
+            priceMax,
+            areaMin,
+            areaMax,
+            buildingInfo,
         } = req.body;
 
         if (!title || !address) {
-            return res.status(400).json({ message: 'Thiếu thông tin cần thiết!' });
+            return res.status(400).json({ message: "Thiếu thông tin cần thiết!" });
         }
 
         const buildingText = [];
 
         if (buildingInfo) {
-            buildingText.push(`💡 **Giá điện**: ${buildingInfo.ePrice?.toLocaleString('vi-VN')}đ/${buildingInfo.eIndexType === 'byNumber' ? 'kWh' : 'người'}`);
-            buildingText.push(`🚿 **Giá nước**: ${buildingInfo.wPrice?.toLocaleString('vi-VN')}đ/${buildingInfo.wIndexType === 'byPerson' ? 'người' : 'm³'}`);
+            buildingText.push(
+                `💡 **Giá điện**: ${buildingInfo.ePrice?.toLocaleString("vi-VN")}đ/${buildingInfo.eIndexType === "byNumber" ? "kWh" : "người"
+                }`
+            );
+            buildingText.push(
+                `🚿 **Giá nước**: ${buildingInfo.wPrice?.toLocaleString("vi-VN")}đ/${buildingInfo.wIndexType === "byPerson" ? "người" : "m³"
+                }`
+            );
 
             if (buildingInfo.services?.length) {
-                const services = buildingInfo.services.map(s => `- ${s.label} (${s.fee?.toLocaleString('vi-VN')}đ)`).join('\n');
+                const services = buildingInfo.services
+                    .map((s) => `- ${s.label} (${s.fee?.toLocaleString("vi-VN")}đ)`)
+                    .join("\n");
                 buildingText.push(`🛠️ **Dịch vụ có sẵn**:\n${services}`);
             }
 
             if (buildingInfo.regulations?.length) {
-                const rules = buildingInfo.regulations.map(r => `- ${r.title}: ${r.description}`).join('\n');
+                const rules = buildingInfo.regulations
+                    .map((r) => `- ${r.title}: ${r.description}`)
+                    .join("\n");
                 buildingText.push(`📋 **Nội quy tòa nhà**:\n${rules}`);
             }
         }
 
-        const priceText = minPrice && maxPrice
-            ? `${minPrice.toLocaleString('vi-VN')} - ${maxPrice.toLocaleString('vi-VN')} VND/tháng`
-            : `${(minPrice || maxPrice)?.toLocaleString('vi-VN')} VND/tháng`;
+        const priceText =
+            priceMin && priceMax
+                ? `${priceMin.toLocaleString("vi-VN")} - ${priceMax.toLocaleString(
+                    "vi-VN"
+                )} VND/tháng`
+                : `${(priceMin || priceMax)?.toLocaleString("vi-VN")} VND/tháng`;
 
-        const areaText = minArea && maxArea
-            ? `${minArea} - ${maxArea} m²`
-            : `${minArea || maxArea} m²`;
-
-        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const areaText =
+            areaMin && areaMax
+                ? `${areaMin} - ${areaMax} m²`
+                : `${areaMin || areaMax} m²`;
 
         const prompt = `
-      Viết mô tả hấp dẫn cho bài đăng cho thuê phòng trọ:
+Viết mô tả hấp dẫn cho bài đăng cho thuê phòng trọ:
 
-      🏢 Tòa nhà: ${title}
-      📍 Địa chỉ: ${address}
-      💰 Giá thuê: ${priceText}
-      📐 Diện tích: ${areaText}
+🏢 Tòa nhà: ${title}
+📍 Địa chỉ: ${address}
+💰 Giá thuê: ${priceText}
+📐 Diện tích: ${areaText}
 
-      Thông tin thêm:
-      ${buildingText.join('\n')}
+Thông tin thêm:
+${buildingText.join("\n")}
 
-      Yêu cầu:
-      - Viết mô tả thân thiện, dễ đọc, giúp người thuê dễ hình dung.
-      - Trả về kết quả **ở dạng HTML** để hiển thị trong trình soạn thảo (dùng <p>, <ul>, <li>, <b>, <i>...).
-      - Có thể dùng emoji nhẹ nhàng.
-      - Không sinh script hoặc link độc hại.
-    `;
+Yêu cầu:
+- Viết mô tả thân thiện, dễ đọc, giúp người thuê dễ hình dung.
+- Trả về kết quả **ở dạng HTML** (dùng <p>, <ul>, <li>, <b>, <i>...).
+- Có thể dùng emoji nhẹ nhàng.
+- Không sinh script hoặc link độc hại.
+`;
 
-        const result = await model.generateContent(prompt);
-        const aiDescription = result.response.text();
+        let aiDescription = "";
+
+        try {
+            const { GoogleGenAI } = await import("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
+
+            const result = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+            });
+
+            aiDescription = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        } catch (err) {
+            console.error("⚠️ Không thể gọi Gemini:", err.message);
+            aiDescription =
+                "<p>Không thể tạo mô tả tự động, vui lòng nhập mô tả thủ công.</p>";
+        }
 
         res.json({ success: true, data: { aiDescription } });
     } catch (err) {
-        console.error('Lỗi generateDescription:', err);
-        res.status(500).json({ message: 'Lỗi khi gọi AI', error: err.message });
+        console.error("❌ Lỗi generateDescription:", err);
+        res.status(500).json({
+            message: "Lỗi khi gọi AI",
+            error: err.message,
+        });
     }
 };
 
@@ -261,16 +288,22 @@ const listByLandlord = async (req, res) => {
         const landlordId = req.user._id;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
-
         const skip = (page - 1) * limit;
 
+        const { isDraft } = req.query;
+
+        const filter = { landlordId, isDeleted: false };
+        if (isDraft !== undefined) {
+            filter.isDraft = isDraft === "true";
+        }
+
         const [posts, total] = await Promise.all([
-            Post.find({ landlordId, isDeleted: false })
+            Post.find(filter)
                 .populate('buildingId', 'name address')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),
-            Post.countDocuments({ landlordId, isDeleted: false }),
+            Post.countDocuments(filter),
         ]);
 
         res.json({
@@ -284,7 +317,8 @@ const listByLandlord = async (req, res) => {
             },
         });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        console.error("Error in listByLandlord:", err);
+        res.status(500).json({ message: "Lỗi hệ thống khi lấy danh sách bài đăng!" });
     }
 };
 const getPostDetail = async (req, res) => {
