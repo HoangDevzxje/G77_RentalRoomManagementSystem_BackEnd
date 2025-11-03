@@ -3,6 +3,7 @@ const Building = require("../../models/Building");
 const Floor = require("../../models/Floor");
 const Room = require("../../models/Room");
 const xlsx = require("xlsx");
+const Excel = require("exceljs");
 
 const list = async (req, res) => {
   try {
@@ -540,11 +541,81 @@ const remove = async (req, res) => {
 
 const downloadImportTemplate = async (req, res) => {
   try {
-    // 1) Tạo workbook mới
-    const wb = xlsx.utils.book_new();
+    const wb = new Excel.Workbook();
 
-    // 2) Dữ liệu mẫu cho từng sheet (có thể sửa theo nhu cầu)
-    // ===== Sheet Buildings =====
+    // ===== Sheet Tham chiếu (ẩn) =====
+    const refs = wb.addWorksheet("References");
+    // Bảng enum: code EN | label VI
+    // Bạn có thể mở rộng thêm hàng tùy theo hệ thống
+    const enumBlocks = {
+      buildingStatus: [
+        ["active", "Hoạt động"],
+        ["inactive", "Ngưng hoạt động"],
+      ],
+      floorStatus: [
+        ["active", "Hoạt động"],
+        ["inactive", "Ngưng hoạt động"],
+      ],
+      roomStatus: [
+        ["available", "Sẵn sàng"],
+        ["occupied", "Đang thuê"],
+        ["maintenance", "Bảo trì"],
+        ["inactive", "Ngưng hoạt động"],
+      ],
+      indexType: [
+        ["byNumber", "Theo chỉ số"],
+        ["byPerson", "Theo đầu người"],
+        ["included", "Đã bao gồm"],
+      ],
+    };
+
+    // Ghi từng block theo cột riêng để dễ đặt dải
+    // A: buildingStatus, C: floorStatus, E: roomStatus, G: indexType
+    const anchors = {
+      buildingStatus: "A",
+      floorStatus: "C",
+      roomStatus: "E",
+      indexType: "G",
+    };
+
+    // Header
+    refs.getCell("A1").value = "BuildingStatus_EN";
+    refs.getCell("B1").value = "BuildingStatus_VI";
+    refs.getCell("C1").value = "FloorStatus_EN";
+    refs.getCell("D1").value = "FloorStatus_VI";
+    refs.getCell("E1").value = "RoomStatus_EN";
+    refs.getCell("F1").value = "RoomStatus_VI";
+    refs.getCell("G1").value = "IndexType_EN";
+    refs.getCell("H1").value = "IndexType_VI";
+
+    // Đổ dữ liệu enums
+    const putEnum = (startCol, rows) => {
+      rows.forEach((r, i) => {
+        refs.getCell(`${startCol}${i + 2}`).value = r[0]; // EN
+        // kế bên là VI
+        const viCol = String.fromCharCode(startCol.charCodeAt(0) + 1);
+        refs.getCell(`${viCol}${i + 2}`).value = r[1];
+      });
+    };
+    putEnum("A", enumBlocks.buildingStatus);
+    putEnum("C", enumBlocks.floorStatus);
+    putEnum("E", enumBlocks.roomStatus);
+    putEnum("G", enumBlocks.indexType);
+
+    // (Ẩn) sheet tham chiếu
+    refs.state = "veryHidden";
+
+    // ===== README =====
+    const readme = wb.addWorksheet("README");
+    readme.getCell("A1").value = "RMS – Hướng dẫn nhập Excel";
+    readme.getCell("A3").value =
+      "- Các cột enum dùng TIẾNG VIỆT (dropdown). Hệ thống sẽ tự map sang TIẾNG ANH.";
+    readme.getCell("A4").value = "- Không đổi tên header ở hàng 1.";
+    readme.getCell("A5").value = "- Số (giá/diện tích/chỉ số) phải >= 0.";
+    readme.getColumn(1).width = 120;
+
+    // ===== Buildings =====
+    const wsB = wb.addWorksheet("Buildings");
     const buildingsHeaders = [
       "name",
       "address",
@@ -554,42 +625,36 @@ const downloadImportTemplate = async (req, res) => {
       "wIndexType",
       "wPrice",
     ];
-    const buildingsRows = [
-      {
-        name: "Tòa A",
-        address: "123 Lê Lợi, Quận 1, TP.HCM",
-        status: "active",
-        eIndexType: "byNumber",
-        ePrice: 3500,
-        wIndexType: "byNumber",
-        wPrice: 15000,
-      },
-    ];
-    const wsBuildings = xlsx.utils.json_to_sheet(buildingsRows, {
-      header: buildingsHeaders,
-    });
+    wsB.addRow(buildingsHeaders);
+    wsB.addRow([
+      "Tòa A",
+      "123 Lê Lợi, Quận 1, TP.HCM",
+      "Hoạt động",
+      "Theo chỉ số",
+      3500,
+      "Theo chỉ số",
+      15000,
+    ]);
+    wsB.autoFilter = { from: "A1", to: "G1" };
+    wsB.columns = buildingsHeaders.map((h) => ({
+      header: h,
+      width: Math.max(12, h.length + 2),
+    }));
 
-    // ===== Sheet Floors =====
+    // ===== Floors =====
+    const wsF = wb.addWorksheet("Floors");
     const floorsHeaders = ["buildingName", "level", "description", "status"];
-    const floorsRows = [
-      {
-        buildingName: "Tòa A",
-        level: 1,
-        description: "Khu chính",
-        status: "active",
-      },
-      {
-        buildingName: "Tòa A",
-        level: 2,
-        description: "Khu phụ",
-        status: "active",
-      },
-    ];
-    const wsFloors = xlsx.utils.json_to_sheet(floorsRows, {
-      header: floorsHeaders,
-    });
+    wsF.addRow(floorsHeaders);
+    wsF.addRow(["Tòa A", 1, "Khu chính", "Hoạt động"]);
+    wsF.addRow(["Tòa A", 2, "Khu phụ", "Hoạt động"]);
+    wsF.autoFilter = { from: "A1", to: "D1" };
+    wsF.columns = floorsHeaders.map((h) => ({
+      header: h,
+      width: Math.max(12, h.length + 2),
+    }));
 
-    // ===== Sheet Rooms =====
+    // ===== Rooms =====
+    const wsR = wb.addWorksheet("Rooms");
     const roomsHeaders = [
       "buildingName",
       "floorLevel",
@@ -602,75 +667,110 @@ const downloadImportTemplate = async (req, res) => {
       "wStart",
       "description",
     ];
-    const roomsRows = [
-      {
-        buildingName: "Tòa A",
-        floorLevel: 1,
-        roomNumber: "101",
-        area: 25,
-        price: 3500000,
-        maxTenants: 2,
-        status: "available",
-        eStart: 0,
-        wStart: 0,
-        description: "Phòng tiêu chuẩn",
-      },
-      {
-        buildingName: "Tòa A",
-        floorLevel: 1,
-        roomNumber: "102",
-        area: 20,
-        price: 3000000,
-        maxTenants: 2,
-        status: "available",
-        eStart: 0,
-        wStart: 0,
-        description: "Gần thang máy",
-      },
-      {
-        buildingName: "Tòa A",
-        floorLevel: 2,
-        roomNumber: "201",
-        area: 30,
-        price: 4000000,
-        maxTenants: 3,
-        status: "available",
-        eStart: 0,
-        wStart: 0,
-        description: "",
-      },
-    ];
-    const wsRooms = xlsx.utils.json_to_sheet(roomsRows, {
-      header: roomsHeaders,
-    });
+    wsR.addRow(roomsHeaders);
+    wsR.addRow([
+      "Tòa A",
+      1,
+      "101",
+      25,
+      3500000,
+      2,
+      "Sẵn sàng",
+      0,
+      0,
+      "Phòng tiêu chuẩn",
+    ]);
+    wsR.addRow([
+      "Tòa A",
+      1,
+      "102",
+      20,
+      3000000,
+      2,
+      "Sẵn sàng",
+      0,
+      0,
+      "Gần thang máy",
+    ]);
+    wsR.addRow(["Tòa A", 2, "201", 30, 4000000, 3, "Sẵn sàng", 0, 0, ""]);
+    wsR.autoFilter = { from: "A1", to: "J1" };
+    wsR.columns = roomsHeaders.map((h) => ({
+      header: h,
+      width: Math.max(12, h.length + 2),
+    }));
 
-    // 3) Thêm sheet vào workbook
-    xlsx.utils.book_append_sheet(wb, wsBuildings, "Buildings");
-    xlsx.utils.book_append_sheet(wb, wsFloors, "Floors");
-    xlsx.utils.book_append_sheet(wb, wsRooms, "Rooms");
-
-    // 4) Kẻ khung header (tùy chọn nhỏ gọn)
-    const autoFit = (ws, headers) => {
-      const colWidths = headers.map((h) => ({
-        wch: Math.max(12, String(h).length + 2),
-      }));
-      ws["!cols"] = colWidths;
+    // ===== Data Validation (Dropdown tiếng Việt) =====
+    // Công thức tham chiếu danh sách tiếng Việt ở sheet References
+    const lists = {
+      buildingStatusVI: `References!$B$2:$B$${
+        enumBlocks.buildingStatus.length + 1
+      }`,
+      floorStatusVI: `References!$D$2:$D$${enumBlocks.floorStatus.length + 1}`,
+      roomStatusVI: `References!$F$2:$F$${enumBlocks.roomStatus.length + 1}`,
+      indexTypeVI: `References!$H$2:$H$${enumBlocks.indexType.length + 1}`,
     };
-    autoFit(wsBuildings, buildingsHeaders);
-    autoFit(wsFloors, floorsHeaders);
-    autoFit(wsRooms, roomsHeaders);
 
-    // 5) Xuất ra buffer xlsx
-    const buf = xlsx.write(wb, { bookType: "xlsx", type: "buffer" });
+    // Helper: áp dropdown cho 1 cột từ dòng 2 → 1000 (tùy chỉnh)
+    const applyListValidation = (ws, colNumber, formula) => {
+      for (let r = 2; r <= 1000; r++) {
+        ws.getCell(r, colNumber).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [formula],
+          showErrorMessage: true,
+          errorStyle: "warning",
+          errorTitle: "Giá trị không hợp lệ",
+          error: "Vui lòng chọn trong danh sách sổ xuống.",
+          showInputMessage: true,
+          promptTitle: "Chọn từ danh sách",
+          prompt: "Nhấn vào mũi tên để chọn.",
+        };
+      }
+    };
 
-    // 6) Header tải file về
+    // Buildings: status (C), eIndexType (D), wIndexType (F)
+    applyListValidation(wsB, 3, lists.buildingStatusVI);
+    applyListValidation(wsB, 4, lists.indexTypeVI);
+    applyListValidation(wsB, 6, lists.indexTypeVI);
+
+    // Floors: status (D)
+    applyListValidation(wsF, 4, lists.floorStatusVI);
+
+    // Rooms: status (G)
+    applyListValidation(wsR, 7, lists.roomStatusVI);
+
+    // (Tuỳ chọn) Validation số >= 0
+    const applyNumberNonNegative = (ws, colNumber) => {
+      for (let r = 2; r <= 1000; r++) {
+        ws.getCell(r, colNumber).dataValidation = {
+          type: "decimal",
+          operator: "greaterThanOrEqual",
+          allowBlank: true,
+          formulae: [0],
+          showErrorMessage: true,
+          errorStyle: "stop",
+          errorTitle: "Số không hợp lệ",
+          error: "Giá trị phải là số ≥ 0.",
+        };
+      }
+    };
+    applyNumberNonNegative(wsB, 5); // ePrice
+    applyNumberNonNegative(wsB, 7); // wPrice
+    applyNumberNonNegative(wsR, 4); // area
+    applyNumberNonNegative(wsR, 5); // price
+    applyNumberNonNegative(wsR, 6); // maxTenants
+    applyNumberNonNegative(wsR, 8); // eStart
+    applyNumberNonNegative(wsR, 9); // wStart
+
+    // Xuất file
     const filename = "rms_import_template.xlsx";
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.status(200).send(buf);
+    await wb.xlsx.write(res);
+    res.end();
   } catch (err) {
     res.status(500).json({ message: err.message || "Không thể tạo template" });
   }
@@ -682,6 +782,60 @@ const norm = (s) =>
     .toLowerCase();
 const isNum = (v) => Number.isFinite(Number(v));
 const toNum = (v, d = 0) => (isNum(v) ? Number(v) : d);
+
+// ===== Map VI -> EN cho dropdown trong Excel =====
+const VI_EN_MAP = {
+  buildingStatus: {
+    "hoạt động": "active",
+    "ngưng hoạt động": "inactive",
+  },
+  floorStatus: {
+    "hoạt động": "active",
+    "ngưng hoạt động": "inactive",
+  },
+  roomStatus: {
+    "sẵn sàng": "available",
+    "đang thuê": "occupied",
+    "bảo trì": "maintenance",
+    "ngưng hoạt động": "inactive",
+  },
+  indexType: {
+    "theo chỉ số": "byNumber",
+    "theo đầu người": "byPerson",
+    "đã bao gồm": "included",
+  },
+};
+
+// Tập EN hợp lệ (để chấp nhận cả khi user gõ code EN)
+const ALLOW = {
+  buildingStatus: new Set(["active", "inactive"]),
+  floorStatus: new Set(["active", "inactive"]),
+  roomStatus: new Set(["available", "occupied", "maintenance", "inactive"]),
+  indexType: new Set(["byNumber", "byPerson", "included"]),
+};
+
+// Helper: map & validate enum
+function mapEnumOrError(raw, kind, fallbackEN, humanLabelList) {
+  const vRaw = String(raw || "").trim();
+  if (!vRaw) return { ok: true, value: fallbackEN }; // cho phép để trống → dùng default
+  const vNorm = norm(vRaw);
+
+  // nếu gõ EN hợp lệ → giữ nguyên
+  if (ALLOW[kind].has(vRaw)) return { ok: true, value: vRaw };
+  // nếu gõ EN (lower) hợp lệ → trả về dạng chuẩn
+  if (ALLOW[kind].has(vNorm)) return { ok: true, value: vNorm };
+
+  // nếu gõ VI đúng → map sang EN
+  const mapped = VI_EN_MAP[kind][vNorm];
+  if (mapped) return { ok: true, value: mapped };
+
+  // không khớp → trả lỗi gợi ý
+  const suggest = humanLabelList.join(" | ");
+  return {
+    ok: false,
+    error: `Giá trị không hợp lệ: "${vRaw}". Hợp lệ: ${suggest}`,
+  };
+}
 
 const importFromExcel = async (req, res) => {
   try {
@@ -738,93 +892,130 @@ const importFromExcel = async (req, res) => {
     // Buildings
     const buildingsPayload = willDoB
       ? shBuildings.map((r, i) => {
-        const name = r.name;
-        const address = r.address;
-        const status =
-          norm(r.status || "active") === "inactive" ? "inactive" : "active";
-        const eIndexType = r.eIndexType || "byNumber";
-        const ePrice = toNum(r.ePrice, 0);
-        const wIndexType = r.wIndexType || "byNumber";
-        const wPrice = toNum(r.wPrice, 0);
+          const name = r.name;
+          const address = r.address;
 
-        const rowErr = [];
-        if (!name || !norm(name)) rowErr.push("name bắt buộc");
-        if (!address) rowErr.push("address bắt buộc");
-        if (ePrice < 0) rowErr.push("ePrice >= 0");
-        if (wPrice < 0) rowErr.push("wPrice >= 0");
-        if (rowErr.length)
-          errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
+          // status: default 'active'
+          const mStatus = mapEnumOrError(r.status, "buildingStatus", "active", [
+            "Hoạt động/active",
+            "Ngưng hoạt động/inactive",
+          ]);
 
-        return {
-          name,
-          address,
-          status,
-          eIndexType,
-          ePrice,
-          wIndexType,
-          wPrice,
-        };
-      })
+          // eIndexType, wIndexType: default 'byNumber'
+          const mEIdx = mapEnumOrError(r.eIndexType, "indexType", "byNumber", [
+            "Theo chỉ số/byNumber",
+            "Theo đầu người/byPerson",
+            "Đã bao gồm/included",
+          ]);
+          const mWIdx = mapEnumOrError(r.wIndexType, "indexType", "byNumber", [
+            "Theo chỉ số/byNumber",
+            "Theo đầu người/byPerson",
+            "Đã bao gồm/included",
+          ]);
+
+          const ePrice = toNum(r.ePrice, 0);
+          const wPrice = toNum(r.wPrice, 0);
+
+          const rowErr = [];
+          if (!name || !norm(name)) rowErr.push("name bắt buộc");
+          if (!address) rowErr.push("address bắt buộc");
+          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+          if (!mEIdx.ok) rowErr.push(`eIndexType: ${mEIdx.error}`);
+          if (!mWIdx.ok) rowErr.push(`wIndexType: ${mWIdx.error}`);
+          if (ePrice < 0) rowErr.push("ePrice >= 0");
+          if (wPrice < 0) rowErr.push("wPrice >= 0");
+
+          if (rowErr.length)
+            errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
+
+          return {
+            name,
+            address,
+            status: mStatus.ok ? mStatus.value : "active",
+            eIndexType: mEIdx.ok ? mEIdx.value : "byNumber",
+            ePrice,
+            wIndexType: mWIdx.ok ? mWIdx.value : "byNumber",
+            wPrice,
+          };
+        })
       : [];
 
     // Floors
     const floorsPayload = willDoF
       ? shFloors.map((r, i) => {
-        const buildingName = r.buildingName;
-        const level = toNum(r.level, NaN);
-        const description = r.description || "";
-        const status =
-          norm(r.status || "active") === "inactive" ? "inactive" : "active";
+          const buildingName = r.buildingName;
+          const level = toNum(r.level, NaN);
+          const description = r.description || "";
 
-        const rowErr = [];
-        if (!buildingName) rowErr.push("buildingName bắt buộc");
-        if (!isNum(level)) rowErr.push("level bắt buộc và là số");
-        if (rowErr.length)
-          errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
+          const mStatus = mapEnumOrError(r.status, "floorStatus", "active", [
+            "Hoạt động/active",
+            "Ngưng hoạt động/inactive",
+          ]);
 
-        return { buildingName, level: Number(level), description, status };
-      })
+          const rowErr = [];
+          if (!buildingName) rowErr.push("buildingName bắt buộc");
+          if (!isNum(level)) rowErr.push("level bắt buộc và là số");
+          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+
+          if (rowErr.length)
+            errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
+
+          return {
+            buildingName,
+            level: Number(level),
+            description,
+            status: mStatus.ok ? mStatus.value : "active",
+          };
+        })
       : [];
 
     // Rooms
     const roomsPayload = willDoR
       ? shRooms.map((r, i) => {
-        const buildingName = r.buildingName;
-        const floorLevel = toNum(r.floorLevel, NaN);
-        const roomNumber = String(r.roomNumber || "").trim();
-        const area = toNum(r.area, 0);
-        const price = toNum(r.price, 0);
-        const maxTenants = toNum(r.maxTenants, 1);
-        const status = r.status || "available";
-        const eStart = toNum(r.eStart, 0);
-        const wStart = toNum(r.wStart, 0);
-        const description = r.description || "";
+          const buildingName = r.buildingName;
+          const floorLevel = toNum(r.floorLevel, NaN);
+          const roomNumber = String(r.roomNumber || "").trim();
+          const area = toNum(r.area, 0);
+          const price = toNum(r.price, 0);
+          const maxTenants = toNum(r.maxTenants, 1);
+          const eStart = toNum(r.eStart, 0);
+          const wStart = toNum(r.wStart, 0);
+          const description = r.description || "";
 
-        const rowErr = [];
-        if (!buildingName) rowErr.push("buildingName bắt buộc");
-        if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
-        if (!roomNumber) rowErr.push("roomNumber bắt buộc");
-        if (area <= 0) rowErr.push("area > 0");
-        if (price < 0) rowErr.push("price >= 0");
-        if (maxTenants < 1) rowErr.push("maxTenants >= 1");
-        if (eStart < 0) rowErr.push("eStart >= 0");
-        if (wStart < 0) rowErr.push("wStart >= 0");
-        if (rowErr.length)
-          errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
+          const mStatus = mapEnumOrError(r.status, "roomStatus", "available", [
+            "Sẵn sàng/available",
+            "Đang thuê/occupied",
+            "Bảo trì/maintenance",
+            "Ngưng hoạt động/inactive",
+          ]);
 
-        return {
-          buildingName,
-          floorLevel: Number(floorLevel),
-          roomNumber,
-          area,
-          price,
-          maxTenants,
-          status,
-          eStart,
-          wStart,
-          description,
-        };
-      })
+          const rowErr = [];
+          if (!buildingName) rowErr.push("buildingName bắt buộc");
+          if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
+          if (!roomNumber) rowErr.push("roomNumber bắt buộc");
+          if (area <= 0) rowErr.push("area > 0");
+          if (price < 0) rowErr.push("price >= 0");
+          if (maxTenants < 1) rowErr.push("maxTenants >= 1");
+          if (eStart < 0) rowErr.push("eStart >= 0");
+          if (wStart < 0) rowErr.push("wStart >= 0");
+          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+
+          if (rowErr.length)
+            errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
+
+          return {
+            buildingName,
+            floorLevel: Number(floorLevel),
+            roomNumber,
+            area,
+            price,
+            maxTenants,
+            status: mStatus.ok ? mStatus.value : "available",
+            eStart,
+            wStart,
+            description,
+          };
+        })
       : [];
 
     if (errors.length)
@@ -938,10 +1129,10 @@ const importFromExcel = async (req, res) => {
         const docs = buildingsPayload.map((b) => ({
           name: b.name.trim(),
           address: b.address,
-          status: b.status,
-          eIndexType: b.eIndexType || "byNumber",
+          status: b.status, // đã map EN
+          eIndexType: b.eIndexType, // đã map EN
           ePrice: b.ePrice || 0,
-          wIndexType: b.wIndexType || "byNumber",
+          wIndexType: b.wIndexType, // đã map EN
           wPrice: b.wPrice || 0,
           landlordId,
           isDeleted: false,
@@ -989,7 +1180,7 @@ const importFromExcel = async (req, res) => {
             level: f.level,
             floorNumber: f.level,
             description: f.description || "",
-            status: f.status || "active",
+            status: f.status, // đã map EN
             isDeleted: false,
           });
         }
@@ -1080,7 +1271,7 @@ const importFromExcel = async (req, res) => {
             area: r.area,
             price: r.price,
             maxTenants: r.maxTenants,
-            status: r.status || "available",
+            status: r.status, // đã map EN
             description: r.description || "",
             eStart: r.eStart || 0,
             wStart: r.wStart || 0,
