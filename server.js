@@ -7,6 +7,7 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 
 const DB = require("./configs/db");
+const { startExpirationJob } = require("./utils/cron/expireSubscriptions");
 
 const app = express();
 const port = process.env.PORT || 9999;
@@ -67,6 +68,18 @@ DB.connectDB()
     app.listen(port, () => {
       console.log(`✅ Server is running at http://localhost:${port}`);
     });
+    startExpirationJob();
+    // Graceful shutdown
+    process.on('SIGTERM', shutDown);
+    process.on('SIGINT', shutDown);
+
+    function shutDown() {
+      console.log('Đang tắt server...');
+      server.close(() => {
+        console.log('Server đã tắt.');
+        process.exit(0);
+      });
+    }
   })
   .catch((err) => {
     console.error("❌ Failed to connect DB:", err);
