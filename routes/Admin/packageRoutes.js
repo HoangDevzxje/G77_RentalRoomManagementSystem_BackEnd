@@ -5,7 +5,7 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
 /**
  * @swagger
  * tags:
- *   name: Package
+ *   name: Admin Package Management
  *   description: API quản lý gói dịch vụ
  */
 
@@ -15,7 +15,7 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
  *   post:
  *     summary: Tạo gói dịch vụ mới
  *     description: Tạo một gói dịch vụ mới (chỉ admin).
- *     tags: [Package]
+ *     tags: [Admin Package Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -56,7 +56,7 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
  *       201:
  *         description: Gói dịch vụ được tạo thành công
  */
-router.post('/packages', checkAuthorize(['admin']), packageController.create);
+router.post('/', checkAuthorize(['admin']), packageController.create);
 
 /**
  * @swagger
@@ -64,14 +64,14 @@ router.post('/packages', checkAuthorize(['admin']), packageController.create);
  *   get:
  *     summary: Lấy danh sách gói dịch vụ
  *     description: Lấy tất cả gói dịch vụ (landlord/admin).
- *     tags: [Package]
+ *     tags: [Admin Package Management]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Danh sách gói dịch vụ
  */
-router.get('/packages', checkAuthorize(['landlord', 'admin']), packageController.list);
+router.get('/', checkAuthorize(['landlord', 'admin']), packageController.list);
 
 /**
  * @swagger
@@ -79,7 +79,7 @@ router.get('/packages', checkAuthorize(['landlord', 'admin']), packageController
  *   get:
  *     summary: Lấy chi tiết gói dịch vụ
  *     description: Lấy thông tin một gói dịch vụ theo ID (landlord/admin).
- *     tags: [Package]
+ *     tags: [Admin Package Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -92,7 +92,7 @@ router.get('/packages', checkAuthorize(['landlord', 'admin']), packageController
  *       200:
  *         description: Chi tiết gói dịch vụ
  */
-router.get('/packages/:id', checkAuthorize(['landlord', 'admin']), packageController.getById);
+router.get('/:id', checkAuthorize(['landlord', 'admin']), packageController.getById);
 
 /**
  * @swagger
@@ -100,7 +100,7 @@ router.get('/packages/:id', checkAuthorize(['landlord', 'admin']), packageContro
  *   put:
  *     summary: Cập nhật gói dịch vụ
  *     description: Cập nhật thông tin gói dịch vụ (chỉ admin).
- *     tags: [Package]
+ *     tags: [Admin Package Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -133,7 +133,7 @@ router.get('/packages/:id', checkAuthorize(['landlord', 'admin']), packageContro
  *       200:
  *         description: Gói dịch vụ được cập nhật thành công
  */
-router.put('/packages/:id', checkAuthorize(['admin']), packageController.update);
+router.put('/:id', checkAuthorize(['admin']), packageController.update);
 
 /**
  * @swagger
@@ -141,7 +141,7 @@ router.put('/packages/:id', checkAuthorize(['admin']), packageController.update)
  *   delete:
  *     summary: Xóa gói dịch vụ
  *     description: Xóa gói dịch vụ nếu không có subscription liên quan (chỉ admin).
- *     tags: [Package]
+ *     tags: [Admin Package Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -154,7 +154,7 @@ router.put('/packages/:id', checkAuthorize(['admin']), packageController.update)
  *       200:
  *         description: Gói dịch vụ được xóa thành công
  */
-router.delete('/packages/:id', checkAuthorize(['admin']), packageController.remove);
+router.delete('/:id', checkAuthorize(['admin']), packageController.remove);
 
 /**
  * @swagger
@@ -162,7 +162,7 @@ router.delete('/packages/:id', checkAuthorize(['admin']), packageController.remo
  *   patch:
  *     summary: Bật / tắt trạng thái hoạt động của gói dịch vụ
  *     description: Cập nhật trạng thái isActive của gói dịch vụ (admin).
- *     tags: [Package]
+ *     tags: [Admin Package Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -188,7 +188,7 @@ router.delete('/packages/:id', checkAuthorize(['admin']), packageController.remo
  *       404:
  *         description: Không tìm thấy gói dịch vụ
  */
-router.patch('/packages/:id/toggle-active', checkAuthorize(['admin']), packageController.updateIsActive);
+router.patch('/:id/toggle-active', checkAuthorize(['admin']), packageController.updateIsActive);
 
 /**
  * @swagger
@@ -196,7 +196,7 @@ router.patch('/packages/:id/toggle-active', checkAuthorize(['admin']), packageCo
  *   patch:
  *     summary: Đổi loại gói dịch vụ
  *     description: Chuyển đổi loại gói dịch vụ giữa `trial` và `paid` (chỉ admin).
- *     tags: [Package]
+ *     tags: [Admin Package Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -240,6 +240,6 @@ router.patch('/packages/:id/toggle-active', checkAuthorize(['admin']), packageCo
  *       404:
  *         description: Không tìm thấy gói dịch vụ
  */
-router.patch('/packages/:id/change-type', checkAuthorize(['admin']), packageController.changeType);
+router.patch('/:id/change-type', checkAuthorize(['admin']), packageController.changeType);
 
 module.exports = router;

@@ -1,18 +1,18 @@
 const router = require("express").Router();
-const FurnitureCtrl = require("../controllers/FurnitureController");
-const BuildingFurnitureCtrl = require("../controllers/BuildingFurnitureController");
-const RoomFurnitureCtrl = require("../controllers/RoomFurnitureController");
-const { checkAuthorize } = require("../middleware/authMiddleware");
-const checkSubscription = require("../middleware/checkSubscription");
+const FurnitureCtrl = require("../../controllers/Landlord/FurnitureController");
+const BuildingFurnitureCtrl = require("../../controllers/Landlord/BuildingFurnitureController");
+const RoomFurnitureCtrl = require("../../controllers/Landlord/RoomFurnitureController");
+const { checkAuthorize } = require("../../middleware/authMiddleware");
+const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
  * tags:
- *   - name: Furniture
+ *   - name: Landlord Furniture Management
  *     description: Quản lý danh mục nội thất (Furniture master data)
- *   - name: Building Furniture
+ *   - name: Landlord Building Furniture Management
  *     description: Quản lý cấu hình nội thất theo tòa nhà
- *   - name: Room Furniture
+ *   - name: Landlord Room Furniture Management
  *     description: Quản lý nội thất theo từng phòng
  */
 
@@ -134,9 +134,9 @@ const checkSubscription = require("../middleware/checkSubscription");
 
 /**
  * @swagger
- * /furnitures:
+ * /landlords/furnitures:
  *   post:
- *     tags: [Furniture]
+ *     tags: [Landlord Furniture Management]
  *     summary: Tạo mới nội thất
  *     description: Tạo một loại nội thất mới trong hệ thống
  *     security:
@@ -196,9 +196,9 @@ router.post(
 
 /**
  * @swagger
- * /furnitures:
+ * /landlords/furnitures:
  *   get:
- *     tags: [Furniture]
+ *     tags: [Landlord Furniture Management]
  *     summary: Lấy danh sách tất cả nội thất
  *     description: Lấy danh sách tất cả các loại nội thất trong hệ thống
  *     security:
@@ -230,9 +230,9 @@ router.get(
 
 /**
  * @swagger
- * /furnitures/building:
+ * /landlords/furnitures/building:
  *   post:
- *     tags: [Building Furniture]
+ *     tags: [Landlord Building Furniture Management]
  *     summary: Thêm nội thất vào tòa nhà
  *     description: Thêm một loại nội thất vào cấu hình của tòa nhà
  *     security:
@@ -291,9 +291,9 @@ router.post(
 
 /**
  * @swagger
- * /furnitures/building/bulk:
+ * /landlords/furnitures/building/bulk:
  *   post:
- *     tags: [Building Furniture]
+ *     tags: [Landlord Building Furniture Management]
  *     summary: Thêm nhiều nội thất vào tòa nhà cùng lúc
  *     description: Thêm nhiều loại nội thất vào cấu hình của tòa nhà với các chế độ tạo mới hoặc cập nhật
  *     security:
@@ -392,9 +392,9 @@ router.post(
 
 /**
  * @swagger
- * /furnitures/building:
+ * /landlords/furnitures/building:
  *   get:
- *     tags: [Building Furniture]
+ *     tags: [Landlord Building Furniture Management]
  *     summary: Lấy danh sách nội thất của tòa nhà
  *     description: Lấy danh sách cấu hình nội thất theo tòa nhà
  *     security:
@@ -437,9 +437,9 @@ router.get(
 
 /**
  * @swagger
- * /furnitures/building/{id}:
+ * /landlords/furnitures/building/{id}:
  *   put:
- *     tags: [Building Furniture]
+ *     tags: [Landlord Building Furniture Management]
  *     summary: Cập nhật cấu hình nội thất tòa nhà
  *     description: Cập nhật thông tin cấu hình nội thất của tòa nhà
  *     security:
@@ -492,9 +492,9 @@ router.put(
 
 /**
  * @swagger
- * /furnitures/building/{id}:
+ * /landlords/furnitures/building/{id}:
  *   delete:
- *     tags: [Building Furniture]
+ *     tags: [Landlord Building Furniture Management]
  *     summary: Xóa cấu hình nội thất tòa nhà
  *     description: Xóa một cấu hình nội thất khỏi tòa nhà
  *     security:
@@ -533,9 +533,9 @@ router.delete(
 
 /**
  * @swagger
- * /furnitures/{buildingId}/apply-to-rooms:
+ * /landlords/furnitures/{buildingId}/apply-to-rooms:
  *   post:
- *     tags: [Building Furniture]
+ *     tags: [Landlord Building Furniture Management]
  *     summary: Áp dụng cấu hình nội thất tòa nhà cho các phòng
  *     description: Áp dụng cấu hình nội thất của tòa nhà vào các phòng cụ thể hoặc tất cả phòng trong tòa
  *     security:
@@ -621,9 +621,9 @@ router.post(
 
 /**
  * @swagger
- * /furnitures/room:
+ * /landlords/furnitures/room:
  *   post:
- *     tags: [Room Furniture]
+ *     tags: [Landlord Room Furniture Management]
  *     summary: Thêm nội thất vào phòng
  *     description: Thêm một loại nội thất vào phòng cụ thể
  *     security:
@@ -678,9 +678,9 @@ router.post(
 
 /**
  * @swagger
- * /furnitures/room:
+ * /landlords/furnitures/room:
  *   get:
- *     tags: [Room Furniture]
+ *     tags: [Landlord Room Furniture Management]
  *     summary: Lấy danh sách nội thất của phòng
  *     description: Lấy danh sách nội thất theo phòng
  *     security:
@@ -716,9 +716,9 @@ router.get(
 
 /**
  * @swagger
- * /furnitures/room/{id}:
+ * /landlords/furnitures/room/{id}:
  *   get:
- *     tags: [Room Furniture]
+ *     tags: [Landlord Room Furniture Management]
  *     summary: Lấy chi tiết một nội thất trong phòng
  *     description: Lấy thông tin chi tiết của một nội thất trong phòng
  *     security:
@@ -755,9 +755,9 @@ router.get(
 
 /**
  * @swagger
- * /furnitures/room/{id}:
+ * /landlords/furnitures/room/{id}:
  *   put:
- *     tags: [Room Furniture]
+ *     tags: [Landlord Room Furniture Management]
  *     summary: Cập nhật nội thất trong phòng
  *     description: Cập nhật thông tin nội thất của phòng
  *     security:
@@ -808,9 +808,9 @@ router.put(
 
 /**
  * @swagger
- * /furnitures/room/{id}:
+ * /landlords/furnitures/room/{id}:
  *   delete:
- *     tags: [Room Furniture]
+ *     tags: [Landlord Room Furniture Management]
  *     summary: Xóa nội thất khỏi phòng
  *     description: Xóa một nội thất khỏi phòng
  *     security:
@@ -851,9 +851,9 @@ router.delete(
 
 /**
  * @swagger
- * /furnitures/{id}:
+ * /landlords/furnitures/{id}:
  *   get:
- *     tags: [Furniture]
+ *     tags: [Landlord Furniture Management]
  *     summary: Lấy chi tiết một nội thất
  *     description: Lấy thông tin chi tiết của một loại nội thất
  *     security:
@@ -890,9 +890,9 @@ router.get(
 
 /**
  * @swagger
- * /furnitures/{id}:
+ * /landlords/furnitures/{id}:
  *   put:
- *     tags: [Furniture]
+ *     tags: [Landlord Furniture Management]
  *     summary: Cập nhật thông tin nội thất
  *     description: Cập nhật thông tin của một loại nội thất
  *     security:
@@ -949,9 +949,9 @@ router.put(
 
 /**
  * @swagger
- * /furnitures/{id}:
+ * /landlords/furnitures/{id}:
  *   delete:
- *     tags: [Furniture]
+ *     tags: [Landlord Furniture Management]
  *     summary: Xóa nội thất
  *     description: Xóa một loại nội thất khỏi hệ thống
  *     security:

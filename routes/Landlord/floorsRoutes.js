@@ -1,22 +1,22 @@
 const router = require("express").Router();
-const { checkAuthorize } = require("../middleware/authMiddleware");
-const FloorCtrl = require("../controllers/FloorController");
-const checkSubscription = require("../middleware/checkSubscription");
-const loadFloorAndCheckParent = require("../middleware/loadFloorAndCheckParent");
+const { checkAuthorize } = require("../../middleware/authMiddleware");
+const FloorCtrl = require("../../controllers/Landlord/FloorController");
+const checkSubscription = require("../../middleware/checkSubscription");
+const loadFloorAndCheckParent = require("../../middleware/loadFloorAndCheckParent");
 /**
  * @swagger
  * tags:
- *   name: Floor
+ *   name: Landlord Floor Management
  *   description: API quản lý tầng
  */
 
 /**
  * @swagger
- * /floors:
+ * /landlords/floors:
  *   get:
  *     summary: Lấy danh sách tầng
  *     description: Lấy danh sách tầng, có thể lọc theo buildingId. Landlord chỉ thấy tầng trong tòa nhà của mình.
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -85,11 +85,11 @@ router.get(
 
 /**
  * @swagger
- * /floors/{id}:
+ * /landlords/floors/{id}:
  *   get:
  *     summary: Lấy chi tiết tầng
  *     description: Lấy thông tin chi tiết của một tầng theo ID (admin, landlord, resident). Landlord chỉ thấy tầng trong tòa nhà của mình.
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -166,11 +166,11 @@ router.get(
 
 /**
  * @swagger
- * /floors:
+ * /landlords/floors:
  *   post:
  *     summary: Tạo tầng mới
  *     description: Tạo một tầng mới trong tòa nhà được chỉ định (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -289,11 +289,11 @@ router.post(
 
 /**
  * @swagger
- * /floors/quick-create:
+ * /landlords/floors/quick-create:
  *   post:
  *     summary: Tạo nhanh nhiều tầng
  *     description: Tạo nhanh nhiều tầng cho một tòa nhà (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -461,11 +461,11 @@ router.post(
 
 /**
  * @swagger
- * /floors/{id}:
+ * /landlords/floors/{id}:
  *   put:
  *     summary: Cập nhật tầng
  *     description: Cập nhật thông tin tầng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -584,11 +584,11 @@ router.put(
 
 /**
  * @swagger
- * /floors/{id}/hard-delete:
+ * /landlords/floors/{id}/hard-delete:
  *   delete:
  *     summary: Xóa vĩnh viễn tầng
  *     description: Xóa vĩnh viễn một tầng (chỉ admin, yêu cầu subscription active).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -668,11 +668,11 @@ router.put(
 
 /**
  * @swagger
- * /floors/{id}/soft:
+ * /landlords/floors/{id}/soft:
  *   delete:
  *     summary: Xóa mềm tầng
  *     description: Xóa mềm một tầng (admin và landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -765,11 +765,11 @@ router.delete(
 
 /**
  * @swagger
- * /floors/{id}/hard-delete:
+ * /landlords/floors/{id}/hard-delete:
  *   delete:
  *     summary: Xóa vĩnh viễn tầng
  *     description: Xóa vĩnh viễn một tầng (chỉ admin, yêu cầu subscription active).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -855,11 +855,11 @@ router.delete(
 
 /**
  * @swagger
- * /floors/{id}:
+ * /landlords/floors/{id}:
  *   delete:
  *     summary: Xóa mềm tầng
  *     description: Xóa mềm một tầng (admin và landlord sở hữu tòa nhà).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -944,11 +944,11 @@ router.delete(
 );
 /**
  * @swagger
- * /floors/{id}/restore:
+ * /landlords/floors/{id}/restore:
  *   post:
  *     summary: Khôi phục tầng đã xóa
  *     description: Khôi phục một tầng đã bị xóa mềm (chỉ admin hoặc landlord sở hữu tòa nhà).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1036,11 +1036,11 @@ router.post(
 );
 /**
  * @swagger
- * /floors/{id}/status:
+ * /landlords/floors/{id}/status:
  *   patch:
  *     summary: Cập nhật trạng thái tầng
  *     description: Cập nhật trạng thái của một tầng (chỉ admin hoặc landlord sở hữu tòa nhà).
- *     tags: [Floor]
+ *     tags: [Landlord Floor Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:

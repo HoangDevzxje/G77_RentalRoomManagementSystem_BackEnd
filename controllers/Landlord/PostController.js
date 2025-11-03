@@ -288,16 +288,22 @@ const listByLandlord = async (req, res) => {
         const landlordId = req.user._id;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
-
         const skip = (page - 1) * limit;
 
+        const { isDraft } = req.query;
+
+        const filter = { landlordId, isDeleted: false };
+        if (isDraft !== undefined) {
+            filter.isDraft = isDraft === "true";
+        }
+
         const [posts, total] = await Promise.all([
-            Post.find({ landlordId, isDeleted: false })
+            Post.find(filter)
                 .populate('buildingId', 'name address')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),
-            Post.countDocuments({ landlordId, isDeleted: false }),
+            Post.countDocuments(filter),
         ]);
 
         res.json({
@@ -311,7 +317,8 @@ const listByLandlord = async (req, res) => {
             },
         });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        console.error("Error in listByLandlord:", err);
+        res.status(500).json({ message: "Lỗi hệ thống khi lấy danh sách bài đăng!" });
     }
 };
 const getPostDetail = async (req, res) => {

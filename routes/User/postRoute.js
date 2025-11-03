@@ -4,7 +4,7 @@ const postController = require("../../controllers/User/PostController");
 /**
  * @swagger
  * tags:
- *   - name: Post for User
+ *   - name: Resident Post
  *     description: API dành cho người thuê xem bài đăng trọ
  */
 
@@ -16,7 +16,7 @@ const postController = require("../../controllers/User/PostController");
  *     description: |
  *       Trả về danh sách các bài đăng có trạng thái **active**, chưa bị xóa và không phải bản nháp.
  *       Có thể tìm kiếm theo tiêu đề hoặc địa chỉ và hỗ trợ phân trang.
- *     tags: [Post for User]
+ *     tags: [Resident Post]
  *     parameters:
  *       - in: query
  *         name: page
@@ -117,7 +117,7 @@ const postController = require("../../controllers/User/PostController");
  *     summary: Lấy chi tiết bài đăng trọ
  *     description: |
  *       Trả về thông tin chi tiết của bài đăng bao gồm chủ trọ, tòa nhà, và danh sách phòng có trong bài đăng.
- *     tags: [Post for User]
+ *     tags: [Resident Post]
  *     parameters:
  *       - in: path
  *         name: id
@@ -218,7 +218,7 @@ const postController = require("../../controllers/User/PostController");
  *     summary: Xem chi tiết phòng trọ thuộc bài đăng
  *     description: |
  *       Trả về thông tin chi tiết của một phòng cụ thể (bao gồm thông tin tòa nhà).
- *     tags: [Post for User]
+ *     tags: [Resident Post]
  *     parameters:
  *       - in: path
  *         name: roomId

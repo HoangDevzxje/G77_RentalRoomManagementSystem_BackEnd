@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
-const Building = require("../models/Building");
-const Floor = require("../models/Floor");
-const Room = require("../models/Room");
+const Building = require("../../models/Building");
+const Floor = require("../../models/Floor");
+const Room = require("../../models/Room");
 const xlsx = require("xlsx");
 
 const list = async (req, res) => {
@@ -738,93 +738,93 @@ const importFromExcel = async (req, res) => {
     // Buildings
     const buildingsPayload = willDoB
       ? shBuildings.map((r, i) => {
-          const name = r.name;
-          const address = r.address;
-          const status =
-            norm(r.status || "active") === "inactive" ? "inactive" : "active";
-          const eIndexType = r.eIndexType || "byNumber";
-          const ePrice = toNum(r.ePrice, 0);
-          const wIndexType = r.wIndexType || "byNumber";
-          const wPrice = toNum(r.wPrice, 0);
+        const name = r.name;
+        const address = r.address;
+        const status =
+          norm(r.status || "active") === "inactive" ? "inactive" : "active";
+        const eIndexType = r.eIndexType || "byNumber";
+        const ePrice = toNum(r.ePrice, 0);
+        const wIndexType = r.wIndexType || "byNumber";
+        const wPrice = toNum(r.wPrice, 0);
 
-          const rowErr = [];
-          if (!name || !norm(name)) rowErr.push("name bắt buộc");
-          if (!address) rowErr.push("address bắt buộc");
-          if (ePrice < 0) rowErr.push("ePrice >= 0");
-          if (wPrice < 0) rowErr.push("wPrice >= 0");
-          if (rowErr.length)
-            errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
+        const rowErr = [];
+        if (!name || !norm(name)) rowErr.push("name bắt buộc");
+        if (!address) rowErr.push("address bắt buộc");
+        if (ePrice < 0) rowErr.push("ePrice >= 0");
+        if (wPrice < 0) rowErr.push("wPrice >= 0");
+        if (rowErr.length)
+          errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
 
-          return {
-            name,
-            address,
-            status,
-            eIndexType,
-            ePrice,
-            wIndexType,
-            wPrice,
-          };
-        })
+        return {
+          name,
+          address,
+          status,
+          eIndexType,
+          ePrice,
+          wIndexType,
+          wPrice,
+        };
+      })
       : [];
 
     // Floors
     const floorsPayload = willDoF
       ? shFloors.map((r, i) => {
-          const buildingName = r.buildingName;
-          const level = toNum(r.level, NaN);
-          const description = r.description || "";
-          const status =
-            norm(r.status || "active") === "inactive" ? "inactive" : "active";
+        const buildingName = r.buildingName;
+        const level = toNum(r.level, NaN);
+        const description = r.description || "";
+        const status =
+          norm(r.status || "active") === "inactive" ? "inactive" : "active";
 
-          const rowErr = [];
-          if (!buildingName) rowErr.push("buildingName bắt buộc");
-          if (!isNum(level)) rowErr.push("level bắt buộc và là số");
-          if (rowErr.length)
-            errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
+        const rowErr = [];
+        if (!buildingName) rowErr.push("buildingName bắt buộc");
+        if (!isNum(level)) rowErr.push("level bắt buộc và là số");
+        if (rowErr.length)
+          errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
 
-          return { buildingName, level: Number(level), description, status };
-        })
+        return { buildingName, level: Number(level), description, status };
+      })
       : [];
 
     // Rooms
     const roomsPayload = willDoR
       ? shRooms.map((r, i) => {
-          const buildingName = r.buildingName;
-          const floorLevel = toNum(r.floorLevel, NaN);
-          const roomNumber = String(r.roomNumber || "").trim();
-          const area = toNum(r.area, 0);
-          const price = toNum(r.price, 0);
-          const maxTenants = toNum(r.maxTenants, 1);
-          const status = r.status || "available";
-          const eStart = toNum(r.eStart, 0);
-          const wStart = toNum(r.wStart, 0);
-          const description = r.description || "";
+        const buildingName = r.buildingName;
+        const floorLevel = toNum(r.floorLevel, NaN);
+        const roomNumber = String(r.roomNumber || "").trim();
+        const area = toNum(r.area, 0);
+        const price = toNum(r.price, 0);
+        const maxTenants = toNum(r.maxTenants, 1);
+        const status = r.status || "available";
+        const eStart = toNum(r.eStart, 0);
+        const wStart = toNum(r.wStart, 0);
+        const description = r.description || "";
 
-          const rowErr = [];
-          if (!buildingName) rowErr.push("buildingName bắt buộc");
-          if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
-          if (!roomNumber) rowErr.push("roomNumber bắt buộc");
-          if (area <= 0) rowErr.push("area > 0");
-          if (price < 0) rowErr.push("price >= 0");
-          if (maxTenants < 1) rowErr.push("maxTenants >= 1");
-          if (eStart < 0) rowErr.push("eStart >= 0");
-          if (wStart < 0) rowErr.push("wStart >= 0");
-          if (rowErr.length)
-            errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
+        const rowErr = [];
+        if (!buildingName) rowErr.push("buildingName bắt buộc");
+        if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
+        if (!roomNumber) rowErr.push("roomNumber bắt buộc");
+        if (area <= 0) rowErr.push("area > 0");
+        if (price < 0) rowErr.push("price >= 0");
+        if (maxTenants < 1) rowErr.push("maxTenants >= 1");
+        if (eStart < 0) rowErr.push("eStart >= 0");
+        if (wStart < 0) rowErr.push("wStart >= 0");
+        if (rowErr.length)
+          errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
 
-          return {
-            buildingName,
-            floorLevel: Number(floorLevel),
-            roomNumber,
-            area,
-            price,
-            maxTenants,
-            status,
-            eStart,
-            wStart,
-            description,
-          };
-        })
+        return {
+          buildingName,
+          floorLevel: Number(floorLevel),
+          roomNumber,
+          area,
+          price,
+          maxTenants,
+          status,
+          eStart,
+          wStart,
+          description,
+        };
+      })
       : [];
 
     if (errors.length)

@@ -1,22 +1,22 @@
 const express = require("express");
 const router = express.Router();
-const { checkAuthorize } = require("../middleware/authMiddleware");
-const RegulationCtrl = require("../controllers/RegulationController");
+const { checkAuthorize } = require("../../middleware/authMiddleware");
+const RegulationCtrl = require("../../controllers/Landlord/RegulationController");
 
 /**
  * @swagger
  * tags:
- *   name: Regulation
+ *   name: Landlord Regulation Management
  *   description: API quản lý quy định tòa nhà
  */
 
 /**
  * @swagger
- * /regulations:
+ * /landlords/regulations:
  *   get:
  *     summary: Lấy danh sách quy định
  *     description: Lấy danh sách quy định của tòa nhà (admin, landlord, tenant đều có thể xem)
- *     tags: [Regulation]
+ *     tags: [Landlord Regulation Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -116,11 +116,11 @@ router.get(
 
 /**
  * @swagger
- * /regulations:
+ * /landlords/regulations:
  *   post:
  *     summary: Tạo quy định mới
  *     description: Tạo quy định mới cho tòa nhà (chỉ admin và landlord)
- *     tags: [Regulation]
+ *     tags: [Landlord Regulation Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -264,11 +264,11 @@ router.post("/", checkAuthorize(["admin", "landlord"]), RegulationCtrl.create);
 
 /**
  * @swagger
- * /regulations/{id}:
+ * /landlords/regulations/{id}:
  *   put:
  *     summary: Cập nhật quy định
  *     description: Cập nhật thông tin quy định (chỉ admin và landlord)
- *     tags: [Regulation]
+ *     tags: [Landlord Regulation Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -410,11 +410,11 @@ router.put(
 
 /**
  * @swagger
- * /regulations/{id}:
+ * /landlords/regulations/{id}:
  *   delete:
  *     summary: Xóa quy định
  *     description: Xóa quy định (chỉ admin và landlord)
- *     tags: [Regulation]
+ *     tags: [Landlord Regulation Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:

@@ -1,5 +1,5 @@
-const BuildingService = require("../models/BuildingService");
-const Building = require("../models/Building");
+const BuildingService = require("../../models/BuildingService");
+const Building = require("../../models/Building");
 
 // Helper: xác thực landlord sở hữu tòa
 async function assertLandlordOwnsBuilding(landlordId, buildingId) {

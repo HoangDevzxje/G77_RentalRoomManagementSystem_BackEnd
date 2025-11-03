@@ -5,7 +5,7 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
 /**
  * @swagger
  * tags:
- *   name: User
+ *   name: Profile
  *   description: API quản lý hồ sơ người dùng
  */
 
@@ -89,10 +89,10 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
 
 /**
  * @swagger
- * /users/profile:
+ * /profiles:
  *   get:
  *     summary: Lấy thông tin hồ sơ người dùng hiện tại
- *     tags: [User]
+ *     tags: [Profile]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -127,14 +127,14 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/profile", checkAuthorize(["admin", "landlord", "resident"]), userController.getMyProfile);
+router.get("/", checkAuthorize(["admin", "landlord", "resident"]), userController.getMyProfile);
 
 /**
  * @swagger
- * users/profile:
+ * /profiles:
  *   put:
  *     summary: Cập nhật thông tin hồ sơ người dùng hiện tại
- *     tags: [User]
+ *     tags: [Profile]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -200,6 +200,6 @@ router.get("/profile", checkAuthorize(["admin", "landlord", "resident"]), userCo
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.put("/profile", checkAuthorize(["admin", "landlord", "resident"]), userController.editMyProfile);
+router.put("/", checkAuthorize(["admin", "landlord", "resident"]), userController.editMyProfile);
 
 module.exports = router;

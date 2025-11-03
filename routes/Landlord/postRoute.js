@@ -2,11 +2,12 @@ const router = require('express').Router();
 const postController = require("../../controllers/Landlord/PostController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const { uploadMultiple } = require("../../configs/cloudinary");
+const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
  * tags:
- *   - name: Post by Landlord
+ *   - name: Landlord Post Management
  *     description: API quản lý bài đăng của chủ trọ
  */
 
@@ -16,7 +17,7 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *   post:
  *     summary: Gợi ý mô tả bài đăng bằng AI
  *     description: Sinh phần mô tả hấp dẫn cho bài đăng cho thuê phòng trọ. Kết quả trả về ở dạng HTML có thể hiển thị trực tiếp trong trình duyệt hoặc trình soạn thảo.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -101,7 +102,7 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *                       type: string
  *                       example: "<p>🏠 Phòng trọ đầy đủ nội thất, gần ĐH Bách Khoa...</p>"
  */
-router.post("/posts/ai-generate", checkAuthorize(["landlord"]), postController.generateDescription);
+router.post("/ai-generate", checkAuthorize(["landlord"]), checkSubscription, postController.generateDescription);
 
 /**
  * @swagger
@@ -109,7 +110,7 @@ router.post("/posts/ai-generate", checkAuthorize(["landlord"]), postController.g
  *   get:
  *     summary: Lấy thông tin chi tiết của tòa nhà
  *     description: "Trả về thông tin chi tiết của tòa nhà gồm: danh sách phòng trống, dịch vụ, nội quy và giá điện nước."
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -123,7 +124,7 @@ router.post("/posts/ai-generate", checkAuthorize(["landlord"]), postController.g
  *       200:
  *         description: Thông tin chi tiết của tòa nhà
  */
-router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), postController.getBuildingInfo);
+router.get("/:buildingId/info", checkAuthorize(["landlord"]), checkSubscription, postController.getBuildingInfo);
 
 /**
  * @swagger
@@ -131,7 +132,7 @@ router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), postControll
  *   post:
  *     summary: Tạo bài đăng mới
  *     description: Tạo bài đăng cho thuê phòng trọ, có thể chọn nhiều phòng và upload nhiều ảnh.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -182,14 +183,17 @@ router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), postControll
  *       201:
  *         description: Tạo bài đăng thành công
  */
-router.post("/posts", checkAuthorize(["landlord"]), uploadMultiple, postController.createPost);
+router.post("/", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.createPost);
 
 /**
  * @swagger
  * /landlords/posts:
  *   get:
- *     summary: Lấy danh sách bài đăng của chủ trọ (có phân trang)
- *     tags: [Post by Landlord]
+ *     summary: Lấy danh sách bài đăng của chủ trọ (có phân trang & lọc)
+ *     description: |
+ *       API cho phép **chủ trọ** xem danh sách các bài đăng mà họ đã tạo.  
+ *       Có thể lọc theo trạng thái bản nháp (`isDraft`) và phân trang kết quả.
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -198,16 +202,95 @@ router.post("/posts", checkAuthorize(["landlord"]), uploadMultiple, postControll
  *         schema:
  *           type: integer
  *           example: 1
+ *         description: Số trang (mặc định = 1)
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
  *           example: 10
+ *         description: Số lượng bài đăng trên mỗi trang (mặc định = 10)
+ *       - in: query
+ *         name: isDraft
+ *         schema:
+ *           type: boolean
+ *           example: false
+ *         description: |
+ *           Lọc bài đăng theo trạng thái:  
+ *           - `true`: chỉ hiển thị bài **nháp**  
+ *           - `false`: chỉ hiển thị bài **đã đăng**
  *     responses:
  *       200:
- *         description: Danh sách bài đăng có phân trang
+ *         description: Lấy danh sách bài đăng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: 6719dfee3b1f4b3a67f12345
+ *                       title:
+ *                         type: string
+ *                         example: Phòng trọ cao cấp trung tâm quận 1
+ *                       description:
+ *                         type: string
+ *                         example: Phòng có ban công, máy lạnh, gần chợ...
+ *                       priceMin:
+ *                         type: number
+ *                         example: 3000000
+ *                       priceMax:
+ *                         type: number
+ *                         example: 4500000
+ *                       areaMin:
+ *                         type: number
+ *                         example: 20
+ *                       areaMax:
+ *                         type: number
+ *                         example: 30
+ *                       isDraft:
+ *                         type: boolean
+ *                         example: false
+ *                       buildingId:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             example: 6719dfee3b1f4b3a67f99999
+ *                           name:
+ *                             type: string
+ *                             example: Tòa nhà Minh Anh
+ *                           address:
+ *                             type: string
+ *                             example: 123 Nguyễn Trãi, Quận 1, TP.HCM
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       example: 25
+ *                     page:
+ *                       type: integer
+ *                       example: 1
+ *                     limit:
+ *                       type: integer
+ *                       example: 10
+ *                     totalPages:
+ *                       type: integer
+ *                       example: 3
+ *       401:
+ *         description: Không có quyền truy cập
+ *       500:
+ *         description: Lỗi hệ thống khi lấy danh sách bài đăng
  */
-router.get("/posts", checkAuthorize(["landlord"]), postController.listByLandlord);
+router.get("/", checkAuthorize(["landlord"]), checkSubscription, postController.listByLandlord);
 
 /**
  * @swagger
@@ -215,7 +298,7 @@ router.get("/posts", checkAuthorize(["landlord"]), postController.listByLandlord
  *   get:
  *     summary: Lấy chi tiết bài đăng
  *     description: Trả về toàn bộ thông tin bài đăng, kèm thông tin tòa nhà, phòng, dịch vụ, nội quy.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -229,7 +312,7 @@ router.get("/posts", checkAuthorize(["landlord"]), postController.listByLandlord
  *       200:
  *         description: Thông tin chi tiết bài đăng
  */
-router.get("/posts/:id", checkAuthorize(["landlord"]), postController.getPostDetail);
+router.get("/:id", checkAuthorize(["landlord"]), checkSubscription, postController.getPostDetail);
 
 /**
  * @swagger
@@ -237,7 +320,7 @@ router.get("/posts/:id", checkAuthorize(["landlord"]), postController.getPostDet
  *   put:
  *     summary: Cập nhật bài đăng
  *     description: Cập nhật thông tin bài đăng (tiêu đề, mô tả, địa chỉ, tòa nhà, phòng, hình ảnh...). Nếu thay đổi danh sách phòng thì hệ thống sẽ tự động cập nhật lại giá và diện tích min/max dựa trên các phòng đã chọn.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -302,7 +385,7 @@ router.get("/posts/:id", checkAuthorize(["landlord"]), postController.getPostDet
  *       500:
  *         description: Lỗi server
  */
-router.put("/posts/:id", checkAuthorize(["landlord"]), uploadMultiple, postController.updatePost);
+router.put("/:id", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.updatePost);
 
 /**
  * @swagger
@@ -310,7 +393,7 @@ router.put("/posts/:id", checkAuthorize(["landlord"]), uploadMultiple, postContr
  *   patch:
  *     summary: Xóa mềm bài đăng
  *     description: Đánh dấu bài đăng là đã xóa (isDeleted=true, status=hidden). Chỉ chủ trọ có quyền xóa bài của mình.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -323,6 +406,6 @@ router.put("/posts/:id", checkAuthorize(["landlord"]), uploadMultiple, postContr
  *       200:
  *         description: Xóa mềm thành công
  */
-router.patch("/posts/:id/soft-delete", checkAuthorize(["landlord"]), postController.softDelete);
+router.patch("/:id/soft-delete", checkAuthorize(["landlord"]), checkSubscription, postController.softDelete);
 
 module.exports = router;
