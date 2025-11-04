@@ -18,5 +18,6 @@ router.get("/", checkAuthorize, ctrl.listMine);
 router.get("/by-building/:buildingId", checkAuthorize, ctrl.getByBuilding);
 router.put("/:id", checkAuthorize, ctrl.update);
 router.delete("/:id", checkAuthorize, ctrl.remove);
+router.post("/preview", checkAuthorize, ctrl.previewTemplatePdf);
 
 module.exports = router;
