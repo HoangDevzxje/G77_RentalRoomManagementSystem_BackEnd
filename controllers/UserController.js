@@ -1,14 +1,13 @@
 const Account = require("../models/Account");
 const UserInformation = require("../models/UserInformation");
 
-// [GET] /api/profile
 const getMyProfile = async (req, res) => {
     try {
         const accountId = req.user._id;
 
         const account = await Account.findById(accountId)
             .select("-password -accessToken -refreshToken")
-            .populate("userInfo"); // lấy luôn thông tin UserInformation
+            .populate("userInfo");
 
         if (!account) {
             return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
@@ -23,19 +22,16 @@ const getMyProfile = async (req, res) => {
     }
 };
 
-// [PUT] /api/profile
 const editMyProfile = async (req, res) => {
     try {
         const accountId = req.user._id;
         const { fullName, phoneNumber, dob, gender, address } = req.body;
 
-        // Lấy tài khoản người dùng
         const account = await Account.findById(accountId).populate("userInfo");
         if (!account) {
             return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
         }
 
-        // Nếu chưa có userInfo thì tạo mới
         let userInfo;
         if (account.userInfo) {
             userInfo = await UserInformation.findByIdAndUpdate(
