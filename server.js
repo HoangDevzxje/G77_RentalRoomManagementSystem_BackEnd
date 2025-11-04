@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const routes = require("./routes");
+const path = require("path");
 
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
@@ -11,6 +12,7 @@ const { startExpirationJob } = require("./utils/cron/expireSubscriptions");
 
 const app = express();
 const port = process.env.PORT || 9999;
+app.use("/static", express.static(path.join(__dirname, "public")));
 
 const swaggerOptions = {
   definition: {
@@ -51,11 +53,15 @@ app.use(express.urlencoded({ extended: true }));
 
 // Swagger setup
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs, {
-  swaggerOptions: {
-    persistAuthorization: true,
-  }
-}));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerDocs, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  })
+);
 app.get("/swagger.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.send(swaggerDocs);
@@ -70,13 +76,13 @@ DB.connectDB()
     });
     startExpirationJob();
     // Graceful shutdown
-    process.on('SIGTERM', shutDown);
-    process.on('SIGINT', shutDown);
+    process.on("SIGTERM", shutDown);
+    process.on("SIGINT", shutDown);
 
     function shutDown() {
-      console.log('Đang tắt server...');
+      console.log("Đang tắt server...");
       server.close(() => {
-        console.log('Server đã tắt.');
+        console.log("Server đã tắt.");
         process.exit(0);
       });
     }
