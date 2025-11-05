@@ -5,7 +5,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 /**
  * @swagger
  * tags:
- *   - name: Booking for Tenant
+ *   - name: Resident Booking
  *     description: API đặt lịch xem phòng dành cho người thuê
  */
 
@@ -22,7 +22,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *       ⚠️ Lưu ý:
  *       - `timeSlot` phải nằm trong khung giờ rảnh mà chủ trọ đã thiết lập.  
  *       - Không thể đặt lịch vào ngày mà chủ trọ đã đánh dấu là **bận** hoặc **nghỉ**.
- *     tags: [Booking for Tenant]
+ *     tags: [Resident Booking]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -107,7 +107,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *     summary: Xem danh sách lịch xem phòng của người thuê
  *     description: |
  *       Lấy toàn bộ các lịch xem phòng mà người thuê đã đặt (bao gồm trạng thái đang chờ, đã chấp nhận, đã hủy...).
- *     tags: [Booking for Tenant]
+ *     tags: [Resident Booking]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -139,7 +139,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *     description: |
  *       Trả về danh sách các ngày và khung giờ khả dụng để người thuê có thể đặt lịch xem phòng.  
  *       Mặc định hiển thị tuần hiện tại nếu không truyền startDate và endDate.
- *     tags: [Booking for Tenant]
+ *     tags: [Resident Booking]
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -214,7 +214,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *     description: |
  *       Người thuê có thể hủy lịch xem phòng **trước khi được chủ trọ xác nhận** (trạng thái `pending`).  
  *       Nếu lịch đã được chấp nhận thì không thể hủy.
- *     tags: [Booking for Tenant]
+ *     tags: [Resident Booking]
  *     security:
  *       - bearerAuth: []
  *     parameters:

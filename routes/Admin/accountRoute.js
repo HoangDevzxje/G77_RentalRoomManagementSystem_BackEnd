@@ -89,7 +89,7 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
  *       500:
  *         description: Lỗi hệ thống khi lấy danh sách tài khoản
  */
-router.get("/accounts", checkAuthorize(["admin"]), accountController.getAllUsers);
+router.get("/", checkAuthorize(["admin"]), accountController.getAllUsers);
 
 /**
  * @swagger
@@ -140,7 +140,7 @@ router.get("/accounts", checkAuthorize(["admin"]), accountController.getAllUsers
  *       500:
  *         description: Lỗi hệ thống khi cập nhật trạng thái tài khoản
  */
-router.patch("/accounts/:id/status", checkAuthorize(["admin"]), accountController.channgStatusUser);
+router.patch("/:id/status", checkAuthorize(["admin"]), accountController.channgStatusUser);
 
 /**
  * @swagger
@@ -204,7 +204,7 @@ router.patch("/accounts/:id/status", checkAuthorize(["admin"]), accountControlle
  *       500:
  *         description: Lỗi hệ thống khi cập nhật role người dùng
  */
-router.patch("/accounts/:id/role", checkAuthorize(["admin"]), accountController.updateRole);
+router.patch("/:id/role", checkAuthorize(["admin"]), accountController.updateRole);
 
 /**
  * @swagger
@@ -265,6 +265,6 @@ router.patch("/accounts/:id/role", checkAuthorize(["admin"]), accountController.
  *       500:
  *         description: Lỗi hệ thống khi lấy thông tin tài khoản
  */
-router.get("/accounts/:id", checkAuthorize(["admin"]), accountController.getAccountInfo);
+router.get("/:id", checkAuthorize(["admin"]), accountController.getAccountInfo);
 
 module.exports = router;

@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
-const Building = require("../models/Building");
-const Furniture = require("../models/Furniture");
-const BuildingFurniture = require("../models/BuildingFurniture");
-const Room = require("../models/Room");
-const RoomFurniture = require("../models/RoomFurniture");
+const Building = require("../../models/Building");
+const Furniture = require("../../models/Furniture");
+const BuildingFurniture = require("../../models/BuildingFurniture");
+const Room = require("../../models/Room");
+const RoomFurniture = require("../../models/RoomFurniture");
 
 // Tạo mới
 exports.create = async (req, res) => {

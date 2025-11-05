@@ -1,5 +1,5 @@
-const Regulation = require("../models/Regulation");
-const Building = require("../models/Building");
+const Regulation = require("../../models/Regulation");
+const Building = require("../../models/Building");
 
 // GET: Tenant & Landlord xem danh sách quy định
 exports.getList = async (req, res) => {
@@ -19,7 +19,7 @@ exports.getList = async (req, res) => {
 // POST: Landlord tạo quy định mới
 exports.create = async (req, res) => {
   try {
-    const { buildingId, title, description, type, effectiveFrom } = req.body;
+    const { buildingId, title, description, effectiveFrom } = req.body;
     if (!buildingId || !title || !description)
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
 
@@ -41,7 +41,6 @@ exports.create = async (req, res) => {
       buildingId,
       title,
       description,
-      type,
       effectiveFrom,
       createdBy: req.user._id,
     });

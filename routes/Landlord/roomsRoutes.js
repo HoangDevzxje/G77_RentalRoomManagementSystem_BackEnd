@@ -1,25 +1,25 @@
 const router = require("express").Router();
-const { checkAuthorize } = require("../middleware/authMiddleware");
-const RoomCtrl = require("../controllers/RoomController");
-const checkSubscription = require("../middleware/checkSubscription");
-const checkBuildingActive = require("../middleware/checkBuildingActive");
-const { uploadMultiple, uploadSingle } = require("../configs/cloudinary");
+const { checkAuthorize } = require("../../middleware/authMiddleware");
+const RoomCtrl = require("../../controllers/Landlord/RoomController");
+const checkSubscription = require("../../middleware/checkSubscription");
+const checkBuildingActive = require("../../middleware/checkBuildingActive");
+const { uploadMultiple, uploadSingle } = require("../../configs/cloudinary");
 /**
  * @swagger
  * tags:
- *   name: Room
+ *   name: Landlord Room Management
  *   description: API quản lý phòng
  */
 
 /**
  * @swagger
- * /rooms:
+ * /landlords/rooms:
  *   get:
  *     summary: Lấy danh sách phòng
  *     description: Lấy danh sách phòng với hỗ trợ phân trang và lọc theo buildingId, floorId, status, hoặc tìm kiếm theo roomNumber. Landlord chỉ thấy phòng trong tòa nhà của mình.
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: buildingId
@@ -195,13 +195,13 @@ router.get(
 
 /**
  * @swagger
- * /rooms/{id}:
+ * /landlords/rooms/{id}:
  *   get:
  *     summary: Lấy chi tiết phòng
  *     description: Lấy thông tin chi tiết của một phòng theo ID (admin, landlord, resident). Landlord chỉ thấy phòng trong tòa nhà của mình.
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -342,13 +342,13 @@ router.get(
 
 /**
  * @swagger
- * /rooms:
+ * /landlords/rooms:
  *   post:
  *     summary: Tạo phòng mới
  *     description: Tạo một phòng mới trong tòa nhà và tầng được chỉ định (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active). Hỗ trợ upload ảnh kèm theo.
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -497,13 +497,13 @@ router.post(
 
 /**
  * @swagger
- * /rooms/{id}:
+ * /landlords/rooms/{id}:
  *   put:
  *     summary: Cập nhật thông tin phòng
  *     description: Cập nhật thông tin của một phòng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -608,13 +608,13 @@ router.put(
 
 /**
  * @swagger
- * /rooms/{id}:
+ * /landlords/rooms/{id}:
  *   delete:
  *     summary: Xóa vĩnh viễn phòng
  *     description: Xóa hoàn toàn một phòng khỏi hệ thống (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -683,13 +683,13 @@ router.delete(
 
 /**
  * @swagger
- * /rooms/{id}/images:
+ * /landlords/rooms/{id}/images:
  *   post:
  *     summary: Thêm ảnh cho phòng
  *     description: Thêm một hoặc nhiều ảnh vào phòng (chỉ admin hoặc landlord sở hữu tòa nhà).
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -776,13 +776,13 @@ router.post(
 
 /**
  * @swagger
- * /rooms/{id}/images:
+ * /landlords/rooms/{id}/images:
  *   delete:
  *     summary: Xóa ảnh của phòng
  *     description: Xóa một hoặc nhiều ảnh khỏi phòng (chỉ admin hoặc landlord sở hữu tòa nhà). Ảnh sẽ bị xóa khỏi Cloudinary và database.
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -873,13 +873,13 @@ router.delete(
 
 /**
  * @swagger
- * /rooms/quick-create:
+ * /landlords/rooms/quick-create:
  *   post:
  *     summary: Tạo nhanh nhiều phòng
  *     description: Tạo nhiều phòng cùng lúc theo template số phòng (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active). Hỗ trợ tạo phòng cho một hoặc nhiều tầng với quy tắc đánh số tự động.
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -1069,13 +1069,13 @@ router.post(
 
 /**
  * @swagger
- * /rooms/{id}/soft:
+ * /landlords/rooms/{id}/soft:
  *   delete:
  *     summary: Xóa mềm phòng
  *     description: Đánh dấu phòng là đã xóa (soft delete) thay vì xóa vĩnh viễn (chỉ admin hoặc landlord sở hữu tòa nhà, yêu cầu subscription active).
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -1144,13 +1144,13 @@ router.delete(
 
 /**
  * @swagger
- * /rooms/{id}/restore:
+ * /landlords/rooms/{id}/restore:
  *   post:
  *     summary: Khôi phục phòng đã xóa
  *     description: Khôi phục một phòng đã bị xóa mềm (chỉ admin hoặc landlord sở hữu tòa nhà).
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -1218,13 +1218,13 @@ router.post(
 
 /**
  * @swagger
- * /rooms/{id}/active:
+ * /landlords/rooms/{id}/active:
  *   patch:
  *     summary: Cập nhật trạng thái hoạt động phòng
  *     description: Cập nhật trạng thái hoạt động của một phòng (chỉ admin hoặc landlord sở hữu tòa nhà).
- *     tags: [Room]
+ *     tags: [Landlord Room Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

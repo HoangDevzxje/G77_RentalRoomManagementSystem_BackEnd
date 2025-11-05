@@ -22,7 +22,15 @@ const getAllPostsByTenant = async (req, res) => {
     const total = await Post.countDocuments(query);
 
     const posts = await Post.find(query)
-      .populate("landlordId", "fullName phone")
+      .populate({
+        path: "landlordId",
+        select: "email userInfo",
+        populate: {
+          path: "userInfo",
+          model: "UserInformation",
+          select: "fullName phoneNumber",
+        },
+      })
       .populate("buildingId", "name address")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)

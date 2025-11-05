@@ -1,4 +1,4 @@
-const RoomFurniture = require("../models/RoomFurniture");
+const RoomFurniture = require("../../models/RoomFurniture");
 
 // Tạo mới
 exports.create = async (req, res) => {

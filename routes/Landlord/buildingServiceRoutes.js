@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const svc = require("../controllers/BuildingServiceController");
-const { checkAuthorize } = require("../middleware/authMiddleware");
+const svc = require("../../controllers/Landlord/BuildingServiceController");
+const { checkAuthorize } = require("../../middleware/authMiddleware");
 
 /**
  * @swagger
@@ -154,13 +154,13 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
 
 /**
  * @swagger
- * /buildings/{buildingId}/services:
+ * /landlords/buildings/{buildingId}/services:
  *   get:
  *     summary: Lấy danh sách dịch vụ của tòa nhà
  *     description: Lấy danh sách tất cả dịch vụ của một tòa nhà cụ thể. Có thể bao gồm cả dịch vụ đã bị xóa mềm.
- *     tags: [Building Services]
+ *     tags: [Landlord Building Services Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -227,9 +227,9 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *   post:
  *     summary: Tạo dịch vụ mới cho tòa nhà
  *     description: Tạo một dịch vụ mới cho tòa nhà. Chỉ admin và landlord sở hữu tòa nhà mới có quyền tạo.
- *     tags: [Building Services]
+ *     tags: [Landlord Building Services Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -306,13 +306,13 @@ router.get(
 
 /**
  * @swagger
- * /buildings/{buildingId}/services/{id}:
+ * /landlords/buildings/{buildingId}/services/{id}:
  *   patch:
  *     summary: Cập nhật dịch vụ
  *     description: Cập nhật thông tin của một dịch vụ cụ thể. Chỉ admin và landlord sở hữu tòa nhà mới có quyền cập nhật.
- *     tags: [Building Services]
+ *     tags: [Landlord Building Services Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -388,9 +388,9 @@ router.get(
  *   delete:
  *     summary: Xóa mềm dịch vụ
  *     description: Đánh dấu xóa mềm một dịch vụ. Dịch vụ sẽ không bị xóa vĩnh viễn mà chỉ được đánh dấu là đã xóa. Chỉ admin và landlord sở hữu tòa nhà mới có quyền xóa.
- *     tags: [Building Services]
+ *     tags: [Landlord Building Services Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -443,13 +443,13 @@ router.get(
 
 /**
  * @swagger
- * /buildings/{buildingId}/services/{id}/restore:
+ * /landlords/buildings/{buildingId}/services/{id}/restore:
  *   post:
  *     summary: Khôi phục dịch vụ đã xóa
  *     description: Khôi phục một dịch vụ đã bị xóa mềm. Chỉ admin và landlord sở hữu tòa nhà mới có quyền khôi phục.
- *     tags: [Building Services]
+ *     tags: [Landlord Building Services Management]
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: buildingId
@@ -543,7 +543,7 @@ router.post(
 /**
  * @swagger
  * tags:
- *   - name: Building Services
+ *   - name: Landlord Building Services Management
  *     description: Quản lý dịch vụ của tòa nhà
  */
 

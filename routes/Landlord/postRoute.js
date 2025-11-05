@@ -7,7 +7,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
 /**
  * @swagger
  * tags:
- *   - name: Post by Landlord
+ *   - name: Landlord Post Management
  *     description: API quản lý bài đăng của chủ trọ
  */
 
@@ -17,7 +17,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *   post:
  *     summary: Gợi ý mô tả bài đăng bằng AI
  *     description: Sinh phần mô tả hấp dẫn cho bài đăng cho thuê phòng trọ. Kết quả trả về ở dạng HTML có thể hiển thị trực tiếp trong trình duyệt hoặc trình soạn thảo.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -102,7 +102,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                       type: string
  *                       example: "<p>🏠 Phòng trọ đầy đủ nội thất, gần ĐH Bách Khoa...</p>"
  */
-router.post("/posts/ai-generate", checkAuthorize(["landlord"]), checkSubscription, postController.generateDescription);
+router.post("/ai-generate", checkAuthorize(["landlord"]), checkSubscription, postController.generateDescription);
 
 /**
  * @swagger
@@ -110,7 +110,7 @@ router.post("/posts/ai-generate", checkAuthorize(["landlord"]), checkSubscriptio
  *   get:
  *     summary: Lấy thông tin chi tiết của tòa nhà
  *     description: "Trả về thông tin chi tiết của tòa nhà gồm: danh sách phòng trống, dịch vụ, nội quy và giá điện nước."
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -124,7 +124,7 @@ router.post("/posts/ai-generate", checkAuthorize(["landlord"]), checkSubscriptio
  *       200:
  *         description: Thông tin chi tiết của tòa nhà
  */
-router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), checkSubscription, postController.getBuildingInfo);
+router.get("/:buildingId/info", checkAuthorize(["landlord"]), checkSubscription, postController.getBuildingInfo);
 
 /**
  * @swagger
@@ -132,7 +132,7 @@ router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), checkSubscri
  *   post:
  *     summary: Tạo bài đăng mới
  *     description: Tạo bài đăng cho thuê phòng trọ, có thể chọn nhiều phòng và upload nhiều ảnh.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -183,7 +183,7 @@ router.get("/posts/:buildingId/info", checkAuthorize(["landlord"]), checkSubscri
  *       201:
  *         description: Tạo bài đăng thành công
  */
-router.post("/posts", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.createPost);
+router.post("/", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.createPost);
 
 /**
  * @swagger
@@ -193,7 +193,7 @@ router.post("/posts", checkAuthorize(["landlord"]), checkSubscription, uploadMul
  *     description: |
  *       API cho phép **chủ trọ** xem danh sách các bài đăng mà họ đã tạo.  
  *       Có thể lọc theo trạng thái bản nháp (`isDraft`) và phân trang kết quả.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -290,7 +290,7 @@ router.post("/posts", checkAuthorize(["landlord"]), checkSubscription, uploadMul
  *       500:
  *         description: Lỗi hệ thống khi lấy danh sách bài đăng
  */
-router.get("/posts", checkAuthorize(["landlord"]), checkSubscription, postController.listByLandlord);
+router.get("/", checkAuthorize(["landlord"]), checkSubscription, postController.listByLandlord);
 
 /**
  * @swagger
@@ -298,7 +298,7 @@ router.get("/posts", checkAuthorize(["landlord"]), checkSubscription, postContro
  *   get:
  *     summary: Lấy chi tiết bài đăng
  *     description: Trả về toàn bộ thông tin bài đăng, kèm thông tin tòa nhà, phòng, dịch vụ, nội quy.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -312,7 +312,7 @@ router.get("/posts", checkAuthorize(["landlord"]), checkSubscription, postContro
  *       200:
  *         description: Thông tin chi tiết bài đăng
  */
-router.get("/posts/:id", checkAuthorize(["landlord"]), checkSubscription, postController.getPostDetail);
+router.get("/:id", checkAuthorize(["landlord"]), checkSubscription, postController.getPostDetail);
 
 /**
  * @swagger
@@ -320,7 +320,7 @@ router.get("/posts/:id", checkAuthorize(["landlord"]), checkSubscription, postCo
  *   put:
  *     summary: Cập nhật bài đăng
  *     description: Cập nhật thông tin bài đăng (tiêu đề, mô tả, địa chỉ, tòa nhà, phòng, hình ảnh...). Nếu thay đổi danh sách phòng thì hệ thống sẽ tự động cập nhật lại giá và diện tích min/max dựa trên các phòng đã chọn.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -385,7 +385,7 @@ router.get("/posts/:id", checkAuthorize(["landlord"]), checkSubscription, postCo
  *       500:
  *         description: Lỗi server
  */
-router.put("/posts/:id", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.updatePost);
+router.put("/:id", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.updatePost);
 
 /**
  * @swagger
@@ -393,7 +393,7 @@ router.put("/posts/:id", checkAuthorize(["landlord"]), checkSubscription, upload
  *   patch:
  *     summary: Xóa mềm bài đăng
  *     description: Đánh dấu bài đăng là đã xóa (isDeleted=true, status=hidden). Chỉ chủ trọ có quyền xóa bài của mình.
- *     tags: [Post by Landlord]
+ *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -406,6 +406,6 @@ router.put("/posts/:id", checkAuthorize(["landlord"]), checkSubscription, upload
  *       200:
  *         description: Xóa mềm thành công
  */
-router.patch("/posts/:id/soft-delete", checkAuthorize(["landlord"]), checkSubscription, postController.softDelete);
+router.patch("/:id/soft-delete", checkAuthorize(["landlord"]), checkSubscription, postController.softDelete);
 
 module.exports = router;
