@@ -15,7 +15,7 @@ const getAllContacts = async (req, res) => {
             Contact.find(filter)
                 .populate("tenantId", "email fullName phone")
                 .populate("buildingId", "name")
-                .populate("roomId", "name")
+                .populate("roomId", "roomNumber")
                 .populate("postId", "title")
                 .sort({ createdAt: -1 })
                 .skip(skip)
