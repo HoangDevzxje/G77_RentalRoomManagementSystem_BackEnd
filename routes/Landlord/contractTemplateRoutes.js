@@ -59,7 +59,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       409:
  *         description: Template đã tồn tại cho tòa này
  */
-router.post("/", checkAuthorize, ctrl.create);
+router.post("/", checkAuthorize(["landlord"]), ctrl.create);
 
 /**
  * @swagger
@@ -73,7 +73,7 @@ router.post("/", checkAuthorize, ctrl.create);
  *       200:
  *         description: Danh sách template của landlord
  */
-router.get("/", checkAuthorize, ctrl.listMine);
+router.get("/", checkAuthorize(["landlord"]), ctrl.listMine);
 
 /**
  * @swagger
@@ -96,7 +96,7 @@ router.get("/", checkAuthorize, ctrl.listMine);
  *       404:
  *         description: Không tìm thấy template
  */
-router.get("/by-building/:buildingId", checkAuthorize, ctrl.getByBuilding);
+router.get("/by-building/:buildingId", checkAuthorize(["landlord"]), ctrl.getByBuilding);
 
 /**
  * @swagger
@@ -149,7 +149,7 @@ router.get("/by-building/:buildingId", checkAuthorize, ctrl.getByBuilding);
  *       404:
  *         description: Không tìm thấy template
  */
-router.put("/:id", checkAuthorize, ctrl.update);
+router.put("/:id", checkAuthorize(["landlord"]), ctrl.update);
 
 /**
  * @swagger
@@ -172,7 +172,7 @@ router.put("/:id", checkAuthorize, ctrl.update);
  *       404:
  *         description: Không tìm thấy template
  */
-router.delete("/:id", checkAuthorize, ctrl.remove);
+router.delete("/:id", checkAuthorize(["landlord"]), ctrl.remove);
 
 /**
  * @swagger
@@ -209,6 +209,6 @@ router.delete("/:id", checkAuthorize, ctrl.remove);
  *       500:
  *         description: Lỗi khi render PDF
  */
-router.post("/preview", checkAuthorize, ctrl.previewTemplatePdf);
+router.post("/preview", checkAuthorize(["landlord"]), ctrl.previewTemplatePdf);
 
 module.exports = router;
