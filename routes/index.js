@@ -17,6 +17,7 @@ const bookingLandlord = require("././Landlord/bookingRoute");
 const contactLandlord = require("././Landlord/contactRoute");
 const termRoute = require("././Landlord/termRoute");
 const contactRoute = require("././User/contactRoute");
+const contractTemplateRoutes = require("./Landlord/contractTemplateRoutes");
 
 const routes = (app) => {
   app.use("/auth", authRoutes);
@@ -34,6 +35,7 @@ const routes = (app) => {
   app.use("/landlords/schedules", scheduleRoute);
   app.use("/landlords/bookings", bookingLandlord);
   app.use("/landlords/contacts", contactLandlord);
+  app.use("/landlords/contract-templates", contractTemplateRoutes);
   app.use("/posts", postUser);
   app.use("/bookings", bookingRoute);
   app.use("/contacts", contactRoute);
