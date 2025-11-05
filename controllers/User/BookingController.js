@@ -4,163 +4,216 @@ const Post = require("../../models/Post");
 const dayjs = require("dayjs");
 
 const getAvailableSlots = async (req, res) => {
-    try {
-        const { buildingId } = req.params;
-        const { startDate, endDate } = req.query;
+  try {
+    const { buildingId } = req.params;
+    const { startDate, endDate } = req.query;
 
-        const start = startDate ? dayjs(startDate) : dayjs().startOf("day");
-        const end = endDate ? dayjs(endDate) : start.add(6, "day");
+    const start = startDate ? dayjs(startDate) : dayjs().startOf("day");
+    const end = endDate ? dayjs(endDate) : start.add(6, "day");
 
-        const schedule = await LandlordSchedule.findOne({ buildingId }).lean();
-        if (!schedule) {
-            return res.status(404).json({
-                success: false,
-                message: "Chủ trọ chưa thiết lập lịch cho tòa nhà này!",
-            });
-        }
-
-        const availableDays = [];
-
-        for (let date = start; date.isBefore(end) || date.isSame(end, "day"); date = date.add(1, "day")) {
-            const dayOfWeek = date.day(); // 0-6
-            const formattedDate = date.format("YYYY-MM-DD");
-
-            const override = schedule.overrides.find(o => dayjs(o.date).isSame(date, "day"));
-            if (override) {
-                if (!override.isAvailable) {
-                    availableDays.push({
-                        date: formattedDate,
-                        slots: [],
-                        note: override.note || "Không khả dụng"
-                    });
-                    continue;
-                } else {
-                    availableDays.push({
-                        date: formattedDate,
-                        slots: [{
-                            startTime: override.startTime,
-                            endTime: override.endTime
-                        }],
-                        note: override.note || null
-                    });
-                    continue;
-                }
-            }
-
-            const slots = schedule.defaultSlots
-                .filter(s => s.dayOfWeek === dayOfWeek && s.isAvailable)
-                .map(s => ({
-                    startTime: s.startTime,
-                    endTime: s.endTime
-                }));
-
-            availableDays.push({ date: formattedDate, slots });
-        }
-
-        return res.json({
-            success: true,
-            buildingId,
-            landlordId: schedule.landlordId,
-            availableDays,
-        });
-    } catch (err) {
-        console.error("Lỗi getAvailableSlots:", err);
-        return res.status(500).json({
-            success: false,
-            message: "Lỗi hệ thống khi lấy lịch khả dụng!",
-        });
+    const schedule = await LandlordSchedule.findOne({ buildingId }).lean();
+    if (!schedule) {
+      return res.status(404).json({
+        success: false,
+        message: "Chủ trọ chưa thiết lập lịch cho tòa nhà này!",
+      });
     }
+
+    const availableDays = [];
+
+    for (let date = start; date.isBefore(end) || date.isSame(end, "day"); date = date.add(1, "day")) {
+      const dayOfWeek = date.day();
+      const formattedDate = date.format("YYYY-MM-DD");
+
+      const defaultSlots = schedule.defaultSlots.filter(s => s.dayOfWeek === dayOfWeek && s.isAvailable);
+      const overrides = schedule.overrides.filter(o => dayjs(o.date).isSame(date, "day"));
+
+      let slots = [];
+
+      if (overrides.length > 0) {
+        overrides.forEach(o => {
+          if (o.isAvailable) {
+            // mặc định bận, nhưng có giờ rảnh đặc biệt
+            slots.push({ startTime: o.startTime, endTime: o.endTime });
+          } else {
+            // mặc định rảnh nhưng có giờ bận đặc biệt
+            if (o.startTime && o.endTime) {
+              // cắt khung giờ mặc định
+              defaultSlots.forEach(d => {
+                if (o.startTime > d.startTime) {
+                  slots.push({ startTime: d.startTime, endTime: o.startTime });
+                }
+                if (o.endTime < d.endTime) {
+                  slots.push({ startTime: o.endTime, endTime: d.endTime });
+                }
+              });
+            } else {
+              // bận cả ngày
+              slots = [];
+            }
+          }
+        });
+      } else {
+        // không có override => lấy default
+        slots = defaultSlots.map(s => ({
+          startTime: s.startTime,
+          endTime: s.endTime
+        }));
+      }
+
+      availableDays.push({
+        date: formattedDate,
+        slots,
+      });
+    }
+
+    res.json({
+      success: true,
+      buildingId,
+      landlordId: schedule.landlordId,
+      availableDays,
+    });
+  } catch (err) {
+    console.error("Lỗi getAvailableSlots:", err);
+    res.status(500).json({ message: "Lỗi hệ thống khi lấy lịch khả dụng!" });
+  }
 };
 
 const create = async (req, res) => {
-    try {
-        const tenantId = req.user._id;
-        const { postId, buildingId, date, timeSlot, tenantNote, contactName, contactPhone } = req.body;
+  try {
+    const tenantId = req.user._id;
+    const { postId, buildingId, date, timeSlot, tenantNote, contactName, contactPhone } = req.body;
 
-        // 🔹 Kiểm tra dữ liệu đầu vào
-        if (!postId || !buildingId || !date || !timeSlot || !contactName || !contactPhone)
-            return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin đặt lịch!" });
-
-        // 🔹 Lấy thông tin bài đăng
-        const post = await Post.findById(postId).populate("landlordId");
-        if (!post) return res.status(404).json({ message: "Bài đăng không tồn tại!" });
-
-        // 🔹 Kiểm tra tòa nhà có khớp bài đăng không
-        if (post.buildingId.toString() !== buildingId) {
-            return res.status(400).json({
-                success: false,
-                message: "Tòa nhà không khớp với bài đăng! Vui lòng chọn đúng bài đăng và tòa nhà.",
-            });
-        }
-
-        const landlordId = post.landlordId._id;
-
-        // 🔹 Kiểm tra lịch làm việc của chủ trọ cho tòa nhà
-        const schedule = await LandlordSchedule.findOne({ landlordId, buildingId });
-        if (!schedule) {
-            return res.status(400).json({ message: "Chủ trọ chưa thiết lập lịch rảnh cho tòa nhà này!" });
-        }
-
-        // 🔹 Kiểm tra ngày và khung giờ khả dụng
-        const checkDate = dayjs(date);
-        const override = schedule.overrides.find(o => dayjs(o.date).isSame(checkDate, "day"));
-        const dayOfWeek = checkDate.day(); // 0-6
-
-        let isAvailable = false;
-        let note = null;
-
-        if (override) {
-            // Có override trong ngày này
-            if (override.isAvailable &&
-                override.startTime <= timeSlot &&
-                override.endTime >= timeSlot) {
-                isAvailable = true;
-                note = override.note || null;
-            } else {
-                note = override.note || "Không khả dụng";
-            }
-        } else {
-            // Không có override, kiểm tra defaultSlots
-            const matched = schedule.defaultSlots.find(
-                s =>
-                    s.dayOfWeek === dayOfWeek &&
-                    s.isAvailable &&
-                    s.startTime <= timeSlot &&
-                    s.endTime >= timeSlot
-            );
-            if (matched) isAvailable = true;
-        }
-
-        if (!isAvailable) {
-            return res.status(400).json({
-                success: false,
-                message: note || "Khung giờ đã chọn không khả dụng. Vui lòng chọn thời gian khác!",
-            });
-        }
-
-        // 🔹 Tạo lịch đặt
-        const booking = await Booking.create({
-            tenantId,
-            landlordId,
-            buildingId,
-            postId,
-            contactName,
-            contactPhone,
-            date,
-            timeSlot,
-            tenantNote,
-        });
-
-        res.status(201).json({
-            success: true,
-            message: "Đặt lịch xem phòng thành công, vui lòng chờ chủ trọ xác nhận!",
-            data: booking,
-        });
-    } catch (err) {
-        console.error("Error creating booking:", err);
-        res.status(500).json({ message: "Lỗi hệ thống khi đặt lịch!" });
+    if (!postId || !buildingId || !date || !timeSlot || !contactName || !contactPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ thông tin đặt lịch!",
+      });
     }
+
+    const post = await Post.findById(postId).populate("landlordId");
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Bài đăng không tồn tại!" });
+    }
+
+    if (post.buildingId.toString() !== buildingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Tòa nhà không khớp với bài đăng!",
+      });
+    }
+
+    const landlordId = post.landlordId._id;
+
+    const schedule = await LandlordSchedule.findOne({ landlordId, buildingId });
+    if (!schedule) {
+      return res.status(400).json({
+        success: false,
+        message: "Chủ trọ chưa thiết lập lịch rảnh cho tòa nhà này!",
+      });
+    }
+
+    const checkDate = dayjs(date);
+    if (!checkDate.isValid()) {
+      return res.status(400).json({ success: false, message: "Ngày không hợp lệ!" });
+    }
+
+    const dayOfWeek = checkDate.day(); 
+    
+    // lấy default slots và overrides giống như getAvailableSlots
+    const defaultSlots = schedule.defaultSlots.filter(s => s.dayOfWeek === dayOfWeek && s.isAvailable);
+    const overrides = schedule.overrides.filter(o => dayjs(o.date).isSame(checkDate, "day"));
+
+    let availableSlots = [];
+
+    // Logic giống hệt getAvailableSlots
+    if (overrides.length > 0) {
+      overrides.forEach(o => {
+        if (o.isAvailable) {
+          // mặc định bận, nhưng có giờ rảnh đặc biệt
+          if (o.startTime && o.endTime) {
+            availableSlots.push({ startTime: o.startTime, endTime: o.endTime });
+          }
+        } else {
+          // mặc định rảnh nhưng có giờ bận đặc biệt
+          if (o.startTime && o.endTime) {
+            // cắt khung giờ mặc định
+            defaultSlots.forEach(d => {
+              if (o.startTime > d.startTime) {
+                availableSlots.push({ startTime: d.startTime, endTime: o.startTime });
+              }
+              if (o.endTime < d.endTime) {
+                availableSlots.push({ startTime: o.endTime, endTime: d.endTime });
+              }
+            });
+          } else {
+            // bận cả ngày
+            availableSlots = [];
+          }
+        }
+      });
+    } else {
+      // không có override => lấy default
+      availableSlots = defaultSlots.map(s => ({
+        startTime: s.startTime,
+        endTime: s.endTime
+      }));
+    }
+
+    // Kiểm tra xem timeSlot có nằm trong các slot khả dụng không
+    const isTimeSlotAvailable = availableSlots.some(
+      slot => timeSlot >= slot.startTime && timeSlot <= slot.endTime
+    );
+
+    if (!isTimeSlotAvailable) {
+      return res.status(400).json({
+        success: false,
+        message: "Khung giờ này không khả dụng. Vui lòng chọn thời gian khác!",
+      });
+    }
+
+    // Kiểm tra trùng lịch
+    const existingBooking = await Booking.findOne({
+      tenantId,
+      date,
+      timeSlot,
+      status: { $in: ["pending", "confirmed"] }, // chưa bị hủy hoặc hoàn tất
+    });
+
+    if (existingBooking) {
+      return res.status(400).json({
+        success: false,
+        message: "Bạn đã có một lịch đặt trong khung giờ này!",
+      });
+    }
+
+    const booking = await Booking.create({
+      tenantId,
+      landlordId,
+      buildingId,
+      postId,
+      date,
+      timeSlot,
+      tenantNote,
+      contactName,
+      contactPhone,
+      status: "pending",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Đặt lịch xem phòng thành công! Vui lòng chờ chủ trọ xác nhận.",
+      data: booking,
+    });
+  } catch (err) {
+    console.error("❌ Error creating booking:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống khi đặt lịch!",
+    });
+  }
 };
+
 
 
 const getMyBookings = async (req, res) => {
