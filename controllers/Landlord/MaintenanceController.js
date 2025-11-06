@@ -146,6 +146,7 @@ exports.getRequest = async (req, res) => {
   try {
     const doc = await MaintenanceRequest.findById(req.params.id)
       .populate("roomId furnitureId reporterAccountId assigneeAccountId")
+      .populate({ path: "buildingId", select: "_id name address" })
       .populate({
         path: "timeline.by",
         select: "email role userInfo",
