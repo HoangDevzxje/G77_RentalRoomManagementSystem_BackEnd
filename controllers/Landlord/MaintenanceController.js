@@ -42,6 +42,7 @@ exports.listRequests = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
+        .populate("buildingId", "_id name address")
         .populate("roomId furnitureId reporterAccountId assigneeAccountId"),
       MaintenanceRequest.countDocuments(filter),
     ]);
@@ -56,7 +57,7 @@ exports.listRequests = async (req, res) => {
 // Chi tiết phiếu
 exports.getRequest = async (req, res) => {
   try {
-    const doc = await MaintenanceRequest.findById(req.params.id).populate(
+    const doc = await MaintenanceRequest.findById(req.params.id).populate("buildingId", "_id name address").populate(
       "roomId furnitureId reporterAccountId assigneeAccountId"
     );
 
