@@ -1,10 +1,10 @@
 const path = require("path");
 const fs = require("fs");
-const fetch = require("node-fetch");
-const { PDFDocument } = require("pdf-lib");
+const { PDFDocument, rgb } = require("pdf-lib");
 const ContractTemplate = require("../../models/ContractTemplate");
 const Term = require("../../models/Term");
 const Regulation = require("../../models/Regulation");
+const fontkit = require("@pdf-lib/fontkit");
 
 /**
  * lấy BASE_PDF_URL từ ENV
@@ -29,7 +29,6 @@ exports.create = async (req, res) => {
       name,
       defaultTermIds = [],
       defaultRegulationIds = [],
-      placeholders,
     } = req.body;
 
     if (!buildingId)
@@ -53,7 +52,6 @@ exports.create = async (req, res) => {
       basePdfUrl: getBasePdfUrl(),
       defaultTermIds,
       defaultRegulationIds,
-      placeholders,
       status: "active",
     });
 
@@ -174,103 +172,219 @@ async function validateTermsRegsBasic(termIds = [], regulationIds = []) {
   }
 }
 
-/**
- * POST /landlords/contract-templates/preview
- * Body: { buildingId, termIds:[], regulationIds:[] }
- * render file PDF preview (không lưu DB), chèn block TERM/REG vào 2 field
- *           TERMS_BLOCK và REGULATIONS_BLOCK trong base_contract_template.pdf
- */
-exports.previewTemplatePdf = async (req, res) => {
+const _fetch =
+  global.fetch ||
+  ((...args) =>
+    import("node-fetch").then(({ default: fetch }) => fetch(...args)));
+exports.downloadByTemplate = async (req, res) => {
   try {
-    const { buildingId, termIds = [], regulationIds = [] } = req.body;
-    if (!buildingId)
-      return res.status(400).json({ message: "buildingId is required" });
+    const { id } = req.params;
 
-    // Lấy template của tòa (nếu có) để lấy basePdfUrl — nếu chưa tạo, dùng ENV
-    let template = await ContractTemplate.findOne({ buildingId }).lean();
-    const basePdfUrl =
-      template?.basePdfUrl || process.env.BASE_CONTRACT_PDF_URL;
-    if (!basePdfUrl) {
-      return res
-        .status(400)
-        .json({ message: "BASE_CONTRACT_PDF_URL is not configured" });
-    }
+    // Tìm template và check quyền
+    const tpl = await ContractTemplate.findOne({
+      _id: id,
+      ownerId: req.user?._id,
+    }).lean();
+    if (!tpl) return res.status(404).json({ message: "Template not found" });
 
-    // Lấy Term/Reg theo id (chỉ active + đúng building)
-    const [terms, regs] = await Promise.all([
-      termIds.length
-        ? Term.find({ _id: { $in: termIds }, status: "active", buildingId })
-            .select("_id name title description")
-            .lean()
-        : [],
-      regulationIds.length
-        ? Regulation.find({
-            _id: { $in: regulationIds },
-            status: "active",
-            buildingId,
-          })
-            .select("_id title description")
-            .lean()
-        : [],
-    ]);
+    const pdfBytes = await buildContractPdf(tpl);
+    const fileName = `${(tpl.name || "Mau Hop Dong").replace(/\s+/g, "_")}.pdf`;
 
-    // Build text block đẹp (đánh số)
-    const termsText = buildBlock(terms, "Điều khoản", {
-      titleKey: (it) => it.title || it.name,
-    });
-    const regsText = buildBlock(regs, "Nội quy", {
-      titleKey: (it) => it.title,
-    });
-
-    // Tải base PDF và fill 2 field block
-    const pdfBytes = await fetch(basePdfUrl).then((r) => r.arrayBuffer());
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const form = pdfDoc.getForm();
-
-    setIfExists(form, "TERMS_BLOCK", termsText);
-    setIfExists(form, "REGULATIONS_BLOCK", regsText);
-
-    // Flatten để hiển thị ổn định (preview chỉ đọc)
-    form.flatten();
-
-    // Lưu ra /public/previews và trả URL
-    const outBytes = await pdfDoc.save();
-    const outDir = path.resolve(process.cwd(), "public", "previews");
-    await fs.promises.mkdir(outDir, { recursive: true });
-
-    const fileName = `template_preview_${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2)}.pdf`;
-    const outPath = path.join(outDir, fileName);
-    await fs.promises.writeFile(outPath, Buffer.from(outBytes));
-
-    const base = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
-    const url = `${base}/static/previews/${fileName}`;
-
-    return res.json({ url });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    return res.send(Buffer.from(pdfBytes));
   } catch (e) {
-    console.error(e);
-    return res
-      .status(500)
-      .json({ message: e.message || "Render preview failed" });
+    return res.status(400).json({ message: e.message });
   }
 };
 
-function buildBlock(items = [], label = "", opts = {}) {
-  const getTitle = opts.titleKey || ((it) => it.title || it.name || "");
-  if (!items.length) return ""; // để trống nếu chưa chọn
-  const lines = items.map(
-    (it, idx) =>
-      `${idx + 1}) ${getTitle(it) || ""}\n${(it.description || "").trim()}`
+exports.downloadByBuilding = async (req, res) => {
+  try {
+    const { buildingId } = req.params;
+
+    const tpl = await ContractTemplate.findOne({
+      buildingId,
+      ownerId: req.user?._id,
+    }).lean();
+    if (!tpl) return res.status(404).json({ message: "Template not found" });
+
+    const pdfBytes = await buildContractPdf(tpl);
+    const fileName = `${(tpl.name || "Mau Hop Dong").replace(/\s+/g, "_")}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    return res.send(Buffer.from(pdfBytes));
+  } catch (e) {
+    return res.status(400).json({ message: e.message });
+  }
+};
+
+/**
+ * Helper: dựng PDF từ template (nội bộ)
+ */
+async function buildContractPdf(tpl) {
+  // 1) Lấy nền PDF
+  const baseUrl = tpl.basePdfUrl || getBasePdfUrl();
+  const resp = await _fetch(baseUrl);
+  if (!resp.ok) throw new Error("Cannot fetch base PDF");
+  const basePdfBytes = await resp.arrayBuffer();
+
+  // 2) Load PDF + font
+  const pdfDoc = await PDFDocument.load(basePdfBytes);
+  pdfDoc.registerFontkit(fontkit);
+
+  // Font: gắn 1 font hỗ trợ Unicode (ví dụ NotoSans-Regular.ttf) từ local
+  // Bạn có thể thay đường dẫn phù hợp hạ tầng của bạn:
+  const fontPath = path.join(
+    process.cwd(),
+    "assets",
+    "fonts",
+    "NotoSans-Regular.ttf"
   );
-  return lines.join("\n\n");
+  const fontBytes = fs.readFileSync(fontPath);
+  const noto = await pdfDoc.embedFont(fontBytes, { subset: true });
+
+  // 3) Lấy dữ liệu Terms/Regs
+  const [terms, regs] = await Promise.all([
+    tpl.defaultTermIds?.length
+      ? Term.find({ _id: { $in: tpl.defaultTermIds }, status: "active" })
+          .select("title description order")
+          .sort({ order: 1, createdAt: 1 })
+          .lean()
+      : [],
+    tpl.defaultRegulationIds?.length
+      ? Regulation.find({
+          _id: { $in: tpl.defaultRegulationIds },
+          status: "active",
+        })
+          .select("title description order")
+          .sort({ order: 1, createdAt: 1 })
+          .lean()
+      : [],
+  ]);
+
+  // 4) Vẽ nội dung vào trang đầu (và tự thêm trang nếu tràn)
+  const pageMargin = 56;
+  const lineGap = 6;
+  const fontSizeTitle = 12;
+  const fontSizeBody = 10;
+
+  const drawWrapped = (page, text, x, y, opts = {}) => {
+    const { size = fontSizeBody, maxWidth = page.getWidth() - x - pageMargin } =
+      opts;
+
+    const lines = wrapText(text, noto, size, maxWidth);
+    let cursorY = y;
+    for (const line of lines) {
+      if (cursorY < pageMargin + size) {
+        // hết chỗ -> sang trang mới
+        const n = pdfDoc.addPage();
+        cursorY = n.getHeight() - pageMargin;
+        page = n;
+      }
+      page.drawText(line, { x, y: cursorY, size, font: noto });
+      cursorY -= size + lineGap;
+    }
+    return { page, y: cursorY };
+  };
+
+  let page = pdfDoc.getPage(0);
+  let cursorY = page.getHeight() - pageMargin;
+
+  // Header cứng (có thể bỏ nếu nền đã có)
+  const header = [
+    "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+    "ĐỘC LẬP – TỰ DO – HẠNH PHÚC",
+    "",
+    (tpl.name || "HỢP ĐỒNG THUÊ PHÒNG").toUpperCase(),
+  ];
+  for (const h of header) {
+    ({ page, y: cursorY } = drawWrapped(page, h, pageMargin, cursorY, {
+      size: fontSizeTitle,
+    }));
+  }
+  cursorY -= 8;
+
+  // Điều khoản
+  if (terms?.length) {
+    ({ page, y: cursorY } = drawWrapped(
+      page,
+      "I. NỘI DUNG ĐIỀU KHOẢN",
+      pageMargin,
+      cursorY,
+      {
+        size: fontSizeTitle,
+      }
+    ));
+    for (let i = 0; i < terms.length; i++) {
+      const t = terms[i];
+      const head = `${i + 1}. ${t.title || "Điều khoản"}`;
+      ({ page, y: cursorY } = drawWrapped(page, head, pageMargin, cursorY, {
+        size: fontSizeBody + 1,
+      }));
+      if (t.description) {
+        ({ page, y: cursorY } = drawWrapped(
+          page,
+          String(t.description),
+          pageMargin + 16,
+          cursorY
+        ));
+      }
+      cursorY -= 4;
+    }
+    cursorY -= 8;
+  }
+
+  // Quy định
+  if (regs?.length) {
+    ({ page, y: cursorY } = drawWrapped(
+      page,
+      "II. NỘI DUNG QUY ĐỊNH",
+      pageMargin,
+      cursorY,
+      {
+        size: fontSizeTitle,
+      }
+    ));
+    for (let i = 0; i < regs.length; i++) {
+      const r = regs[i];
+      const head = `${i + 1}. ${r.title || "Quy định"}`;
+      ({ page, y: cursorY } = drawWrapped(page, head, pageMargin, cursorY, {
+        size: fontSizeBody + 1,
+      }));
+      if (r.description) {
+        ({ page, y: cursorY } = drawWrapped(
+          page,
+          String(r.description),
+          pageMargin + 16,
+          cursorY
+        ));
+      }
+      cursorY -= 4;
+    }
+  }
+
+  return await pdfDoc.save();
 }
 
-function setIfExists(form, fieldName, text) {
-  try {
-    const tf = form.getTextField(fieldName);
-    tf.setText(text || "");
-  } catch {
-    // field không tồn tại thì bỏ qua, không crash preview
+/**
+ * Word-wrapping cơ bản cho pdf-lib
+ */
+function wrapText(text, font, size, maxWidth) {
+  const words = String(text).replace(/\r/g, "").split(/\s+/);
+  const lines = [];
+  let current = "";
+
+  for (const w of words) {
+    const test = current ? current + " " + w : w;
+    const width = font.widthOfTextAtSize(test, size);
+    if (width <= maxWidth) {
+      current = test;
+    } else {
+      if (current) lines.push(current);
+      current = w;
+    }
   }
+  if (current) lines.push(current);
+  return lines;
 }

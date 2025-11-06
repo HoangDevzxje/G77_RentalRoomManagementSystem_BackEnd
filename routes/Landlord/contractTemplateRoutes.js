@@ -96,7 +96,11 @@ router.get("/", checkAuthorize(["landlord"]), ctrl.listMine);
  *       404:
  *         description: Không tìm thấy template
  */
-router.get("/by-building/:buildingId", checkAuthorize(["landlord"]), ctrl.getByBuilding);
+router.get(
+  "/by-building/:buildingId",
+  checkAuthorize(["landlord"]),
+  ctrl.getByBuilding
+);
 
 /**
  * @swagger
@@ -209,6 +213,16 @@ router.delete("/:id", checkAuthorize(["landlord"]), ctrl.remove);
  *       500:
  *         description: Lỗi khi render PDF
  */
-router.post("/preview", checkAuthorize(["landlord"]), ctrl.previewTemplatePdf);
+// router.post(
+//   "/download",
+//   checkAuthorize(["landlord"]),
+//   ctrl.downloadTemplatePdf
+// );
+router.get("/:id/pdf", checkAuthorize(["landlord"]), ctrl.downloadByTemplate);
+router.get(
+  "/by-building/:buildingId/pdf",
+  checkAuthorize(["landlord"]),
+  ctrl.downloadByBuilding
+);
 
 module.exports = router;
