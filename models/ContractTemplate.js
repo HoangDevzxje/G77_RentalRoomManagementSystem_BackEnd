@@ -163,15 +163,6 @@ const contractTemplateSchema = new mongoose.Schema(
       { type: mongoose.Schema.Types.ObjectId, ref: "Regulation" },
     ],
 
-    /**
-     * Nếu PDF nền có sẵn field text lớn để đổ block điều khoản/nội quy (tuỳ bạn có sử dụng hay không).
-     * Nếu để null → module Contracts sẽ fallback sang append trang phụ lục.
-     */
-    placeholders: {
-      termsTagField: { type: String, default: null }, // ví dụ "TERMS_BLOCK"
-      regulationsTagField: { type: String, default: null }, // ví dụ "REGULATIONS_BLOCK"
-    },
-
     status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true }

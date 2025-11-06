@@ -137,7 +137,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *   get:
  *     summary: Xem chi tiết điều khoản
  *     description: |
- *       Lấy chi tiết một điều khoản cụ thể của tòa nhà.  
+ *       Lấy chi tiết một điều khoản cụ thể của tòa nhà.
  *       Chỉ chủ trọ sở hữu tòa nhà đó mới có quyền xem.
  *     tags: [Landlord Building Terms Management]
  *     security:
@@ -256,10 +256,30 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         description: Không có quyền xóa điều khoản này
  */
 
-router.post("/", checkAuthorize(["landlord"]), checkSubscription, termController.createTerm);
-router.get("/building/:buildingId", checkAuthorize(["landlord"]), checkSubscription, termController.getTermsByBuilding);
-router.get("/detail/:id", checkAuthorize(["landlord"]), checkSubscription, termController.getTermDetail);
-router.patch("/:id", checkAuthorize(["landlord"]), checkSubscription, termController.updateTerm);
-router.delete("/:id", checkAuthorize(["landlord"]), checkSubscription, termController.deleteTerm);
+router.post(
+  "/",
+  checkAuthorize(["landlord"]),
+  checkSubscription,
+  termController.createTerm
+);
+router.get(
+  "/building/:buildingId",
+  checkAuthorize(["landlord"]),
+  checkSubscription,
+  termController.getTermsByBuilding
+);
+router.get(
+  "/detail/:id",
+  checkAuthorize(["landlord"]),
+  checkSubscription,
+  termController.getTermDetail
+);
+router.patch("/:id", checkAuthorize(["landlord"]), termController.updateTerm);
+router.delete(
+  "/:id",
+  checkAuthorize(["landlord"]),
+  checkSubscription,
+  termController.deleteTerm
+);
 
 module.exports = router;

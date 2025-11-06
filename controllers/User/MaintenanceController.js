@@ -1,11 +1,18 @@
 const MaintenanceRequest = require("../../models/MaintenanceRequest");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Room = require("../../models/Room");
+const Building = require("../../models/Building");
 
 const isAdmin = (u) => u?.role === "admin";
 const isLandlord = (u) => u?.role === "landlord";
 const isResident = (u) => u?.role === "resident";
 
+async function getLandlordIdByBuildingId(buildingId) {
+  const building = await Building.findById(buildingId)
+    .select("landlordId")
+    .lean();
+  return building?.landlordId || null;
+}
 
 // Tạo phiếu báo hỏng
 exports.createRequest = async (req, res) => {
@@ -26,18 +33,21 @@ exports.createRequest = async (req, res) => {
         .status(400)
         .json({ message: "Furniture không thuộc phòng này" });
 
+    // chặn trùng non-final (khuyến nghị)
     const existsNonFinal = await MaintenanceRequest.exists({
       roomId,
       furnitureId,
       status: { $nin: ["resolved", "rejected"] },
     });
     if (existsNonFinal) {
-      return res.status(400).json({
-        message: "Đã có yêu cầu đang được xử lý cho món này trong phòng.",
-      });
+      return res
+        .status(400)
+        .json({ message: "Đã có yêu cầu đang xử lý cho món này trong phòng." });
     }
 
-    const room = await Room.findById(roomId).lean();
+    const room = await Room.findById(roomId)
+      .select("buildingId building")
+      .lean();
     if (!room) return res.status(404).json({ message: "Không tìm thấy phòng" });
     const buildingId = room.buildingId || room.building;
 
@@ -49,20 +59,36 @@ exports.createRequest = async (req, res) => {
         .status(400)
         .json({ message: "affectedQuantity vượt số lượng trong phòng" });
 
+    
+    let assigneeAccountId = null;
+    const landlordIdFromBuilding = await getLandlordIdByBuildingId(buildingId);
+    if (landlordIdFromBuilding) {
+      assigneeAccountId = landlordIdFromBuilding;
+    } else if (isLandlord(req.user)) {
+      assigneeAccountId = req.user._id;
+    }
+
     const doc = await MaintenanceRequest.create({
       buildingId,
       roomId,
       furnitureId,
       reporterAccountId: req.user._id,
+      assigneeAccountId, // <= auto gán ở đây
       title,
       description,
       photos,
       priority,
       affectedQuantity: qty,
-      timeline: [{ by: req.user._id, action: "created", note: "Tạo yêu cầu" }],
+      timeline: [
+        {
+          by: req.user._id,
+          action: "created",
+          note: assigneeAccountId ? "Tạo + auto-assign chủ trọ" : "Tạo yêu cầu",
+        },
+      ],
     });
 
-    // Cập nhật damageCount (cap ≤ quantity)
+    // cập nhật damageCount (cap ≤ quantity)
     rf.damageCount = Math.min((rf.damageCount || 0) + qty, rf.quantity);
     rf.syncConditionFromDamage();
     await rf.save();
