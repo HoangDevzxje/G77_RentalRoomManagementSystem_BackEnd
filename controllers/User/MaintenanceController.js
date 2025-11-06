@@ -59,7 +59,6 @@ exports.createRequest = async (req, res) => {
         .status(400)
         .json({ message: "affectedQuantity vượt số lượng trong phòng" });
 
-    
     let assigneeAccountId = null;
     const landlordIdFromBuilding = await getLandlordIdByBuildingId(buildingId);
     if (landlordIdFromBuilding) {
@@ -102,23 +101,27 @@ exports.createRequest = async (req, res) => {
   }
 };
 
-
 // Chi tiết phiếu
 exports.getRequest = async (req, res) => {
   try {
-    const doc = await MaintenanceRequest.findById(req.params.id).populate(
-      "roomId furnitureId reporterAccountId assigneeAccountId"
-    );
+    const doc = await MaintenanceRequest.findById(req.params.id)
+      .populate("roomId furnitureId reporterAccountId assigneeAccountId")
+      .populate({
+        path: "timeline.by",
+        select: "email role userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber",
+        },
+      });
 
     if (!doc) return res.status(404).json({ message: "Không tìm thấy" });
-    // TODO: kiểm tra quyền xem theo vai trò
     return res.json({ data: doc });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Lỗi lấy chi tiết" });
   }
 };
-
 
 // Thêm comment/timeline nhanh
 exports.comment = async (req, res) => {

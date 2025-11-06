@@ -9,9 +9,11 @@ const isResident = (u) => u?.role === "resident";
 const isFinal = (st) => ["resolved", "rejected"].includes(st);
 
 // Danh sách phiếu
+const toInt = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+
 exports.listRequests = async (req, res) => {
   try {
-    const {
+    let {
       buildingId,
       roomId,
       furnitureId,
@@ -20,6 +22,8 @@ exports.listRequests = async (req, res) => {
       q,
       page = 1,
       limit = 10,
+      sort = "-createdAt", // cho phép FE truyền sort: "-createdAt" | "createdAt" | "priority"
+      includeTimeline = "false", // "true" để populate timeline.by
     } = req.query;
 
     const filter = {};
@@ -29,6 +33,32 @@ exports.listRequests = async (req, res) => {
     if (status) filter.status = status;
     if (priority) filter.priority = priority;
 
+    // resident: chỉ xem phiếu thuộc phòng của họ
+    if (req.user?.role === "resident") {
+      // giả định middleware đã gán danh sách roomIds mà tenant đang được phép xem
+      // nếu bạn lưu roomId trực tiếp trong account thì lấy từ đó
+      const roomIds = req.user?.roomIds || [];
+      if (!roomIds.length) {
+        return res.json({
+          data: [],
+          total: 0,
+          page: 1,
+          limit: toInt(limit, 10),
+        });
+      }
+      filter.roomId = { $in: roomIds };
+    }
+
+    if (
+      req.user?.role === "landlord" &&
+      !buildingId &&
+      Array.isArray(req.user.buildingIds) &&
+      req.user.buildingIds.length
+    ) {
+      filter.buildingId = { $in: req.user.buildingIds };
+    }
+
+    // search text
     if (q) {
       filter.$or = [
         { title: { $regex: q, $options: "i" } },
@@ -36,33 +66,96 @@ exports.listRequests = async (req, res) => {
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    page = toInt(page, 1);
+    limit = Math.min(Math.max(toInt(limit, 10), 1), 100); // 1..100
+    const skip = (page - 1) * limit;
+
+    const baseQuery = MaintenanceRequest.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .select(
+        "_id buildingId roomId furnitureId reporterAccountId assigneeAccountId title status priority createdAt updatedAt affectedQuantity"
+      )
+      .populate({ path: "buildingId", select: "_id name address" })
+      .populate({
+        path: "roomId",
+        select: "_id name code floorNumber",
+      })
+      .populate({
+        path: "furnitureId",
+        select: "_id name",
+      })
+      .populate({
+        path: "reporterAccountId",
+        select: "email role userInfo",
+        populate: { path: "userInfo", select: "fullName phoneNumber" },
+      })
+      .populate({
+        path: "assigneeAccountId",
+        select: "email role userInfo",
+        populate: { path: "userInfo", select: "fullName phoneNumber" },
+      })
+      .lean();
+
+    if (String(includeTimeline) === "true") {
+      baseQuery.populate({
+        path: "timeline.by",
+        select: "email role userInfo",
+        populate: { path: "userInfo", select: "fullName" },
+      });
+      // và select thêm timeline
+      baseQuery.select("+timeline");
+    }
+
     const [data, total] = await Promise.all([
-      MaintenanceRequest.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .populate("buildingId", "_id name address")
-        .populate("roomId furnitureId reporterAccountId assigneeAccountId"),
+      baseQuery.exec(),
       MaintenanceRequest.countDocuments(filter),
     ]);
 
-    return res.json({ data, total, page: Number(page), limit: Number(limit) });
+    for (const r of data) {
+      const rep = r.reporterAccountId;
+      const ass = r.assigneeAccountId;
+      r.reporterName = rep?.userInfo?.fullName || rep?.email || "Unknown";
+      r.assigneeName = ass?.userInfo?.fullName || ass?.email || null;
+
+      if (String(includeTimeline) === "true" && Array.isArray(r.timeline)) {
+        r.timeline = r.timeline.map((t) => ({
+          ...t,
+          byDisplay:
+            t?.by?.userInfo?.fullName || t?.by?.email || t?.by || "Unknown",
+        }));
+      }
+    }
+
+    return res.json({
+      data,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      sort,
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Lỗi lấy danh sách" });
   }
 };
-
 // Chi tiết phiếu
 exports.getRequest = async (req, res) => {
   try {
-    const doc = await MaintenanceRequest.findById(req.params.id).populate("buildingId", "_id name address").populate(
-      "roomId furnitureId reporterAccountId assigneeAccountId"
-    );
+    const doc = await MaintenanceRequest.findById(req.params.id)
+      .populate("roomId furnitureId reporterAccountId assigneeAccountId")
+      .populate({
+        path: "timeline.by",
+        select: "email role userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber",
+        },
+      });
 
     if (!doc) return res.status(404).json({ message: "Không tìm thấy" });
-    // TODO: kiểm tra quyền xem theo vai trò
     return res.json({ data: doc });
   } catch (e) {
     console.error(e);
