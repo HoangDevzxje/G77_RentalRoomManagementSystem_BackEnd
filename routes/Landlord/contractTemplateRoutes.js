@@ -218,11 +218,6 @@ router.delete("/:id", checkAuthorize(["landlord"]), ctrl.remove);
 //   checkAuthorize(["landlord"]),
 //   ctrl.downloadTemplatePdf
 // );
-router.get("/:id/pdf", checkAuthorize(["landlord"]), ctrl.downloadByTemplate);
-router.get(
-  "/by-building/:buildingId/pdf",
-  checkAuthorize(["landlord"]),
-  ctrl.downloadByBuilding
-);
+router.get("/preview-pdf", checkAuthorize(["landlord"]), ctrl.previewPdf);
 
 module.exports = router;
