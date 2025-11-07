@@ -1,21 +1,14 @@
 const path = require("path");
 const fs = require("fs");
-const { PDFDocument, rgb } = require("pdf-lib");
+const PDFDocument = require("pdfkit");
 const ContractTemplate = require("../../models/ContractTemplate");
 const Term = require("../../models/Term");
 const Regulation = require("../../models/Regulation");
-const fontkit = require("@pdf-lib/fontkit");
+const contentDisposition = require("content-disposition");
+const he = require("he");
 
-/**
- * lấy BASE_PDF_URL từ ENV
- */
-function getBasePdfUrl() {
-  const url = process.env.BASE_CONTRACT_PDF_URL;
-  if (!url) {
-    throw new Error("BASE_CONTRACT_PDF_URL is not configured");
-  }
-  return url;
-}
+const FONT_REGULAR =
+  process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
 
 /**
  * Tạo template mới cho 1 tòa (landlord). Mỗi tòa CHỈ 1 template.
@@ -171,220 +164,358 @@ async function validateTermsRegsBasic(termIds = [], regulationIds = []) {
       throw new Error("Some regulations are invalid or inactive");
   }
 }
+// Ép kiểu query mảng: nhận termIds, termIds[], hoặc CSV "a,b,c"
+function pickArr(q, baseKey) {
+  const direct = q[baseKey];
+  const bracket = q[`${baseKey}[]`];
 
-const _fetch =
-  global.fetch ||
-  ((...args) =>
-    import("node-fetch").then(({ default: fetch }) => fetch(...args)));
-exports.downloadByTemplate = async (req, res) => {
-  try {
-    const { id } = req.params;
+  if (Array.isArray(direct)) return direct.filter(Boolean);
+  if (Array.isArray(bracket)) return bracket.filter(Boolean);
 
-    // Tìm template và check quyền
-    const tpl = await ContractTemplate.findOne({
-      _id: id,
-      ownerId: req.user?._id,
-    }).lean();
-    if (!tpl) return res.status(404).json({ message: "Template not found" });
-
-    const pdfBytes = await buildContractPdf(tpl);
-    const fileName = `${(tpl.name || "Mau Hop Dong").replace(/\s+/g, "_")}.pdf`;
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    return res.send(Buffer.from(pdfBytes));
-  } catch (e) {
-    return res.status(400).json({ message: e.message });
+  const one = direct ?? bracket;
+  if (!one) return [];
+  if (typeof one === "string") {
+    if (one.includes(","))
+      return one
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    return [one.trim()];
   }
-};
+  return [];
+}
 
-exports.downloadByBuilding = async (req, res) => {
+// Tên file an toàn
+function sanitizeFileName(name) {
+  return String(name || "download.pdf")
+    .replace(/[\r\n]/g, " ")
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+// HTML helpers
+function isHtml(s = "") {
+  return /<\/?[a-z][\s\S]*>/i.test(String(s));
+}
+function inlineText(html = "") {
+  const decoded = he.decode(String(html));
+  const withBreaks = decoded.replace(/<br\s*\/?>/gi, "\n");
+  return withBreaks.replace(/<\/?(strong|em|b|i|u|span|p)>/gi, "");
+}
+function extractListItems(html = "") {
+  const decoded = he.decode(String(html));
+  const listMatch = decoded.match(/<(ul|ol)[^>]*>([\s\S]*?)<\/\1>/i);
+  if (!listMatch) return null;
+  const isOrdered = /^<ol/i.test(listMatch[0]);
+  const body = listMatch[2];
+
+  const items = [];
+  const re = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+  let m;
+  while ((m = re.exec(body))) {
+    const text = inlineText(m[1]).trim();
+    if (text) items.push(text);
+  }
+  return { isOrdered, items };
+}
+
+exports.previewPdf = async (req, res) => {
+  let doc;
+
   try {
-    const { buildingId } = req.params;
+    const ownerId = req.user?._id;
 
-    const tpl = await ContractTemplate.findOne({
+    const buildingId = String(req.query.buildingId || "").trim();
+    if (!buildingId)
+      return res.status(400).json({ message: "buildingId is required" });
+
+    // Lấy mảng ID từ query
+    const termIds = pickArr(req.query, "termIds");
+    const regulationIds = pickArr(req.query, "regulationIds");
+
+    // Tên file an toàn
+    const rawName =
+      req.query.fileName ||
+      `${req.query.templateName || "HopDong_ThuPhong"}_XemTruoc.pdf`;
+    const safeName = sanitizeFileName(rawName).endsWith(".pdf")
+      ? sanitizeFileName(rawName)
+      : `${sanitizeFileName(rawName)}.pdf`;
+
+    // Lấy template theo quyền sở hữu
+    const template = await ContractTemplate.findOne({
       buildingId,
-      ownerId: req.user?._id,
+      ownerId,
     }).lean();
-    if (!tpl) return res.status(404).json({ message: "Template not found" });
+    if (!template)
+      return res.status(404).json({ message: "Template not found" });
 
-    const pdfBytes = await buildContractPdf(tpl);
-    const fileName = `${(tpl.name || "Mau Hop Dong").replace(/\s+/g, "_")}.pdf`;
+    // ====== LẤY ĐÚNG FIELD CỦA TERM & REGULATION ======
+    const [terms, regs] = await Promise.all([
+      termIds.length
+        ? Term.find({
+            _id: { $in: termIds },
+            status: "active",
+            isDeleted: { $ne: true },
+          })
+            .select("name description") // <-- name + description
+            .lean()
+        : Promise.resolve([]),
+      regulationIds.length
+        ? Regulation.find({
+            _id: { $in: regulationIds },
+            status: "active",
+          })
+            .select("title description effectiveFrom") // <-- title + description + effectiveFrom
+            .lean()
+        : Promise.resolve([]),
+    ]);
 
+    // ==== Khởi tạo PDF (chưa pipe) ====
+    const FONT_REGULAR =
+      process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
+    const FONT_BOLD =
+      process.env.CONTRACT_FONT_BOLD_PATH || "public/fonts/NotoSans-Bold.ttf";
+
+    doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 50, left: 50, right: 50, bottom: 50 },
+    });
+
+    doc.on("error", (err) => {
+      if (!res.headersSent) {
+        res.status(500).json({ message: err.message || "PDF stream error" });
+      } else {
+        try {
+          res.end();
+        } catch {}
+      }
+    });
+
+    try {
+      doc.font(FONT_REGULAR); // font tiếng Việt
+    } catch (e) {
+      doc.font("Times-Roman"); // fallback (có thể lỗi dấu)
+    }
+
+    // ===== Render header =====
+    doc
+      .fontSize(12)
+      .text("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", { align: "center" })
+      .moveDown(0.2)
+      .text("ĐỘC LẬP – TỰ DO – HẠNH PHÚC", { align: "center" });
+
+    doc.moveDown(0.8);
+    try {
+      doc.font(FONT_BOLD);
+    } catch {}
+    doc.fontSize(16).text(template.name || "HỢP ĐỒNG THUÊ PHÒNG", {
+      align: "center",
+      underline: true,
+    });
+
+    try {
+      doc.font(FONT_REGULAR);
+    } catch {}
+    doc.moveDown(0.5);
+    doc
+      .fontSize(10)
+      .fillColor("gray")
+      .text("Số: ....../...../HĐTN", { align: "center" })
+      .fillColor("black");
+
+    doc.moveDown(1);
+    doc
+      .fontSize(12)
+      .text("Hôm nay, ngày ... tháng ... năm 202..., tại: ..................")
+      .moveDown(0.5)
+      .text(
+        "BÊN CHO THUÊ NHÀ (BÊN A): ........................................"
+      )
+      .text(
+        "Đại diện (Ông/Bà): ................................................"
+      )
+      .text(
+        "CCCD: ..............  Cấp ngày: ........., Nơi cấp: ..............."
+      )
+      .text(
+        "Hộ khẩu thường trú: ..............................................."
+      )
+      .text(
+        "Điện thoại: ..........................  STK: ......................."
+      )
+      .moveDown(0.5)
+      .text(
+        "BÊN THUÊ NHÀ (BÊN B): ............................................."
+      )
+      .text(
+        "Đại diện (Ông/Bà): ................................................"
+      )
+      .text(
+        "CCCD/Passport: ..........  Cấp ngày: ........., Tại: .............."
+      )
+      .text(
+        "Hộ khẩu thường trú: ..............................................."
+      )
+      .text(
+        "Điện thoại: ......................................................"
+      );
+
+    // ===== Render Điều khoản (Terms) =====
+    if (terms.length) {
+      doc.moveDown(1);
+      try {
+        doc.font(FONT_BOLD);
+      } catch {}
+      doc.fontSize(13).text("I. NỘI DUNG ĐIỀU KHOẢN", { underline: true });
+      try {
+        doc.font(FONT_REGULAR);
+      } catch {}
+      doc.moveDown(0.3);
+
+      terms.forEach((t, idx) => {
+        try {
+          doc.font(FONT_BOLD);
+        } catch {}
+        doc.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
+        try {
+          doc.font(FONT_REGULAR);
+        } catch {}
+
+        const desc = t.description || "";
+        if (!desc) {
+          doc.moveDown(0.3);
+          return;
+        }
+
+        if (isHtml(desc)) {
+          const list = extractListItems(desc);
+          if (list && list.items.length) {
+            doc.moveDown(0.2);
+            list.items.forEach((it, i) => {
+              const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
+              try {
+                doc.font(FONT_BOLD);
+              } catch {}
+              doc.fontSize(11).text(prefix, { continued: true });
+              try {
+                doc.font(FONT_REGULAR);
+              } catch {}
+              doc.fontSize(11).text(it, {
+                paragraphGap: 4,
+                align: "justify",
+              });
+            });
+          } else {
+            doc.moveDown(0.2);
+            doc
+              .fontSize(11)
+              .text(inlineText(desc), { align: "justify", paragraphGap: 6 });
+          }
+        } else {
+          doc.moveDown(0.2);
+          doc
+            .fontSize(11)
+            .text(String(desc), { align: "justify", paragraphGap: 6 });
+        }
+        doc.moveDown(0.3);
+      });
+    }
+
+    // ===== Render Quy định (Regulations) =====
+    if (regs.length) {
+      doc.moveDown(0.6);
+      try {
+        doc.font(FONT_BOLD);
+      } catch {}
+      doc.fontSize(13).text("II. QUY ĐỊNH", { underline: true });
+      try {
+        doc.font(FONT_REGULAR);
+      } catch {}
+      doc.moveDown(0.3);
+
+      regs.forEach((r, idx) => {
+        try {
+          doc.font(FONT_BOLD);
+        } catch {}
+        doc.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
+        try {
+          doc.font(FONT_REGULAR);
+        } catch {}
+
+        if (r.effectiveFrom) {
+          const d = new Date(r.effectiveFrom);
+          const dStr = `${String(d.getDate()).padStart(2, "0")}/${String(
+            d.getMonth() + 1
+          ).padStart(2, "0")}/${d.getFullYear()}`;
+          doc.fontSize(10).fillColor("gray").text(`(Hiệu lực từ: ${dStr})`);
+          doc.fillColor("black");
+        }
+
+        const desc = r.description || "";
+        if (!desc) {
+          doc.moveDown(0.3);
+          return;
+        }
+
+        if (isHtml(desc)) {
+          const list = extractListItems(desc);
+          if (list && list.items.length) {
+            doc.moveDown(0.2);
+            list.items.forEach((it, i) => {
+              const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
+              try {
+                doc.font(FONT_BOLD);
+              } catch {}
+              doc.fontSize(11).text(prefix, { continued: true });
+              try {
+                doc.font(FONT_REGULAR);
+              } catch {}
+              doc.fontSize(11).text(it, {
+                paragraphGap: 4,
+                align: "justify",
+              });
+            });
+          } else {
+            doc.moveDown(0.2);
+            doc
+              .fontSize(11)
+              .text(inlineText(desc), { align: "justify", paragraphGap: 6 });
+          }
+        } else {
+          doc.moveDown(0.2);
+          doc
+            .fontSize(11)
+            .text(String(desc), { align: "justify", paragraphGap: 6 });
+        }
+        doc.moveDown(0.3);
+      });
+    }
+
+    // Ký tên
+    doc.moveDown(1);
+    doc
+      .fontSize(12)
+      .text("ĐẠI DIỆN BÊN A", { align: "left", continued: true })
+      .text("ĐẠI DIỆN BÊN B", { align: "right" });
+    doc.moveDown(3);
+    doc
+      .text("(Ký, ghi rõ họ tên)", { align: "left", continued: true })
+      .text("(Ký, ghi rõ họ tên)", { align: "right" });
+
+    // ======= MỌI THỨ OK → set header & pipe =======
+    const cd = contentDisposition(safeName, { type: "attachment" });
+    res.setHeader("Content-Disposition", cd);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    return res.send(Buffer.from(pdfBytes));
+
+    doc.pipe(res);
+    doc.end();
   } catch (e) {
-    return res.status(400).json({ message: e.message });
+    if (!res.headersSent) {
+      return res.status(400).json({ message: e.message || "Bad Request" });
+    }
+    try {
+      res.end();
+    } catch {}
   }
 };
-
-/**
- * Helper: dựng PDF từ template (nội bộ)
- */
-async function buildContractPdf(tpl) {
-  // 1) Lấy nền PDF
-  const baseUrl = tpl.basePdfUrl || getBasePdfUrl();
-  const resp = await _fetch(baseUrl);
-  if (!resp.ok) throw new Error("Cannot fetch base PDF");
-  const basePdfBytes = await resp.arrayBuffer();
-
-  // 2) Load PDF + font
-  const pdfDoc = await PDFDocument.load(basePdfBytes);
-  pdfDoc.registerFontkit(fontkit);
-
-  // Font: gắn 1 font hỗ trợ Unicode (ví dụ NotoSans-Regular.ttf) từ local
-  // Bạn có thể thay đường dẫn phù hợp hạ tầng của bạn:
-  const fontPath = path.join(
-    process.cwd(),
-    "assets",
-    "fonts",
-    "NotoSans-Regular.ttf"
-  );
-  const fontBytes = fs.readFileSync(fontPath);
-  const noto = await pdfDoc.embedFont(fontBytes, { subset: true });
-
-  // 3) Lấy dữ liệu Terms/Regs
-  const [terms, regs] = await Promise.all([
-    tpl.defaultTermIds?.length
-      ? Term.find({ _id: { $in: tpl.defaultTermIds }, status: "active" })
-          .select("title description order")
-          .sort({ order: 1, createdAt: 1 })
-          .lean()
-      : [],
-    tpl.defaultRegulationIds?.length
-      ? Regulation.find({
-          _id: { $in: tpl.defaultRegulationIds },
-          status: "active",
-        })
-          .select("title description order")
-          .sort({ order: 1, createdAt: 1 })
-          .lean()
-      : [],
-  ]);
-
-  // 4) Vẽ nội dung vào trang đầu (và tự thêm trang nếu tràn)
-  const pageMargin = 56;
-  const lineGap = 6;
-  const fontSizeTitle = 12;
-  const fontSizeBody = 10;
-
-  const drawWrapped = (page, text, x, y, opts = {}) => {
-    const { size = fontSizeBody, maxWidth = page.getWidth() - x - pageMargin } =
-      opts;
-
-    const lines = wrapText(text, noto, size, maxWidth);
-    let cursorY = y;
-    for (const line of lines) {
-      if (cursorY < pageMargin + size) {
-        // hết chỗ -> sang trang mới
-        const n = pdfDoc.addPage();
-        cursorY = n.getHeight() - pageMargin;
-        page = n;
-      }
-      page.drawText(line, { x, y: cursorY, size, font: noto });
-      cursorY -= size + lineGap;
-    }
-    return { page, y: cursorY };
-  };
-
-  let page = pdfDoc.getPage(0);
-  let cursorY = page.getHeight() - pageMargin;
-
-  // Header cứng (có thể bỏ nếu nền đã có)
-  const header = [
-    "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
-    "ĐỘC LẬP – TỰ DO – HẠNH PHÚC",
-    "",
-    (tpl.name || "HỢP ĐỒNG THUÊ PHÒNG").toUpperCase(),
-  ];
-  for (const h of header) {
-    ({ page, y: cursorY } = drawWrapped(page, h, pageMargin, cursorY, {
-      size: fontSizeTitle,
-    }));
-  }
-  cursorY -= 8;
-
-  // Điều khoản
-  if (terms?.length) {
-    ({ page, y: cursorY } = drawWrapped(
-      page,
-      "I. NỘI DUNG ĐIỀU KHOẢN",
-      pageMargin,
-      cursorY,
-      {
-        size: fontSizeTitle,
-      }
-    ));
-    for (let i = 0; i < terms.length; i++) {
-      const t = terms[i];
-      const head = `${i + 1}. ${t.title || "Điều khoản"}`;
-      ({ page, y: cursorY } = drawWrapped(page, head, pageMargin, cursorY, {
-        size: fontSizeBody + 1,
-      }));
-      if (t.description) {
-        ({ page, y: cursorY } = drawWrapped(
-          page,
-          String(t.description),
-          pageMargin + 16,
-          cursorY
-        ));
-      }
-      cursorY -= 4;
-    }
-    cursorY -= 8;
-  }
-
-  // Quy định
-  if (regs?.length) {
-    ({ page, y: cursorY } = drawWrapped(
-      page,
-      "II. NỘI DUNG QUY ĐỊNH",
-      pageMargin,
-      cursorY,
-      {
-        size: fontSizeTitle,
-      }
-    ));
-    for (let i = 0; i < regs.length; i++) {
-      const r = regs[i];
-      const head = `${i + 1}. ${r.title || "Quy định"}`;
-      ({ page, y: cursorY } = drawWrapped(page, head, pageMargin, cursorY, {
-        size: fontSizeBody + 1,
-      }));
-      if (r.description) {
-        ({ page, y: cursorY } = drawWrapped(
-          page,
-          String(r.description),
-          pageMargin + 16,
-          cursorY
-        ));
-      }
-      cursorY -= 4;
-    }
-  }
-
-  return await pdfDoc.save();
-}
-
-/**
- * Word-wrapping cơ bản cho pdf-lib
- */
-function wrapText(text, font, size, maxWidth) {
-  const words = String(text).replace(/\r/g, "").split(/\s+/);
-  const lines = [];
-  let current = "";
-
-  for (const w of words) {
-    const test = current ? current + " " + w : w;
-    const width = font.widthOfTextAtSize(test, size);
-    if (width <= maxWidth) {
-      current = test;
-    } else {
-      if (current) lines.push(current);
-      current = w;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
-}

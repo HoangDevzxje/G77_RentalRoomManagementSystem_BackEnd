@@ -22,8 +22,14 @@ exports.listRequests = async (req, res) => {
       q,
       page = 1,
       limit = 10,
-      sort = "-createdAt", // cho phép FE truyền sort: "-createdAt" | "createdAt" | "priority"
-      includeTimeline = "false", // "true" để populate timeline.by
+      sort = "-createdAt",
+      includeTimeline = "false",
+      scheduledFrom,
+      scheduledTo,
+      estCostMin, // number
+      estCostMax, // number
+      actCostMin, // number
+      actCostMax, // number
     } = req.query;
 
     const filter = {};
@@ -33,10 +39,8 @@ exports.listRequests = async (req, res) => {
     if (status) filter.status = status;
     if (priority) filter.priority = priority;
 
-    // resident: chỉ xem phiếu thuộc phòng của họ
+    // resident: chỉ xem phiếu thuộc phòng họ
     if (req.user?.role === "resident") {
-      // giả định middleware đã gán danh sách roomIds mà tenant đang được phép xem
-      // nếu bạn lưu roomId trực tiếp trong account thì lấy từ đó
       const roomIds = req.user?.roomIds || [];
       if (!roomIds.length) {
         return res.json({
@@ -49,6 +53,7 @@ exports.listRequests = async (req, res) => {
       filter.roomId = { $in: roomIds };
     }
 
+    // landlord: nếu không truyền buildingId thì auto lọc tòa thuộc landlord
     if (
       req.user?.role === "landlord" &&
       !buildingId &&
@@ -66,8 +71,30 @@ exports.listRequests = async (req, res) => {
       ];
     }
 
+    if (scheduledFrom || scheduledTo) {
+      filter.scheduledAt = {};
+      if (scheduledFrom) filter.scheduledAt.$gte = new Date(scheduledFrom);
+      if (scheduledTo) filter.scheduledAt.$lte = new Date(scheduledTo);
+    }
+
+    const n = (x) => (x != null && x !== "" ? Number(x) : undefined);
+    const estMin = n(estCostMin),
+      estMax = n(estCostMax);
+    const actMin = n(actCostMin),
+      actMax = n(actCostMax);
+    if (estMin != null || estMax != null) {
+      filter.estimatedCost = {};
+      if (estMin != null) filter.estimatedCost.$gte = estMin;
+      if (estMax != null) filter.estimatedCost.$lte = estMax;
+    }
+    if (actMin != null || actMax != null) {
+      filter.actualCost = {};
+      if (actMin != null) filter.actualCost.$gte = actMin;
+      if (actMax != null) filter.actualCost.$lte = actMax;
+    }
+
     page = toInt(page, 1);
-    limit = Math.min(Math.max(toInt(limit, 10), 1), 100); // 1..100
+    limit = Math.min(Math.max(toInt(limit, 10), 1), 100);
     const skip = (page - 1) * limit;
 
     const baseQuery = MaintenanceRequest.find(filter)
@@ -75,17 +102,28 @@ exports.listRequests = async (req, res) => {
       .skip(skip)
       .limit(limit)
       .select(
-        "_id buildingId roomId furnitureId reporterAccountId assigneeAccountId title status priority createdAt updatedAt affectedQuantity"
+        [
+          "_id",
+          "buildingId",
+          "roomId",
+          "furnitureId",
+          "reporterAccountId",
+          "assigneeAccountId",
+          "title",
+          "status",
+          "priority",
+          "affectedQuantity",
+          "scheduledAt",
+          "estimatedCost",
+          "actualCost",
+          "resolvedAt",
+          "createdAt",
+          "updatedAt",
+        ].join(" ")
       )
       .populate({ path: "buildingId", select: "_id name address" })
-      .populate({
-        path: "roomId",
-        select: "_id name code floorNumber",
-      })
-      .populate({
-        path: "furnitureId",
-        select: "_id name",
-      })
+      .populate({ path: "roomId", select: "_id name code floorNumber" })
+      .populate({ path: "furnitureId", select: "_id name" })
       .populate({
         path: "reporterAccountId",
         select: "email role userInfo",
@@ -99,13 +137,13 @@ exports.listRequests = async (req, res) => {
       .lean();
 
     if (String(includeTimeline) === "true") {
-      baseQuery.populate({
-        path: "timeline.by",
-        select: "email role userInfo",
-        populate: { path: "userInfo", select: "fullName" },
-      });
-      // và select thêm timeline
-      baseQuery.select("+timeline");
+      baseQuery
+        .populate({
+          path: "timeline.by",
+          select: "email role userInfo",
+          populate: { path: "userInfo", select: "fullName" },
+        })
+        .select("+timeline");
     }
 
     const [data, total] = await Promise.all([
