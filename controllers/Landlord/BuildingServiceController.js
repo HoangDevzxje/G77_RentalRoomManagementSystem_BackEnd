@@ -1,33 +1,43 @@
-const BuildingService = require("../../models/BuildingService");
 const Building = require("../../models/Building");
+const BuildingService = require("../../models/BuildingService");
 
-// Helper: xác thực landlord sở hữu tòa
-async function assertLandlordOwnsBuilding(landlordId, buildingId) {
-  const b = await Building.findById(buildingId).select("_id landlordId");
-  if (!b) {
-    const err = new Error("Không tìm thấy tòa nhà");
-    err.statusCode = 404;
-    throw err;
+// === HELPER: Xác thực quyền sở hữu tòa nhà (Landlord) HOẶC staff được giao ===
+async function assertCanAccessBuilding(req, buildingId) {
+  const user = req.user;
+  const staff = req.staff;
+
+  if (!user) throw Object.assign(new Error("Không có người dùng"), { statusCode: 401 });
+
+  if (user.role === "landlord") {
+    const b = await Building.findOne({ _id: buildingId, landlordId: user._id, isDeleted: false });
+    if (!b) throw Object.assign(new Error("Không tìm thấy tòa nhà hoặc không có quyền"), { statusCode: 404 });
+    return b;
   }
-  if (b.landlordId.toString() !== landlordId.toString()) {
-    const err = new Error("Không có quyền thao tác với tòa nhà này");
-    err.statusCode = 403;
-    throw err;
+
+  if (user.role === "staff") {
+    if (!staff?.assignedBuildingIds?.includes(buildingId)) {
+      throw Object.assign(new Error("Bạn không được quản lý tòa nhà này"), { statusCode: 403 });
+    }
+    const b = await Building.findById(buildingId).select("_id");
+    if (!b) throw Object.assign(new Error("Không tìm thấy tòa nhà"), { statusCode: 404 });
+    return b;
   }
-  return true;
+
+  throw Object.assign(new Error("Vai trò không hợp lệ"), { statusCode: 403 });
 }
 
-// GET /buildings/:buildingId/services?includeDeleted=1
 exports.listByBuilding = async (req, res) => {
   try {
     const { buildingId } = req.params;
-    const landlordId = req.user?._id || req.query.landlordId; // tùy auth
-    await assertLandlordOwnsBuilding(landlordId, buildingId);
+    await assertCanAccessBuilding(req, buildingId);
 
     const filter = { buildingId };
-    if (!req.query.includeDeleted) filter.isDeleted = false;
+    if (req.query.includeDeleted !== "true") filter.isDeleted = false;
 
-    const list = await BuildingService.find(filter).sort({ createdAt: -1 });
+    const list = await BuildingService.find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
+
     res.json(list);
   } catch (err) {
     res.status(err.statusCode || 400).json({ message: err.message });
@@ -38,9 +48,7 @@ exports.listByBuilding = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const { buildingId } = req.params;
-    const landlordId = req.user?._id || req.body.landlordId;
-
-    await assertLandlordOwnsBuilding(landlordId, buildingId);
+    const building = await assertCanAccessBuilding(req, buildingId);
 
     const {
       name,
@@ -51,20 +59,22 @@ exports.create = async (req, res) => {
       currency = "VND",
     } = req.body;
 
-    const created = await BuildingService.create({
+    if (!name?.trim()) return res.status(400).json({ message: "Thiếu tên dịch vụ" });
+
+    const service = await BuildingService.create({
       buildingId,
-      landlordId,
-      name,
-      label,
-      description,
+      landlordId: building.landlordId,
+      name: name.trim(),
+      label: label?.trim() || name.trim(),
+      description: description?.trim() || "",
       chargeType,
-      fee,
+      fee: chargeType === "included" ? 0 : Math.max(0, Number(fee)),
       currency,
     });
 
-    res.status(201).json(created);
+    res.status(201).json(service);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(err.statusCode || 400).json({ message: err.message });
   }
 };
 
@@ -72,16 +82,12 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { buildingId, id } = req.params;
-    const landlordId = req.user?._id || req.body.landlordId;
-
-    await assertLandlordOwnsBuilding(landlordId, buildingId);
+    await assertCanAccessBuilding(req, buildingId);
 
     const payload = { ...req.body };
-    // Không cho đổi buildingId/landlordId qua payload
     delete payload.buildingId;
     delete payload.landlordId;
 
-    // Nếu chuyển sang included thì fee=0
     if (payload.chargeType === "included") payload.fee = 0;
 
     const updated = await BuildingService.findOneAndUpdate(
@@ -90,13 +96,13 @@ exports.update = async (req, res) => {
       { new: true }
     );
 
-    if (!updated)
-      return res
-        .status(404)
-        .json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
+    if (!updated) {
+      return res.status(404).json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
+    }
+
     res.json(updated);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(err.statusCode || 400).json({ message: err.message });
   }
 };
 
@@ -104,27 +110,20 @@ exports.update = async (req, res) => {
 exports.remove = async (req, res) => {
   try {
     const { buildingId, id } = req.params;
-    const landlordId = req.user?._id || req.body.landlordId;
+    await assertCanAccessBuilding(req, buildingId);
 
-    await assertLandlordOwnsBuilding(landlordId, buildingId);
+    const service = await BuildingService.findOne({ _id: id, buildingId, isDeleted: false });
+    if (!service) {
+      return res.status(404).json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
+    }
 
-    const item = await BuildingService.findOne({
-      _id: id,
-      buildingId,
-      isDeleted: false,
-    });
-    if (!item)
-      return res
-        .status(404)
-        .json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
-
-    item.isDeleted = true;
-    item.deletedAt = new Date();
-    await item.save();
+    service.isDeleted = true;
+    service.deletedAt = new Date();
+    await service.save();
 
     res.json({ message: "Đã đánh dấu xóa dịch vụ" });
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(err.statusCode || 400).json({ message: err.message });
   }
 };
 
@@ -132,9 +131,7 @@ exports.remove = async (req, res) => {
 exports.restore = async (req, res) => {
   try {
     const { buildingId, id } = req.params;
-    const landlordId = req.user?._id || req.body.landlordId;
-
-    await assertLandlordOwnsBuilding(landlordId, buildingId);
+    await assertCanAccessBuilding(req, buildingId);
 
     const restored = await BuildingService.findOneAndUpdate(
       { _id: id, buildingId, isDeleted: true },
@@ -142,10 +139,12 @@ exports.restore = async (req, res) => {
       { new: true }
     );
 
-    if (!restored)
+    if (!restored) {
       return res.status(404).json({ message: "Không tìm thấy bản ghi đã xóa" });
+    }
+
     res.json(restored);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(err.statusCode || 400).json({ message: err.message });
   }
 };

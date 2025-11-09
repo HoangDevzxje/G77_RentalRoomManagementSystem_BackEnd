@@ -2,7 +2,8 @@ const router = require("express").Router();
 const termController = require("../../controllers/Landlord/TermController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
-
+const { PERMISSIONS } = require("../../constants/permissions");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 /**
  * @swagger
  * tags:
@@ -258,28 +259,40 @@ const checkSubscription = require("../../middleware/checkSubscription");
 
 router.post(
   "/",
-  checkAuthorize(["landlord"]),
+  checkAuthorize(["landlord", "staff"]),
   checkSubscription,
+  checkStaffPermission(PERMISSIONS.TERM_CREATE, { checkBuilding: true }),
   termController.createTerm
 );
 router.get(
   "/building/:buildingId",
-  checkAuthorize(["landlord"]),
+  checkAuthorize(["landlord", "staff"]),
   checkSubscription,
+  checkStaffPermission(PERMISSIONS.TERM_VIEW, { checkBuilding: true, buildingField: "buildingId" }),
   termController.getTermsByBuilding
 );
+
 router.get(
   "/detail/:id",
-  checkAuthorize(["landlord"]),
+  checkAuthorize(["landlord", "staff"]),
   checkSubscription,
+  checkStaffPermission(PERMISSIONS.TERM_VIEW),
   termController.getTermDetail
 );
-router.patch("/:id", checkAuthorize(["landlord"]), termController.updateTerm);
-router.delete(
+
+router.patch(
   "/:id",
-  checkAuthorize(["landlord"]),
+  checkAuthorize(["landlord", "staff"]),
   checkSubscription,
-  termController.deleteTerm
+  checkStaffPermission(PERMISSIONS.TERM_EDIT),
+  termController.updateTerm
 );
 
+router.delete(
+  "/:id",
+  checkAuthorize(["landlord", "staff"]),
+  checkSubscription,
+  checkStaffPermission(PERMISSIONS.TERM_DELETE),
+  termController.deleteTerm
+);
 module.exports = router;

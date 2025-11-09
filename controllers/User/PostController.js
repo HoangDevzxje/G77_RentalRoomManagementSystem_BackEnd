@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Post = require("../../models/Post");
 const Room = require("../../models/Room");
+const RoomFurniture = require("../../models/RoomFurniture");
 
 const getAllPostsByTenant = async (req, res) => {
   try {
@@ -154,7 +155,28 @@ const getRoomDetailByTenant = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy phòng!" });
     }
 
-    res.json({ success: true, data: room });
+    const furnitures = await RoomFurniture.find({ roomId: room._id })
+      .populate("furnitureId", "name type description image")
+      .select("furnitureId quantity condition damageCount notes")
+      .lean();
+
+    res.json({
+      success: true,
+      data: {
+        ...room,
+        furnitures: furnitures.map((f) => ({
+          id: f._id,
+          name: f.furnitureId?.name,
+          type: f.furnitureId?.type,
+          description: f.furnitureId?.description,
+          image: f.furnitureId?.image,
+          quantity: f.quantity,
+          condition: f.condition,
+          damageCount: f.damageCount,
+          notes: f.notes,
+        })),
+      },
+    });
   } catch (err) {
     console.error("Error getRoomDetail:", err);
     res.status(500).json({

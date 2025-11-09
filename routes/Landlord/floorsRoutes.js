@@ -3,6 +3,8 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 const FloorCtrl = require("../../controllers/Landlord/FloorController");
 const checkSubscription = require("../../middleware/checkSubscription");
 const loadFloorAndCheckParent = require("../../middleware/loadFloorAndCheckParent");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 /**
  * @swagger
  * tags:
@@ -78,7 +80,8 @@ const loadFloorAndCheckParent = require("../../middleware/loadFloorAndCheckParen
  */
 router.get(
   "/",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "resident", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_VIEW, { checkBuilding: true, buildingField: "buildingId" }),
   loadFloorAndCheckParent,
   FloorCtrl.list
 );
@@ -159,7 +162,8 @@ router.get(
  */
 router.get(
   "/:id",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "resident", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_VIEW),
   loadFloorAndCheckParent,
   FloorCtrl.getById
 );
@@ -281,7 +285,8 @@ router.get(
  */
 router.post(
   "/",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
   loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.create
@@ -453,7 +458,8 @@ router.post(
  */
 router.post(
   "/quick-create",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
   loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.quickCreate
@@ -576,7 +582,8 @@ router.post(
  */
 router.put(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_EDIT),
   loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.update
@@ -757,7 +764,8 @@ router.put(
  */
 router.delete(
   "/:id/soft",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_DELETE),
   loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.softDelete
@@ -939,7 +947,8 @@ router.delete(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_DELETE),
   FloorCtrl.softDelete
 );
 /**
@@ -1031,7 +1040,8 @@ router.delete(
  */
 router.post(
   "/:id/restore",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_CREATE),
   FloorCtrl.restore
 );
 /**
@@ -1147,7 +1157,9 @@ router.post(
  */
 router.patch(
   "/:id/status",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_EDIT),
+
   FloorCtrl.updateStatus
 );
 

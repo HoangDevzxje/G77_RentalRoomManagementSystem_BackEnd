@@ -40,6 +40,11 @@ const postSchema = new mongoose.Schema(
             enum: ['active', 'hidden', 'expired'],
             default: 'active',
         },
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Account',
+            required: true
+        },
     },
     { timestamps: true }
 );

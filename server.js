@@ -81,10 +81,7 @@ DB.connectDB()
 
     function shutDown() {
       console.log("Đang tắt server...");
-      server.close(() => {
-        console.log("Server đã tắt.");
-        process.exit(0);
-      });
+      process.exit(0);
     }
   })
   .catch((err) => {

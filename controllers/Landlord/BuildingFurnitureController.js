@@ -8,6 +8,21 @@ const RoomFurniture = require("../../models/RoomFurniture");
 // Tạo mới
 exports.create = async (req, res) => {
   try {
+    const { buildingId } = req.body;
+    if (!buildingId) return res.status(400).json({ message: "buildingId là bắt buộc" });
+
+    const b = await Building.findById(buildingId).lean();
+    if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
+
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền với tòa này" });
+    }
+
     const data = await BuildingFurniture.create(req.body);
     res.status(201).json(data);
   } catch (err) {
@@ -38,13 +53,15 @@ exports.bulkCreate = async (req, res) => {
     // 1) Validate building + quyền
     const b = await Building.findById(buildingId).lean();
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
-    const isOwner =
-      req.user.role === "admin" ||
-      (req.user.role === "landlord" &&
-        String(b.landlordId) === String(req.user._id));
-    if (!isOwner)
-      return res.status(403).json({ message: "Không có quyền với tòa này" });
 
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền với tòa này" });
+    }
     // 2) Chuẩn hóa input & phát hiện trùng trong payload
     const normalized = items.map((it, idx) => ({
       idx,
@@ -226,15 +243,13 @@ exports.getAll = async (req, res) => {
     if (!building)
       return res.status(404).json({ message: "Không tìm thấy tòa" });
 
-    const isOwner =
-      req.user?.role === "admin" ||
-      (req.user?.role === "landlord" &&
-        String(building.landlordId) === String(req.user._id));
-
-    if (!isOwner) {
-      return res
-        .status(403)
-        .json({ message: "Không có quyền truy cập tòa này" });
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(building.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền truy cập tòa này" });
     }
 
     if (withStats === "true") {
@@ -383,44 +398,43 @@ exports.getAll = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
-
-// Lấy 1
-exports.getOne = async (req, res) => {
+// === GET ONE, UPDATE, REMOVE: thêm check buildingId từ document ===
+const assertBuildingAccess = async (req, res, next) => {
   try {
-    const item = await BuildingFurniture.findById(req.params.id).populate(
-      "buildingId furnitureId"
-    );
-    if (!item) return res.status(404).json({ message: "Không tìm thấy" });
-    res.json(item);
+    const doc = await BuildingFurniture.findById(req.params.id).lean();
+    if (!doc) return res.status(404).json({ message: "Không tìm thấy" });
+
+    const b = await Building.findById(doc.buildingId).lean();
+    if (!b) return res.status(404).json({ message: "Tòa nhà không tồn tại" });
+
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(b._id))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    } else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
+
+    req.__buildingFurnitureDoc = doc; // truyền tiếp nếu cần
+    next();
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
+exports.getOne = [assertBuildingAccess, async (req, res) => {
+  const item = await BuildingFurniture.findById(req.params.id).populate("buildingId furnitureId");
+  res.json(item);
+}];
 
-// Cập nhật
-exports.update = async (req, res) => {
-  try {
-    const updated = await BuildingFurniture.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ message: "Không tìm thấy" });
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-};
+exports.update = [assertBuildingAccess, async (req, res) => {
+  const updated = await BuildingFurniture.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  res.json(updated);
+}];
 
-// Xóa
-exports.remove = async (req, res) => {
-  try {
-    await BuildingFurniture.findByIdAndDelete(req.params.id);
-    res.json({ message: "Đã xóa thành công" });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-};
+exports.remove = [assertBuildingAccess, async (req, res) => {
+  await BuildingFurniture.findByIdAndDelete(req.params.id);
+  res.json({ message: "Đã xóa thành công" });
+}];
 
 /**
  * Áp dụng cấu hình nội thất của tòa cho phòng
@@ -444,7 +458,17 @@ exports.applyToRooms = async (req, res) => {
         .status(400)
         .json({ message: "mode phải là 'set' hoặc 'increment'" });
     }
+    const b = await Building.findById(buildingId).lean();
+    if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
 
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
     //Lấy cấu hình nội thất ở tòa
     const invFilter = { buildingId, status: "active" };
     if (Array.isArray(furnitureIds) && furnitureIds.length) {

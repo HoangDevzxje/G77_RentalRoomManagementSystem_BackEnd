@@ -2,6 +2,18 @@ const express = require("express");
 const router = express.Router();
 const ctrl = require("../../controllers/Landlord/MaintenanceController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
+
+// === MIDDLEWARE: chỉ validate buildingId nếu có gửi ===
+const checkBuildingIfProvided = (req, res, next) => {
+  const buildingId = req.query.buildingId;
+  if (!buildingId) return next();
+  return checkStaffPermission(PERMISSIONS.MAINTENANCE_VIEW, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  })(req, res, next);
+};
 
 /**
  * @swagger
@@ -142,7 +154,9 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  */
 router.get(
   "/",
-  checkAuthorize(["resident", "landlord", "admin"]),
+  checkAuthorize(["resident", "landlord", "admin", "staff"]),
+  checkStaffPermission(PERMISSIONS.MAINTENANCE_VIEW),
+  checkBuildingIfProvided,
   ctrl.listRequests
 );
 
@@ -229,7 +243,8 @@ router.get(
  */
 router.get(
   "/:id",
-  checkAuthorize(["resident", "landlord", "admin"]),
+  checkAuthorize(["resident", "landlord", "admin", "staff"]),
+  checkStaffPermission(PERMISSIONS.MAINTENANCE_VIEW),
   ctrl.getRequest
 );
 
@@ -332,7 +347,8 @@ router.get(
  */
 router.patch(
   "/:id",
-  checkAuthorize(["landlord", "admin"]),
+  checkAuthorize(["landlord", "admin", "staff"]),
+  checkStaffPermission(PERMISSIONS.MAINTENANCE_EDIT),
   ctrl.updateRequest
 );
 
@@ -408,6 +424,7 @@ router.patch(
 router.post(
   "/:id/comment",
   checkAuthorize(["resident", "landlord", "admin"]),
+  checkStaffPermission(PERMISSIONS.MAINTENANCE_CREATE),
   ctrl.comment
 );
 

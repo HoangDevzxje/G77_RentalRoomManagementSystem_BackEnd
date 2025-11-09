@@ -194,6 +194,7 @@ const create = async (req, res) => {
 
     const isOwner =
       req.user.role === "admin" ||
+      req.user.role === "staff" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
@@ -350,6 +351,7 @@ const update = async (req, res) => {
     );
     const isOwner =
       req.user.role === "admin" ||
+      req.user.role === "staff" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
@@ -500,7 +502,6 @@ const softDelete = async (req, res) => {
     const r = await Room.findById(id).select("buildingId isDeleted");
     if (!r || r.isDeleted)
       return res.status(404).json({ message: "Không tìm thấy phòng" });
-
     const b = await Building.findById(r.buildingId).select(
       "landlordId isDeleted"
     );
@@ -610,7 +611,7 @@ const quickCreate = async (req, res) => {
       defaults = {},
       skipExisting = true,
     } = req.body;
-
+    req.body.buildingId = buildingId;
     if (!buildingId)
       return res.status(400).json({ message: "buildingId là bắt buộc" });
     if (!(perFloor > 0))
@@ -627,6 +628,7 @@ const quickCreate = async (req, res) => {
 
     const isOwner =
       req.user.role === "admin" ||
+      req.user.role === "staff" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });

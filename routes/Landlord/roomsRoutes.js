@@ -4,6 +4,8 @@ const RoomCtrl = require("../../controllers/Landlord/RoomController");
 const checkSubscription = require("../../middleware/checkSubscription");
 const checkBuildingActive = require("../../middleware/checkBuildingActive");
 const { uploadMultiple, uploadSingle } = require("../../configs/cloudinary");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 /**
  * @swagger
  * tags:
@@ -189,7 +191,8 @@ const { uploadMultiple, uploadSingle } = require("../../configs/cloudinary");
  */
 router.get(
   "/",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "resident", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_VIEW, { checkBuilding: true }),
   RoomCtrl.list
 );
 
@@ -336,7 +339,8 @@ router.get(
  */
 router.get(
   "/:id",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "resident", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_VIEW),
   RoomCtrl.getById
 );
 
@@ -368,11 +372,6 @@ router.get(
  *                   type: string
  *                   format: binary
  *                 description: Danh sách ảnh phòng (tùy chọn)
- *           encoding:
- *             data:
- *               contentType: application/json
- *             images:
- *               contentType: image/jpeg, image/png, image/webp
  *     responses:
  *       201:
  *         description: Phòng được tạo thành công
@@ -471,7 +470,8 @@ router.get(
  */
 router.post(
   "/",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_CREATE),
   checkSubscription,
   uploadMultiple,
   RoomCtrl.create
@@ -480,7 +480,7 @@ router.post(
 // Thêm ảnh cho phòng (upload thêm)
 router.post(
   "/:id/images",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
   checkBuildingActive,
   uploadMultiple,
   RoomCtrl.addImages
@@ -489,7 +489,8 @@ router.post(
 router.delete("/:id/images", RoomCtrl.removeImages);
 router.post(
   "/quick-create",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_CREATE, { checkBuilding: true }),
   checkSubscription,
   checkBuildingActive,
   RoomCtrl.quickCreate
@@ -601,7 +602,8 @@ router.post(
  */
 router.put(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_EDIT),
   checkSubscription,
   RoomCtrl.update
 );
@@ -676,7 +678,8 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_DELETE, { checkBuilding: true }),
   checkSubscription,
   RoomCtrl.remove
 );
@@ -769,7 +772,7 @@ router.delete(
  */
 router.post(
   "/:id/images",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
   uploadMultiple,
   RoomCtrl.addImages
 );
@@ -867,7 +870,7 @@ router.post(
  */
 router.delete(
   "/:id/images",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
   RoomCtrl.removeImages
 );
 
@@ -1061,7 +1064,8 @@ router.delete(
  */
 router.post(
   "/quick-create",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_CREATE, { checkBuilding: true }),
   checkSubscription,
   checkBuildingActive,
   RoomCtrl.quickCreate
@@ -1137,7 +1141,8 @@ router.post(
  */
 router.delete(
   "/:id/soft",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_DELETE),
   checkSubscription,
   RoomCtrl.softDelete
 );
@@ -1212,7 +1217,7 @@ router.delete(
  */
 router.post(
   "/:id/restore",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
   RoomCtrl.restore
 );
 
@@ -1309,7 +1314,7 @@ router.post(
  */
 router.patch(
   "/:id/active",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
   RoomCtrl.updateActive
 );
 

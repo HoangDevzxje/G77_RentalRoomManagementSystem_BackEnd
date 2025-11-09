@@ -4,7 +4,11 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon server.js"
+    "start": "nodemon server.js",
+    "dev": "nodemon server.js",
+    "seed": "node seed/permissions.js",
+    "start:prod": "npm run seed && npm start",
+    "dev:seed": "npm run seed && npm run dev"
   },
   "keywords": [],
   "author": "",
@@ -21,6 +25,7 @@
     "content-disposition": "^1.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "crypto": "^1.0.1",
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",

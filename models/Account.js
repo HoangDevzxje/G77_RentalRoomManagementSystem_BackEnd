@@ -8,7 +8,7 @@ const accountSchema = new mongoose.Schema({
 
     role: {
         type: String,
-        enum: ["resident", "landlord", "admin"],
+        enum: ["resident", "landlord", "admin", "staff"],
         default: "resident",
     },
     isActivated: { type: Boolean, default: true },

@@ -8,8 +8,25 @@ exports.getList = async (req, res) => {
     if (!buildingId)
       return res.status(400).json({ message: "Thiếu buildingId" });
 
+    req.query.buildingId = buildingId;
+
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
     const query = { buildingId, status: "active" };
-    const regulations = await Regulation.find(query).sort({ createdAt: -1 });
+    const regulations = await Regulation.find(query)
+      .populate({
+        path: "createdBy",
+        select: "email userInfo",
+        populate: {
+          path: "userInfo",
+          model: "UserInformation",
+          select: "fullName phoneNumber",
+        },
+      })
+      .sort({ createdAt: -1 });
     return res.json(regulations);
   } catch (err) {
     return res.status(500).json({ message: err.message });
@@ -23,6 +40,8 @@ exports.create = async (req, res) => {
     if (!buildingId || !title || !description)
       return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
 
+    req.body.buildingId = buildingId;
+
     const building = await Building.findById(buildingId);
     if (!building)
       return res.status(404).json({ message: "Không tìm thấy tòa" });
@@ -30,13 +49,11 @@ exports.create = async (req, res) => {
     // Kiểm tra quyền: landlord phải là chủ của tòa
     if (
       req.user.role !== "admin" &&
-      String(building.landlordId) !== String(req.user._id)
+      String(building.landlordId) !== String(req.user._id) &&
+      req.user.role !== "staff"
     ) {
-      return res
-        .status(403)
-        .json({ message: "Không có quyền tạo quy định cho tòa này" });
+      return res.status(403).json({ message: "Không có quyền tạo quy định cho tòa này" });
     }
-
     const newReg = await Regulation.create({
       buildingId,
       title,
@@ -64,7 +81,8 @@ exports.update = async (req, res) => {
     // Kiểm tra quyền
     if (
       req.user.role !== "admin" &&
-      String(reg.buildingId.landlordId) !== String(req.user._id)
+      String(reg.buildingId.landlordId) !== String(req.user._id) &&
+      req.user.role !== "staff"
     ) {
       return res
         .status(403)
@@ -90,7 +108,8 @@ exports.remove = async (req, res) => {
 
     if (
       req.user.role !== "admin" &&
-      String(reg.buildingId.landlordId) !== String(req.user._id)
+      String(reg.buildingId.landlordId) !== String(req.user._id) &&
+      req.user.role !== "staff"
     ) {
       return res
         .status(403)

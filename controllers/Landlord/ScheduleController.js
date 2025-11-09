@@ -4,15 +4,17 @@ const Building = require("../../models/Building");
 const upsertSchedule = async (req, res) => {
     try {
         const { buildingId, defaultSlots, overrides } = req.body;
-        const landlordId = req.user._id;
 
-        const building = await Building.findOne({ _id: buildingId, landlordId, isDeleted: false });
+        // === ÉP CHO MIDDLEWARE ===
+        req.body.buildingId = buildingId;
+
+        const building = await Building.findOne({ _id: buildingId, isDeleted: false });
         if (!building) {
             return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
         }
 
         const schedule = await LandlordSchedule.findOneAndUpdate(
-            { landlordId, buildingId },
+            { landlordId: building.landlordId, buildingId },
             { defaultSlots, overrides },
             { upsert: true, new: true }
         );
@@ -31,9 +33,20 @@ const upsertSchedule = async (req, res) => {
 const getSchedule = async (req, res) => {
     try {
         const { buildingId } = req.params;
-        const landlordId = req.user._id;
 
-        const schedule = await LandlordSchedule.findOne({ landlordId, buildingId });
+        // === ÉP CHO MIDDLEWARE ===
+        req.query.buildingId = buildingId;
+
+        const building = await Building.findOne({ _id: buildingId, isDeleted: false });
+        if (!building) {
+            return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
+        }
+
+        const schedule = await LandlordSchedule.findOne({
+            landlordId: building.landlordId,
+            buildingId
+        });
+
         if (!schedule) {
             return res.status(404).json({ message: "Chưa thiết lập lịch cho tòa này!" });
         }
@@ -48,9 +61,19 @@ const getSchedule = async (req, res) => {
 const deleteSchedule = async (req, res) => {
     try {
         const { buildingId } = req.params;
-        const landlordId = req.user._id;
 
-        await LandlordSchedule.deleteOne({ landlordId, buildingId });
+        // === ÉP CHO MIDDLEWARE ===
+        req.query.buildingId = buildingId;
+
+        const building = await Building.findOne({ _id: buildingId, isDeleted: false });
+        if (!building) {
+            return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
+        }
+
+        await LandlordSchedule.deleteOne({
+            landlordId: building.landlordId,
+            buildingId
+        });
 
         res.json({ success: true, message: "Đã xóa lịch của tòa!" });
     } catch (err) {

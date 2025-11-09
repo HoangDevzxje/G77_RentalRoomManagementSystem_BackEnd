@@ -3,6 +3,9 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 const BuildingCtrl = require("../../controllers/Landlord/BuildingController");
 const checkSubscription = require("../../middleware/checkSubscription");
 const checkBuildingActive = require("../../middleware/checkBuildingActive");
+
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 const multer = require("multer");
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -145,7 +148,8 @@ const upload = multer({
  */
 router.get(
   "/",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_VIEW),
   BuildingCtrl.list
 );
 router.get(
@@ -277,7 +281,8 @@ router.post(
  */
 router.get(
   "/:id",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_VIEW, { checkBuilding: true, buildingField: "id" }),
   BuildingCtrl.getById
 );
 

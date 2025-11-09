@@ -1,8 +1,10 @@
 const router = require('express').Router();
 const postController = require("../../controllers/Landlord/PostController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const { uploadMultiple } = require("../../configs/cloudinary");
+const { uploadMultiple, uploadTextOnly } = require("../../configs/cloudinary");
 const checkSubscription = require("../../middleware/checkSubscription");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 
 /**
  * @swagger
@@ -102,7 +104,11 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                       type: string
  *                       example: "<p>🏠 Phòng trọ đầy đủ nội thất, gần ĐH Bách Khoa...</p>"
  */
-router.post("/ai-generate", checkAuthorize(["landlord"]), checkSubscription, postController.generateDescription);
+router.post("/ai-generate",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.POST_CREATE),
+    checkSubscription,
+    postController.generateDescription);
 
 /**
  * @swagger
@@ -124,66 +130,110 @@ router.post("/ai-generate", checkAuthorize(["landlord"]), checkSubscription, pos
  *       200:
  *         description: Thông tin chi tiết của tòa nhà
  */
-router.get("/:buildingId/info", checkAuthorize(["landlord"]), checkSubscription, postController.getBuildingInfo);
+router.get("/:buildingId/info",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.POST_VIEW, { checkBuilding: true, buildingField: "buildingId" }),
+    checkSubscription,
+    postController.getBuildingInfo);
 
 /**
  * @swagger
  * /landlords/posts:
  *   post:
  *     summary: Tạo bài đăng mới
- *     description: Tạo bài đăng cho thuê phòng trọ, có thể chọn nhiều phòng và upload nhiều ảnh.
+ *     description: |
+ *       Tạo bài đăng cho thuê phòng trọ, có thể chọn nhiều phòng và upload nhiều ảnh.
+ *       
+ *       **LƯU Ý QUAN TRỌNG**: 
+ *       - `buildingId` **PHẢI** được truyền qua **query string** trong URL:  
+ *         `?buildingId=670f123456789abc123def45`
+ *       - Không truyền `buildingId` trong form-data body (do hạn chế của multer-storage-cloudinary)
+ *       - Các field còn lại truyền bình thường qua form-data.
+ *       
+ *       Ví dụ URL đầy đủ:
+ *       ```
+ *       POST /api/landlords/posts?buildingId=670f123456789abc123def45
+ *       ```
  *     tags: [Landlord Post Management]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: buildingId
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: ID của tòa nhà (bắt buộc truyền qua query string)
+ *         example: 670f123456789abc123def45
  *     requestBody:
  *       required: true
  *       content:
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [title, description, priceMin, priceMax, areaMin, areaMax, address, buildingId, roomIds]
+ *             required: [title, description, address, roomIds]
  *             properties:
  *               title:
  *                 type: string
  *                 example: Cho thuê phòng tầng 3, full nội thất
+ *                 description: Tiêu đề bài đăng
  *               description:
  *                 type: string
- *                 description: Nội dung mô tả ở dạng HTML
- *               buildingId:
+ *                 description: Nội dung mô tả chi tiết (có thể dùng HTML)
+ *                 example: <p>Phòng đầy đủ nội thất, gần Lotte Mart...</p>
+ *               address:
  *                 type: string
+ *                 example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
+ *                 description: Địa chỉ chi tiết
  *               roomIds:
  *                 type: array
  *                 items:
  *                   type: string
- *                 example: ["6719b244b8234d2a1b7e3f45", "6719b244b8234d2a1b7e3f46"]
- *               priceMin:
- *                 type: number
- *                 example: 2500000
- *               priceMax:
- *                 type: number
- *                 example: 2800000
- *               areaMin:
- *                 type: number
- *                 example: 20
- *               areaMax:
- *                 type: number
- *                 example: 25
- *               address:
- *                 type: string
- *                 example: 25 Lý Thường Kiệt, Quận 10, TP.HCM
+ *                 example: 
+ *                   - 6719b244b8234d2a1b7e3f45
+ *                   - 6719b244b8234d2a1b7e3f46
+ *                 description: Danh sách ID các phòng muốn đăng (có thể truyền nhiều lần key roomIds)
  *               isDraft:
  *                 type: boolean
  *                 example: false
+ *                 description: true = lưu nháp, false = đăng ngay
  *               images:
  *                 type: array
  *                 items:
  *                   type: string
  *                   format: binary
+ *                 description: Ảnh bài đăng (tối đa 20 ảnh, tự động upload lên Cloudinary, resize + webp)
  *     responses:
  *       201:
  *         description: Tạo bài đăng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Tạo bài đăng thành công!
+ *                 data:
+ *                   $ref: '#/components/schemas/Post'
+ *       400:
+ *         description: Thiếu thông tin hoặc buildingId không hợp lệ
+ *       403:
+ *         description: Không có quyền (staff không quản lý tòa nhà này)
+ *       404:
+ *         description: Tòa nhà hoặc phòng không tồn tại
+ *       500:
+ *         description: Lỗi server
  */
-router.post("/", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.createPost);
+router.post("/",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.POST_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+    checkSubscription,
+    uploadMultiple,
+    postController.createPost);
 
 /**
  * @swagger
@@ -290,7 +340,11 @@ router.post("/", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple
  *       500:
  *         description: Lỗi hệ thống khi lấy danh sách bài đăng
  */
-router.get("/", checkAuthorize(["landlord"]), checkSubscription, postController.listByLandlord);
+router.get("/",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.POST_VIEW),
+    checkSubscription,
+    postController.listByLandlord);
 
 /**
  * @swagger
@@ -312,7 +366,11 @@ router.get("/", checkAuthorize(["landlord"]), checkSubscription, postController.
  *       200:
  *         description: Thông tin chi tiết bài đăng
  */
-router.get("/:id", checkAuthorize(["landlord"]), checkSubscription, postController.getPostDetail);
+router.get("/:id",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.POST_VIEW),
+    checkSubscription,
+    postController.getPostDetail);
 
 /**
  * @swagger
@@ -385,7 +443,12 @@ router.get("/:id", checkAuthorize(["landlord"]), checkSubscription, postControll
  *       500:
  *         description: Lỗi server
  */
-router.put("/:id", checkAuthorize(["landlord"]), checkSubscription, uploadMultiple, postController.updatePost);
+router.put("/:id",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.POST_EDIT),
+    checkSubscription,
+    uploadMultiple,
+    postController.updatePost);
 
 /**
  * @swagger
@@ -406,6 +469,10 @@ router.put("/:id", checkAuthorize(["landlord"]), checkSubscription, uploadMultip
  *       200:
  *         description: Xóa mềm thành công
  */
-router.patch("/:id/soft-delete", checkAuthorize(["landlord"]), checkSubscription, postController.softDelete);
+router.patch("/:id/soft-delete",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.POST_EDIT),
+    checkSubscription,
+    postController.softDelete);
 
 module.exports = router;

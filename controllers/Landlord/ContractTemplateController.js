@@ -6,6 +6,7 @@ const Term = require("../../models/Term");
 const Regulation = require("../../models/Regulation");
 const contentDisposition = require("content-disposition");
 const he = require("he");
+const Building = require("../../models/Building");
 
 const FONT_REGULAR =
   process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
@@ -16,17 +17,16 @@ const FONT_REGULAR =
  */
 exports.create = async (req, res) => {
   try {
-    const ownerId = req.user?._id; // landlord id từ auth
     const {
       buildingId,
       name,
       defaultTermIds = [],
       defaultRegulationIds = [],
     } = req.body;
-
+    req.body.buildingId = buildingId;
     if (!buildingId)
       return res.status(400).json({ message: "buildingId is required" });
-
+    const building = await Building.findById(buildingId);
     // Kiểm tra đã tồn tại template cho tòa này chưa
     const existed = await ContractTemplate.findOne({ buildingId }).lean();
     if (existed) {
@@ -40,9 +40,8 @@ exports.create = async (req, res) => {
 
     const doc = await ContractTemplate.create({
       buildingId,
-      ownerId,
+      ownerId: building.landlordId,
       name: name || "Mẫu Hợp Đồng Thuê Phòng",
-      basePdfUrl: getBasePdfUrl(),
       defaultTermIds,
       defaultRegulationIds,
       status: "active",
@@ -61,6 +60,7 @@ exports.create = async (req, res) => {
 exports.getByBuilding = async (req, res) => {
   try {
     const { buildingId } = req.params;
+    req.query.buildingId = buildingId;
     const doc = await ContractTemplate.findOne({ buildingId }).lean();
     if (!doc) return res.status(404).json({ message: "Template not found" });
     return res.json(doc);
@@ -97,7 +97,7 @@ exports.update = async (req, res) => {
     }
 
     const doc = await ContractTemplate.findOneAndUpdate(
-      { _id: id, ownerId: req.user?._id }, // đảm bảo chỉ chủ sở hữu tòa được sửa
+      { _id: id }, // đảm bảo chỉ chủ sở hữu tòa được sửa
       { $set: updatable },
       { new: true }
     );
@@ -115,9 +115,13 @@ exports.update = async (req, res) => {
 exports.remove = async (req, res) => {
   try {
     const { id } = req.params;
+    const template = await ContractTemplate.findById(id).select("buildingId");
+    if (!template) return res.status(404).json({ message: "Template not found" });
+
+    req.body.buildingId = String(template.buildingId);
+
     const doc = await ContractTemplate.findOneAndDelete({
       _id: id,
-      ownerId: req.user?._id,
     });
     if (!doc) return res.status(404).json({ message: "Template not found" });
     return res.json({ message: "Deleted" });
@@ -131,9 +135,20 @@ exports.remove = async (req, res) => {
  */
 exports.listMine = async (req, res) => {
   try {
-    const items = await ContractTemplate.find({
-      ownerId: req.user?._id,
-    }).lean();
+    // Staff không dùng listMine → nhưng nếu gọi thì vẫn check qua building
+    // Để an toàn: lấy tất cả building được giao → chỉ trả template của chúng
+    let filter = {};
+    if (req.user.role === "staff") {
+      const buildings = await Building.find({
+        _id: { $in: req.staff.assignedBuildingIds },
+        isDeleted: false
+      }).distinct("_id");
+      filter.buildingId = { $in: buildings };
+    } else {
+      filter.ownerId = req.user._id;
+    }
+
+    const items = await ContractTemplate.find(filter).lean();
     return res.json(items);
   } catch (e) {
     return res.status(400).json({ message: e.message });
@@ -224,9 +239,9 @@ exports.previewPdf = async (req, res) => {
   let doc;
 
   try {
-    const ownerId = req.user?._id;
 
     const buildingId = String(req.query.buildingId || "").trim();
+    req.query.buildingId = buildingId;
     if (!buildingId)
       return res.status(400).json({ message: "buildingId is required" });
 
@@ -244,8 +259,7 @@ exports.previewPdf = async (req, res) => {
 
     // Lấy template theo quyền sở hữu
     const template = await ContractTemplate.findOne({
-      buildingId,
-      ownerId,
+      buildingId
     }).lean();
     if (!template)
       return res.status(404).json({ message: "Template not found" });
@@ -254,20 +268,20 @@ exports.previewPdf = async (req, res) => {
     const [terms, regs] = await Promise.all([
       termIds.length
         ? Term.find({
-            _id: { $in: termIds },
-            status: "active",
-            isDeleted: { $ne: true },
-          })
-            .select("name description") // <-- name + description
-            .lean()
+          _id: { $in: termIds },
+          status: "active",
+          isDeleted: { $ne: true },
+        })
+          .select("name description") // <-- name + description
+          .lean()
         : Promise.resolve([]),
       regulationIds.length
         ? Regulation.find({
-            _id: { $in: regulationIds },
-            status: "active",
-          })
-            .select("title description effectiveFrom") // <-- title + description + effectiveFrom
-            .lean()
+          _id: { $in: regulationIds },
+          status: "active",
+        })
+          .select("title description effectiveFrom") // <-- title + description + effectiveFrom
+          .lean()
         : Promise.resolve([]),
     ]);
 
@@ -288,7 +302,7 @@ exports.previewPdf = async (req, res) => {
       } else {
         try {
           res.end();
-        } catch {}
+        } catch { }
       }
     });
 
@@ -308,7 +322,7 @@ exports.previewPdf = async (req, res) => {
     doc.moveDown(0.8);
     try {
       doc.font(FONT_BOLD);
-    } catch {}
+    } catch { }
     doc.fontSize(16).text(template.name || "HỢP ĐỒNG THUÊ PHÒNG", {
       align: "center",
       underline: true,
@@ -316,7 +330,7 @@ exports.previewPdf = async (req, res) => {
 
     try {
       doc.font(FONT_REGULAR);
-    } catch {}
+    } catch { }
     doc.moveDown(0.5);
     doc
       .fontSize(10)
@@ -366,21 +380,21 @@ exports.previewPdf = async (req, res) => {
       doc.moveDown(1);
       try {
         doc.font(FONT_BOLD);
-      } catch {}
+      } catch { }
       doc.fontSize(13).text("I. NỘI DUNG ĐIỀU KHOẢN", { underline: true });
       try {
         doc.font(FONT_REGULAR);
-      } catch {}
+      } catch { }
       doc.moveDown(0.3);
 
       terms.forEach((t, idx) => {
         try {
           doc.font(FONT_BOLD);
-        } catch {}
+        } catch { }
         doc.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
         try {
           doc.font(FONT_REGULAR);
-        } catch {}
+        } catch { }
 
         const desc = t.description || "";
         if (!desc) {
@@ -396,11 +410,11 @@ exports.previewPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 doc.font(FONT_BOLD);
-              } catch {}
+              } catch { }
               doc.fontSize(11).text(prefix, { continued: true });
               try {
                 doc.font(FONT_REGULAR);
-              } catch {}
+              } catch { }
               doc.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -427,21 +441,21 @@ exports.previewPdf = async (req, res) => {
       doc.moveDown(0.6);
       try {
         doc.font(FONT_BOLD);
-      } catch {}
+      } catch { }
       doc.fontSize(13).text("II. QUY ĐỊNH", { underline: true });
       try {
         doc.font(FONT_REGULAR);
-      } catch {}
+      } catch { }
       doc.moveDown(0.3);
 
       regs.forEach((r, idx) => {
         try {
           doc.font(FONT_BOLD);
-        } catch {}
+        } catch { }
         doc.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
         try {
           doc.font(FONT_REGULAR);
-        } catch {}
+        } catch { }
 
         if (r.effectiveFrom) {
           const d = new Date(r.effectiveFrom);
@@ -466,11 +480,11 @@ exports.previewPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 doc.font(FONT_BOLD);
-              } catch {}
+              } catch { }
               doc.fontSize(11).text(prefix, { continued: true });
               try {
                 doc.font(FONT_REGULAR);
-              } catch {}
+              } catch { }
               doc.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -516,6 +530,6 @@ exports.previewPdf = async (req, res) => {
     }
     try {
       res.end();
-    } catch {}
+    } catch { }
   }
 };

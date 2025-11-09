@@ -1,14 +1,26 @@
 const Booking = require("../../models/Booking");
-const dayjs = require("dayjs");
 
 const getAllBookings = async (req, res) => {
     try {
-        const landlordId = req.user._id;
         const { status, buildingId, postId, page = 1, limit = 10 } = req.query;
+        const filter = { isDeleted: false };
 
-        const filter = { landlordId, isDeleted: false };
+        if (req.user.role === "landlord") {
+            filter.landlordId = req.user._id;
+        } else if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds?.length) {
+                return res.json({ success: true, pagination: { total: 0, page: +page, limit: +limit, totalPages: 0 }, data: [] });
+            }
+            filter.buildingId = { $in: req.staff.assignedBuildingIds };
+        }
+
         if (status) filter.status = status;
-        if (buildingId) filter.buildingId = buildingId;
+        if (buildingId) {
+            if (req.user.role === "staff" && !req.staff.assignedBuildingIds.includes(buildingId)) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+            filter.buildingId = buildingId;
+        }
         if (postId) filter.postId = postId;
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -19,7 +31,8 @@ const getAllBookings = async (req, res) => {
                 .populate("postId", "title")
                 .sort({ date: 1, createdAt: -1 })
                 .skip(skip)
-                .limit(parseInt(limit)),
+                .limit(parseInt(limit))
+                .lean(),
             Booking.countDocuments(filter),
         ]);
 
@@ -41,19 +54,27 @@ const getAllBookings = async (req, res) => {
 
 const getBookingDetail = async (req, res) => {
     try {
-        const landlordId = req.user._id;
         const { id } = req.params;
 
-        const booking = await Booking.findOne({
-            _id: id,
-            landlordId,
-            isDeleted: false,
-        })
+        const booking = await Booking.findOne({ _id: id, isDeleted: false })
             .populate("buildingId", "name address")
-            .populate("postId", "title");
+            .populate("postId", "title")
+            .lean();
 
-        if (!booking)
+        if (!booking) {
             return res.status(404).json({ message: "Không tìm thấy lịch đặt!" });
+        }
+
+        // Kiểm tra quyền
+        if (req.user.role === "landlord") {
+            if (String(booking.landlordId) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Không có quyền" });
+            }
+        } else if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds.includes(String(booking.buildingId._id))) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        }
 
         res.json({ success: true, data: booking });
     } catch (err) {
@@ -64,13 +85,26 @@ const getBookingDetail = async (req, res) => {
 
 const updateBookingStatus = async (req, res) => {
     try {
-        const landlordId = req.user._id;
         const { id } = req.params;
         const { action, landlordNote } = req.body;
 
-        const booking = await Booking.findOne({ _id: id, landlordId, isDeleted: false });
-        if (!booking)
+        const booking = await Booking.findOne({ _id: id, isDeleted: false })
+            .populate("buildingId", "_id");
+
+        if (!booking) {
             return res.status(404).json({ message: "Không tìm thấy lịch đặt!" });
+        }
+
+        // Kiểm tra quyền
+        if (req.user.role === "landlord") {
+            if (String(booking.landlordId) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Không có quyền" });
+            }
+        } else if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds.includes(String(booking.buildingId._id))) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        }
 
         switch (action) {
             case "accept":

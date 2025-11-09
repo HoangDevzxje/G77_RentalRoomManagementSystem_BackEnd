@@ -10,86 +10,46 @@ function parsePositiveInt(v, def) {
 
 const list = async (req, res) => {
   try {
-    const {
-      buildingId,
-      page = 1,
-      limit = 20,
-      includeDeleted = "false",
-      status,
-    } = req.query;
+    const { buildingId, page = 1, limit = 20, includeDeleted = "false", status } = req.query;
 
-    if (!buildingId) {
-      return res.status(400).json({ message: "Thiếu buildingId" });
+    if (!buildingId) return res.status(400).json({ message: "Thiếu buildingId" });
+    if (!mongoose.Types.ObjectId.isValid(buildingId)) return res.status(400).json({ message: "buildingId không hợp lệ" });
+
+    const allowIncludeDeleted = includeDeleted === "true" && req.user?.role === "admin";
+
+    const b = await Building.findById(buildingId).select("_id landlordId isDeleted status").lean();
+    if (!b) return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+    if (b.isDeleted && !allowIncludeDeleted) return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
+
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
     }
-    if (!mongoose.Types.ObjectId.isValid(buildingId)) {
-      return res.status(400).json({ message: "buildingId không hợp lệ" });
-    }
-
-    // Chỉ admin mới được dùng includeDeleted
-    const allowIncludeDeleted =
-      includeDeleted === "true" && req.user?.role === "admin";
-
-    const b = await Building.findById(buildingId)
-      .select("_id landlordId isDeleted status")
-      .lean();
-
-    if (!b) {
-      return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
-    }
-
-    // Nếu tòa đã xóa mềm: chỉ admin + includeDeleted mới xem được
-    if (b.isDeleted && !allowIncludeDeleted) {
-      return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
-    }
-
-    // Landlord chỉ thao tác trên tòa của mình
-    if (
-      req.user?.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
-    ) {
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
       return res.status(403).json({ message: "Không có quyền" });
     }
-
-    // Resident: chỉ xem tòa thuộc quyền (tùy cấu trúc hệ thống của bạn)
-    if (req.user?.role === "resident") {
-      const allowed =
-        Array.isArray(req.user.memberOfBuildingIds) &&
-        req.user.memberOfBuildingIds.map(String).includes(String(b._id));
-      if (!allowed) {
-        return res.status(403).json({ message: "Không có quyền" });
-      }
+    else if (req.user.role === "resident") {
+      const allowed = Array.isArray(req.user.memberOfBuildingIds) && req.user.memberOfBuildingIds.map(String).includes(String(b._id));
+      if (!allowed) return res.status(403).json({ message: "Không có quyền" });
     }
 
     const pageNum = parsePositiveInt(page, 1);
     const limitNum = parsePositiveInt(limit, 20);
 
     const filter = { buildingId: b._id };
-    if (status === "active" || status === "inactive") {
-      filter.status = status;
-    }
+    if (status === "active" || status === "inactive") filter.status = status;
     if (!allowIncludeDeleted) filter.isDeleted = false;
 
-    // Query song song cho nhanh
     const [data, total] = await Promise.all([
-      Floor.find(filter)
-        .sort({ level: 1, _id: 1 })
-        .skip((pageNum - 1) * limitNum)
-        .limit(limitNum)
-        .lean(),
+      Floor.find(filter).sort({ level: 1, _id: 1 }).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
       Floor.countDocuments(filter),
     ]);
 
     const totalPages = Math.ceil(total / limitNum);
     res.json({
       data,
-      pagination: {
-        total,
-        page: pageNum,
-        limit: limitNum,
-        totalPages,
-        hasNext: pageNum < totalPages,
-        hasPrev: pageNum > 1,
-      },
+      pagination: { total, page: pageNum, limit: limitNum, totalPages, hasNext: pageNum < totalPages, hasPrev: pageNum > 1 },
       includeDeleted: allowIncludeDeleted,
     });
   } catch (e) {
@@ -102,53 +62,32 @@ const getById = async (req, res) => {
     const { id } = req.params;
     const { includeDeleted = "false" } = req.query;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "floorId không hợp lệ" });
-    }
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "floorId không hợp lệ" });
 
-    // Chỉ admin mới được dùng includeDeleted
-    const allowIncludeDeleted =
-      includeDeleted === "true" && req.user?.role === "admin";
+    const allowIncludeDeleted = includeDeleted === "true" && req.user?.role === "admin";
 
     const f = await Floor.findById(id).lean();
-    if (!f) {
-      return res.status(404).json({ message: "Không tìm thấy tầng" });
-    }
-    if (f.isDeleted && !allowIncludeDeleted) {
-      return res.status(410).json({ message: "Tầng đã bị xóa" });
-    }
+    if (!f) return res.status(404).json({ message: "Không tìm thấy tầng" });
+    if (f.isDeleted && !allowIncludeDeleted) return res.status(410).json({ message: "Tầng đã bị xóa" });
 
-    // Kiểm tra tòa cha
-    const b = await Building.findById(f.buildingId)
-      .select("_id landlordId isDeleted status")
-      .lean();
+    const b = await Building.findById(f.buildingId).select("_id landlordId isDeleted status").lean();
+    if (!b) return res.status(404).json({ message: "Tòa nhà không tồn tại" });
+    if (b.isDeleted && !allowIncludeDeleted) return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
 
-    if (!b) {
-      return res.status(404).json({ message: "Tòa nhà không tồn tại" });
-    }
-    if (b.isDeleted && !allowIncludeDeleted) {
-      return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
-    }
-
-    // Quyền landlord
-    if (
-      req.user?.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
-    ) {
-      return res.status(403).json({ message: "Không có quyền" });
-    }
-
-    // Quyền resident
-    if (req.user?.role === "resident") {
-      const allowed =
-        Array.isArray(req.user.memberOfBuildingIds) &&
-        req.user.memberOfBuildingIds.map(String).includes(String(b._id));
-      if (!allowed) {
-        return res.status(403).json({ message: "Không có quyền" });
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(b._id))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
+    else if (req.user.role === "resident") {
+      const allowed = Array.isArray(req.user.memberOfBuildingIds) && req.user.memberOfBuildingIds.map(String).includes(String(b._id));
+      if (!allowed) return res.status(403).json({ message: "Không có quyền" });
+    }
 
-    return res.json(f);
+    res.json(f);
   } catch (e) {
     res.status(500).json({ message: e.message || "Lỗi máy chủ" });
   }
@@ -170,20 +109,19 @@ const create = async (req, res) => {
     );
     if (!b || b.isDeleted)
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
-    if (
-      req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Không có quyền với tòa nhà này" });
-    }
     if (b.status === "inactive") {
       return res
         .status(403)
         .json({ message: "Tòa nhà đang tạm dừng hoạt động" });
     }
-
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    }
     const doc = await Floor.create({
       buildingId,
       level: Number(level),
@@ -213,18 +151,20 @@ const update = async (req, res) => {
     );
     if (!b || b.isDeleted)
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
-    if (
-      req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
-    ) {
-      return res.status(403).json({ message: "Không có quyền" });
-    }
+
     if (b.status === "inactive") {
       return res
         .status(403)
         .json({ message: "Tòa nhà đang tạm dừng hoạt động" });
     }
-
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(f.buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    }
     const payload = {};
     if (req.body.description !== undefined)
       payload.description = req.body.description;
@@ -273,11 +213,13 @@ const softDelete = async (req, res) => {
     );
     if (!b || b.isDeleted)
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
-    if (
-      req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
-    ) {
-      return res.status(403).json({ message: "Không có quyền" });
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
     }
 
     if (force === "true" && req.user.role === "admin") {
@@ -332,11 +274,13 @@ const restore = async (req, res) => {
     );
     if (!b || b.isDeleted)
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
-    if (
-      req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
-    ) {
-      return res.status(403).json({ message: "Không có quyền" });
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
     }
 
     const session = await mongoose.startSession();
@@ -382,11 +326,13 @@ const updateStatus = async (req, res) => {
     );
     if (!b || b.isDeleted)
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
-    if (
-      req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
-    ) {
-      return res.status(403).json({ message: "Không có quyền" });
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
+    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
     }
 
     await Floor.updateOne({ _id: id }, { $set: { status } });
@@ -406,7 +352,11 @@ const remove = async (req, res) => {
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
-
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
     const roomCount = await Room.countDocuments({ floorId: doc._id });
     if (roomCount > 0)
       return res
@@ -449,7 +399,11 @@ const quickCreate = async (req, res) => {
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
-
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
     // Tập levels cần tạo
     let levels = [];
     if (fromLevel != null && toLevel != null) {

@@ -2,7 +2,8 @@ const router = require("express").Router();
 const scheduleController = require("../../controllers/Landlord/ScheduleController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
-
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 /**
  * @swagger
  * tags:
@@ -140,8 +141,20 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         description: Không tìm thấy lịch
  */
 
-router.post("/", checkAuthorize(["landlord"]), checkSubscription, scheduleController.upsertSchedule);
-router.get("/:buildingId", checkAuthorize(["landlord"]), checkSubscription, scheduleController.getSchedule);
-router.delete("/:buildingId", checkAuthorize(["landlord"]), checkSubscription, scheduleController.deleteSchedule);
+router.post("/",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.SCHEDULE_CREATE, { checkBuilding: true }),
+    checkSubscription,
+    scheduleController.upsertSchedule);
+router.get("/:buildingId",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.SCHEDULE_VIEW, { checkBuilding: true }),
+    checkSubscription,
+    scheduleController.getSchedule);
+router.delete("/:buildingId",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.SCHEDULE_DELETE, { checkBuilding: true }),
+    checkSubscription,
+    scheduleController.deleteSchedule);
 
 module.exports = router;

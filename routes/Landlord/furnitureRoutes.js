@@ -4,7 +4,18 @@ const BuildingFurnitureCtrl = require("../../controllers/Landlord/BuildingFurnit
 const RoomFurnitureCtrl = require("../../controllers/Landlord/RoomFurnitureController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
-
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
+// === MIDDLEWARE: Chỉ validate buildingId nếu có ===
+const checkBuildingIfProvided = (field) => (req, res, next) => {
+  const buildingId = req.body[field] || req.query[field] || req.params[field];
+  console.log(buildingId);
+  if (!buildingId) return next();
+  return checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_VIEW, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  })(req, res, next);
+};
 /**
  * @swagger
  * tags:
@@ -189,7 +200,8 @@ const checkSubscription = require("../../middleware/checkSubscription");
  */
 router.post(
   "/",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FURNITURE_CREATE),
   checkSubscription,
   FurnitureCtrl.create
 );
@@ -221,7 +233,8 @@ router.post(
  */
 router.get(
   "/",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FURNITURE_VIEW),
   checkSubscription,
   FurnitureCtrl.getAll
 );
@@ -284,7 +297,8 @@ router.get(
  */
 router.post(
   "/building",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
   checkSubscription,
   BuildingFurnitureCtrl.create
 );
@@ -385,7 +399,8 @@ router.post(
  */
 router.post(
   "/building/bulk",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
   checkSubscription,
   BuildingFurnitureCtrl.bulkCreate
 );
@@ -423,14 +438,17 @@ router.post(
  */
 router.get(
   "/building",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_VIEW),
+  checkBuildingIfProvided,
   checkSubscription,
   BuildingFurnitureCtrl.getAll
 );
 
 router.get(
   "/building/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_VIEW),
   checkSubscription,
   BuildingFurnitureCtrl.getOne
 );
@@ -485,7 +503,8 @@ router.get(
  */
 router.put(
   "/building/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_EDIT),
   checkSubscription,
   BuildingFurnitureCtrl.update
 );
@@ -526,7 +545,8 @@ router.put(
  */
 router.delete(
   "/building/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_DELETE),
   checkSubscription,
   BuildingFurnitureCtrl.remove
 );
@@ -612,7 +632,8 @@ router.delete(
  */
 router.post(
   "/:buildingId/apply-to-rooms",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
   checkSubscription,
   BuildingFurnitureCtrl.applyToRooms
 );
@@ -671,7 +692,8 @@ router.post(
  */
 router.post(
   "/room",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_CREATE, { checkRoom: true, buildingField: "roomId" }),
   checkSubscription,
   RoomFurnitureCtrl.create
 );
@@ -709,7 +731,8 @@ router.post(
  */
 router.get(
   "/room",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "resident", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_VIEW),
   checkSubscription,
   RoomFurnitureCtrl.getAll
 );
@@ -748,7 +771,8 @@ router.get(
  */
 router.get(
   "/room/:id",
-  checkAuthorize(["admin", "landlord", "resident"]),
+  checkAuthorize(["admin", "landlord", "resident", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_VIEW),
   checkSubscription,
   RoomFurnitureCtrl.getOne
 );
@@ -801,7 +825,8 @@ router.get(
  */
 router.put(
   "/room/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_EDIT),
   checkSubscription,
   RoomFurnitureCtrl.update
 );
@@ -842,7 +867,8 @@ router.put(
  */
 router.delete(
   "/room/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_DELETE),
   checkSubscription,
   RoomFurnitureCtrl.remove
 );
@@ -883,7 +909,8 @@ router.delete(
  */
 router.get(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FURNITURE_VIEW),
   checkSubscription,
   FurnitureCtrl.getOne
 );
@@ -942,7 +969,8 @@ router.get(
  */
 router.put(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FURNITURE_EDIT),
   checkSubscription,
   FurnitureCtrl.update
 );
@@ -983,7 +1011,8 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FURNITURE_DELETE),
   checkSubscription,
   FurnitureCtrl.remove
 );

@@ -14,69 +14,81 @@ const list = async (req, res) => {
       includeDeleted = "false",
       status,
     } = req.query;
-    const filter = {};
-    if (status) filter.status = String(status);
-    if (includeDeleted !== "true") filter.isDeleted = false;
+
+    const filter = { isDeleted: includeDeleted !== "true" ? false : undefined };
+    if (status) filter.status = status;
     if (q) filter.name = { $regex: q, $options: "i" };
-    if (req.user.role === "landlord") filter.landlordId = req.user._id;
 
-    const data = await Building.find(filter)
-      .sort({ createdAt: -1 })
-      .skip((+page - 1) * +limit)
-      .limit(+limit)
-      .populate({
-        path: "landlordId",
-        select: "email role userInfo fullName",
-        populate: { path: "userInfo", select: "fullName phone" },
-      })
-      .lean(); // để trả về object thuần, dễ map
+    if (req.user.role === "landlord") {
+      filter.landlordId = req.user._id;
+    } else if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds?.length) {
+        return res.json({ data: [], total: 0, page: +page, limit: +limit });
+      }
+      filter._id = { $in: req.staff.assignedBuildingIds };
+    }
 
-    // Tuỳ ý: flatten thông tin landlord cho FE dễ dùng
+    const [data, total] = await Promise.all([
+      Building.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((+page - 1) * +limit)
+        .limit(+limit)
+        .populate({
+          path: "landlordId",
+          select: "email role userInfo fullName",
+          populate: { path: "userInfo", select: "fullName phone" },
+        })
+        .lean(),
+      Building.countDocuments(filter),
+    ]);
+
     const items = data.map((b) => ({
       ...b,
       landlord: {
         id: b.landlordId?._id,
         email: b.landlordId?.email,
-        role: b.landlordId?.role,
         fullName: b.landlordId?.userInfo?.fullName,
         phone: b.landlordId?.userInfo?.phone,
       },
     }));
 
-    const total = await Building.countDocuments(filter);
     res.json({ data: items, total, page: +page, limit: +limit });
   } catch (e) {
-    res.status(500).json({ message: e.message.message });
+    res.status(500).json({ message: e.message });
   }
 };
 
 const getById = async (req, res) => {
   try {
-    const doc = await Building.findById(req.params.id)
+    const building = await Building.findById(req.params.id)
       .populate({
         path: "landlordId",
         select: "email role userInfo fullName",
         populate: { path: "userInfo", select: "fullName phone" },
       })
       .lean();
-    if (!doc || doc.isDeleted)
-      return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
 
-    if (
-      req.user.role === "landlord" &&
-      String(doc.landlordId?._id) !== String(req.user._id)
-    ) {
-      return res.status(403).json({ message: "Không có quyền" });
+    if (!building || building.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+    }
+
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(building._id))) {
+        return res.status(403).json({ message: "Không có quyền" });
+      }
+    } else if (req.user.role === "landlord") {
+      if (String(building.landlordId?._id) !== String(req.user._id)) {
+        return res.status(403).json({ message: "Không có quyền" });
+      }
     }
 
     const result = {
-      ...doc,
+      ...building,
       landlord: {
-        id: doc.landlordId?._id,
-        email: doc.landlordId?.email,
-        role: doc.landlordId?.role,
-        fullName: doc.landlordId?.userInfo?.fullName,
-        phone: doc.landlordId?.userInfo?.phone,
+        id: building.landlordId?._id,
+        email: building.landlordId?.email,
+        fullName: building.landlordId?.userInfo?.fullName,
+        phone: building.landlordId?.userInfo?.phone,
       },
     };
 
@@ -702,9 +714,8 @@ const downloadImportTemplate = async (req, res) => {
     // ===== Data Validation (Dropdown tiếng Việt) =====
     // Công thức tham chiếu danh sách tiếng Việt ở sheet References
     const lists = {
-      buildingStatusVI: `References!$B$2:$B$${
-        enumBlocks.buildingStatus.length + 1
-      }`,
+      buildingStatusVI: `References!$B$2:$B$${enumBlocks.buildingStatus.length + 1
+        }`,
       floorStatusVI: `References!$D$2:$D$${enumBlocks.floorStatus.length + 1}`,
       roomStatusVI: `References!$F$2:$F$${enumBlocks.roomStatus.length + 1}`,
       indexTypeVI: `References!$H$2:$H$${enumBlocks.indexType.length + 1}`,
@@ -892,130 +903,130 @@ const importFromExcel = async (req, res) => {
     // Buildings
     const buildingsPayload = willDoB
       ? shBuildings.map((r, i) => {
-          const name = r.name;
-          const address = r.address;
+        const name = r.name;
+        const address = r.address;
 
-          // status: default 'active'
-          const mStatus = mapEnumOrError(r.status, "buildingStatus", "active", [
-            "Hoạt động/active",
-            "Ngưng hoạt động/inactive",
-          ]);
+        // status: default 'active'
+        const mStatus = mapEnumOrError(r.status, "buildingStatus", "active", [
+          "Hoạt động/active",
+          "Ngưng hoạt động/inactive",
+        ]);
 
-          // eIndexType, wIndexType: default 'byNumber'
-          const mEIdx = mapEnumOrError(r.eIndexType, "indexType", "byNumber", [
-            "Theo chỉ số/byNumber",
-            "Theo đầu người/byPerson",
-            "Đã bao gồm/included",
-          ]);
-          const mWIdx = mapEnumOrError(r.wIndexType, "indexType", "byNumber", [
-            "Theo chỉ số/byNumber",
-            "Theo đầu người/byPerson",
-            "Đã bao gồm/included",
-          ]);
+        // eIndexType, wIndexType: default 'byNumber'
+        const mEIdx = mapEnumOrError(r.eIndexType, "indexType", "byNumber", [
+          "Theo chỉ số/byNumber",
+          "Theo đầu người/byPerson",
+          "Đã bao gồm/included",
+        ]);
+        const mWIdx = mapEnumOrError(r.wIndexType, "indexType", "byNumber", [
+          "Theo chỉ số/byNumber",
+          "Theo đầu người/byPerson",
+          "Đã bao gồm/included",
+        ]);
 
-          const ePrice = toNum(r.ePrice, 0);
-          const wPrice = toNum(r.wPrice, 0);
+        const ePrice = toNum(r.ePrice, 0);
+        const wPrice = toNum(r.wPrice, 0);
 
-          const rowErr = [];
-          if (!name || !norm(name)) rowErr.push("name bắt buộc");
-          if (!address) rowErr.push("address bắt buộc");
-          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
-          if (!mEIdx.ok) rowErr.push(`eIndexType: ${mEIdx.error}`);
-          if (!mWIdx.ok) rowErr.push(`wIndexType: ${mWIdx.error}`);
-          if (ePrice < 0) rowErr.push("ePrice >= 0");
-          if (wPrice < 0) rowErr.push("wPrice >= 0");
+        const rowErr = [];
+        if (!name || !norm(name)) rowErr.push("name bắt buộc");
+        if (!address) rowErr.push("address bắt buộc");
+        if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+        if (!mEIdx.ok) rowErr.push(`eIndexType: ${mEIdx.error}`);
+        if (!mWIdx.ok) rowErr.push(`wIndexType: ${mWIdx.error}`);
+        if (ePrice < 0) rowErr.push("ePrice >= 0");
+        if (wPrice < 0) rowErr.push("wPrice >= 0");
 
-          if (rowErr.length)
-            errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
+        if (rowErr.length)
+          errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
 
-          return {
-            name,
-            address,
-            status: mStatus.ok ? mStatus.value : "active",
-            eIndexType: mEIdx.ok ? mEIdx.value : "byNumber",
-            ePrice,
-            wIndexType: mWIdx.ok ? mWIdx.value : "byNumber",
-            wPrice,
-          };
-        })
+        return {
+          name,
+          address,
+          status: mStatus.ok ? mStatus.value : "active",
+          eIndexType: mEIdx.ok ? mEIdx.value : "byNumber",
+          ePrice,
+          wIndexType: mWIdx.ok ? mWIdx.value : "byNumber",
+          wPrice,
+        };
+      })
       : [];
 
     // Floors
     const floorsPayload = willDoF
       ? shFloors.map((r, i) => {
-          const buildingName = r.buildingName;
-          const level = toNum(r.level, NaN);
-          const description = r.description || "";
+        const buildingName = r.buildingName;
+        const level = toNum(r.level, NaN);
+        const description = r.description || "";
 
-          const mStatus = mapEnumOrError(r.status, "floorStatus", "active", [
-            "Hoạt động/active",
-            "Ngưng hoạt động/inactive",
-          ]);
+        const mStatus = mapEnumOrError(r.status, "floorStatus", "active", [
+          "Hoạt động/active",
+          "Ngưng hoạt động/inactive",
+        ]);
 
-          const rowErr = [];
-          if (!buildingName) rowErr.push("buildingName bắt buộc");
-          if (!isNum(level)) rowErr.push("level bắt buộc và là số");
-          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+        const rowErr = [];
+        if (!buildingName) rowErr.push("buildingName bắt buộc");
+        if (!isNum(level)) rowErr.push("level bắt buộc và là số");
+        if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
 
-          if (rowErr.length)
-            errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
+        if (rowErr.length)
+          errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
 
-          return {
-            buildingName,
-            level: Number(level),
-            description,
-            status: mStatus.ok ? mStatus.value : "active",
-          };
-        })
+        return {
+          buildingName,
+          level: Number(level),
+          description,
+          status: mStatus.ok ? mStatus.value : "active",
+        };
+      })
       : [];
 
     // Rooms
     const roomsPayload = willDoR
       ? shRooms.map((r, i) => {
-          const buildingName = r.buildingName;
-          const floorLevel = toNum(r.floorLevel, NaN);
-          const roomNumber = String(r.roomNumber || "").trim();
-          const area = toNum(r.area, 0);
-          const price = toNum(r.price, 0);
-          const maxTenants = toNum(r.maxTenants, 1);
-          const eStart = toNum(r.eStart, 0);
-          const wStart = toNum(r.wStart, 0);
-          const description = r.description || "";
+        const buildingName = r.buildingName;
+        const floorLevel = toNum(r.floorLevel, NaN);
+        const roomNumber = String(r.roomNumber || "").trim();
+        const area = toNum(r.area, 0);
+        const price = toNum(r.price, 0);
+        const maxTenants = toNum(r.maxTenants, 1);
+        const eStart = toNum(r.eStart, 0);
+        const wStart = toNum(r.wStart, 0);
+        const description = r.description || "";
 
-          const mStatus = mapEnumOrError(r.status, "roomStatus", "available", [
-            "Sẵn sàng/available",
-            "Đang thuê/occupied",
-            "Bảo trì/maintenance",
-            "Ngưng hoạt động/inactive",
-          ]);
+        const mStatus = mapEnumOrError(r.status, "roomStatus", "available", [
+          "Sẵn sàng/available",
+          "Đang thuê/occupied",
+          "Bảo trì/maintenance",
+          "Ngưng hoạt động/inactive",
+        ]);
 
-          const rowErr = [];
-          if (!buildingName) rowErr.push("buildingName bắt buộc");
-          if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
-          if (!roomNumber) rowErr.push("roomNumber bắt buộc");
-          if (area <= 0) rowErr.push("area > 0");
-          if (price < 0) rowErr.push("price >= 0");
-          if (maxTenants < 1) rowErr.push("maxTenants >= 1");
-          if (eStart < 0) rowErr.push("eStart >= 0");
-          if (wStart < 0) rowErr.push("wStart >= 0");
-          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+        const rowErr = [];
+        if (!buildingName) rowErr.push("buildingName bắt buộc");
+        if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
+        if (!roomNumber) rowErr.push("roomNumber bắt buộc");
+        if (area <= 0) rowErr.push("area > 0");
+        if (price < 0) rowErr.push("price >= 0");
+        if (maxTenants < 1) rowErr.push("maxTenants >= 1");
+        if (eStart < 0) rowErr.push("eStart >= 0");
+        if (wStart < 0) rowErr.push("wStart >= 0");
+        if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
 
-          if (rowErr.length)
-            errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
+        if (rowErr.length)
+          errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
 
-          return {
-            buildingName,
-            floorLevel: Number(floorLevel),
-            roomNumber,
-            area,
-            price,
-            maxTenants,
-            status: mStatus.ok ? mStatus.value : "available",
-            eStart,
-            wStart,
-            description,
-          };
-        })
+        return {
+          buildingName,
+          floorLevel: Number(floorLevel),
+          roomNumber,
+          area,
+          price,
+          maxTenants,
+          status: mStatus.ok ? mStatus.value : "available",
+          eStart,
+          wStart,
+          description,
+        };
+      })
       : [];
 
     if (errors.length)

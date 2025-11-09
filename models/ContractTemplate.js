@@ -35,11 +35,6 @@ const contractTemplateSchema = new mongoose.Schema(
     },
 
     /**
-     * PDF nền cố định (ENV). Cho phép override per-template nếu bạn muốn
-     */
-    basePdfUrl: { type: String, required: true },
-
-    /**
      * Mapping field cố định tương ứng với PDF nền.
      */
     fields: {

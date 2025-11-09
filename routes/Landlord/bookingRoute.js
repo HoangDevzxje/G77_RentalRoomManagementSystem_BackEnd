@@ -2,7 +2,8 @@ const router = require("express").Router();
 const bookingController = require("../../controllers/Landlord/BookingManageController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
-
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 /**
  * @swagger
  * tags:
@@ -157,10 +158,30 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       404:
  *         description: Không tìm thấy lịch đặt
  */
+const checkBuildingIfProvided = (req, res, next) => {
+    const buildingId = req.query.buildingId;
+    if (!buildingId) return next(); // Không có → bỏ qua, để controller xử lý
 
-// 🧭 Routes
-router.get("/", checkAuthorize(["landlord"]), checkSubscription, bookingController.getAllBookings);
-router.get("/:id", checkAuthorize(["landlord"]), checkSubscription, bookingController.getBookingDetail);
-router.patch("/:id/status", checkAuthorize(["landlord"]), checkSubscription, bookingController.updateBookingStatus);
+    return checkStaffPermission(PERMISSIONS.BOOKING_VIEW, {
+        checkBuilding: true,
+        buildingField: "buildingId",
+    })(req, res, next);
+};
+
+router.get("/", checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.BOOKING_VIEW),
+    checkBuildingIfProvided,
+    checkSubscription,
+    bookingController.getAllBookings);
+router.get("/:id",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.BOOKING_VIEW),
+    checkSubscription,
+    bookingController.getBookingDetail);
+router.patch("/:id/status",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.BOOKING_EDIT),
+    checkSubscription,
+    bookingController.updateBookingStatus);
 
 module.exports = router;

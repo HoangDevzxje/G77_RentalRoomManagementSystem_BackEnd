@@ -2,6 +2,8 @@ const router = require("express").Router();
 const contactController = require("../../controllers/Landlord/ContactManageController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 
 /**
  * @swagger
@@ -181,7 +183,28 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         description: Lỗi hệ thống khi cập nhật trạng thái
  */
 
-router.get("/", checkAuthorize(["landlord"]), checkSubscription, contactController.getAllContacts);
-router.patch("/:id/status", checkAuthorize(["landlord"]), checkSubscription, contactController.updateContractStatus);
+
+// === MIDDLEWARE: Kiểm tra nếu có buildingId thì validate ===
+const checkBuildingIfProvided = (req, res, next) => {
+    const buildingId = req.query.buildingId;
+    if (!buildingId) return next(); // Không có → bỏ qua, để controller xử lý
+
+    return checkStaffPermission(PERMISSIONS.CONTACT_VIEW, {
+        checkBuilding: true,
+        buildingField: "buildingId",
+    })(req, res, next);
+};
+
+router.get("/",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.CONTACT_VIEW),
+    checkBuildingIfProvided,
+    checkSubscription,
+    contactController.getAllContacts);
+router.patch("/:id/status",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.CONTACT_EDIT),
+    checkSubscription,
+    contactController.updateContractStatus);
 
 module.exports = router;

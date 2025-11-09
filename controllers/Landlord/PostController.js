@@ -8,41 +8,34 @@ const mongoose = require("mongoose");
 const getBuildingInfo = async (req, res) => {
     try {
         const { buildingId } = req.params;
-        const landlordId = req.user._id;
-        const building = await Building.findOne({
-            _id: buildingId,
-            landlordId,
-            isDeleted: false,
-        })
-            .select('name address eIndexType ePrice wIndexType wPrice description status')
+
+        const b = await Building.findById(buildingId)
+            .select('name address eIndexType ePrice wIndexType wPrice description status landlordId')
             .lean();
 
-        if (!building) return res.status(404).json({ message: 'Không tìm thấy tòa nhà!' });
+        if (!b) return res.status(404).json({ message: 'Không tìm thấy tòa nhà!' });
 
-        const rooms = await Room.find({
-            buildingId,
-            status: 'available',
-            isDeleted: false,
-        }).select('id roomNumber floorId price area').lean();
+        if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        }
+        else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+            return res.status(403).json({ message: "Không có quyền" });
+        }
 
-        const services = await BuildingService.find({
-            buildingId,
-            landlordId,
-            isDeleted: false,
-        })
-            .select('name label description chargeType fee currency')
-            .lean();
-
-        const regulations = await Regulation.find({
-            buildingId,
-            status: 'active',
-        })
-            .select('title description type effectiveFrom')
-            .lean();
+        const [rooms, services, regulations] = await Promise.all([
+            Room.find({ buildingId, status: 'available', isDeleted: false })
+                .select('id roomNumber floorId price area').lean(),
+            BuildingService.find({ buildingId, isDeleted: false })
+                .select('name label description chargeType fee currency').lean(),
+            Regulation.find({ buildingId, status: 'active' })
+                .select('title description type effectiveFrom').lean(),
+        ]);
 
         res.json({
             success: true,
-            data: { building, rooms, services, regulations },
+            data: { building: b, rooms, services, regulations },
         });
     } catch (err) {
         console.error('Lỗi getBuildingInfo:', err);
@@ -52,21 +45,39 @@ const getBuildingInfo = async (req, res) => {
 
 const createPost = async (req, res) => {
     try {
-        const { title, description, address, buildingId, roomIds } = req.body;
+        const buildingId = req.query.buildingId || req.body.buildingId;
+
+        const { title, description, address, roomIds } = req.body;
         let { isDraft } = req.body;
 
-        if (!title || !description || !address || !buildingId || !roomIds) {
-            return res.status(400).json({ message: "Thiếu thông tin bài đăng!" });
+        if (!title || !description || !address || !buildingId) {
+            return res.status(400).json({
+                message: "Thiếu thông tin bài đăng!",
+                tip: "Hãy truyền buildingId qua ?buildingId=... trong URL hoặc form-data",
+                received: { title, description, address, buildingId }
+            });
         }
-
+        if (!roomIds) return res.status(400).json({ message: "Phải chọn ít nhất một phòng!" });
         if (!mongoose.Types.ObjectId.isValid(buildingId)) {
             return res.status(400).json({ message: "buildingId không hợp lệ!" });
         }
 
-        let roomArray = Array.isArray(roomIds) ? roomIds : [roomIds];
+        const b = await Building.findById(buildingId).lean();
+        if (!b) return res.status(404).json({ message: "Tòa nhà không tồn tại!" });
+        const realLandlordId = b.landlordId;
+        if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        }
+        else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+            return res.status(403).json({ message: "Không có quyền" });
+        }
 
+        // XỬ LÝ roomIds
+        let roomArray = Array.isArray(roomIds) ? roomIds : [roomIds];
         const validRoomIds = roomArray
-            .flatMap(id => id.split(',')) // tách "id1,id2,id3" → ["id1", "id2", "id3"]
+            .flatMap(id => id.split(','))
             .map(id => id.trim())
             .filter(id => mongoose.Types.ObjectId.isValid(id));
 
@@ -75,8 +86,9 @@ const createPost = async (req, res) => {
         }
 
         const roomObjectIds = validRoomIds.map(id => new mongoose.Types.ObjectId(id));
-        isDraft = isDraft === "true" || isDraft === true;
+        isDraft = isDraft === "true" || isDraft === true || isDraft === "1";
 
+        // TÌM PHÒNG
         const rooms = await Room.find({
             _id: { $in: roomObjectIds },
             buildingId,
@@ -85,7 +97,7 @@ const createPost = async (req, res) => {
         }).select("price area");
 
         if (!rooms.length) {
-            return res.status(400).json({ message: "Không tìm thấy phòng hợp lệ!" });
+            return res.status(400).json({ message: "Không tìm thấy phòng hợp lệ hoặc phòng không available!" });
         }
 
         const prices = rooms.map(r => r.price);
@@ -99,7 +111,7 @@ const createPost = async (req, res) => {
         const imageUrls = req.files?.map(file => file.path) || [];
 
         const post = new Post({
-            landlordId: req.user._id,
+            landlordId: realLandlordId,
             buildingId,
             roomIds: roomObjectIds,
             title,
@@ -112,6 +124,7 @@ const createPost = async (req, res) => {
             images: imageUrls,
             isDraft,
             status: isDraft ? "hidden" : "active",
+            createdBy: req.user._id,
         });
 
         await post.save();
@@ -123,49 +136,84 @@ const createPost = async (req, res) => {
         });
     } catch (err) {
         console.error("Lỗi createPost:", err);
-        res.status(500).json({ message: "Lỗi khi tạo bài đăng", error: err.message });
+        res.status(500).json({
+            message: "Lỗi khi tạo bài đăng",
+            error: err.message
+        });
     }
 };
-
 const updatePost = async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, address, buildingId, roomIds } = req.body;
         let { isDraft } = req.body;
 
-        const post = await Post.findOne({
-            _id: id,
-            landlordId: req.user._id,
-            isDeleted: false,
-        });
+        const post = await Post.findById(id);
+        if (!post || post.isDeleted) {
+            return res.status(404).json({ message: 'Không tìm thấy bài đăng!' });
+        }
 
-        if (!post) return res.status(404).json({ message: 'Không tìm thấy bài đăng!' });
+        if (req.user.role === "staff") {
+            if (String(post.createdBy) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Bạn chỉ được sửa bài đăng do mình tạo!" });
+            }
+            if (!req.staff?.assignedBuildingIds.includes(String(post.buildingId))) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        } else if (req.user.role === "landlord") {
+            if (String(post.landlordId) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Không có quyền" });
+            }
+        }
 
         if (title) post.title = title;
         if (description) post.description = description;
         if (address) post.address = address;
-        if (buildingId) post.buildingId = buildingId;
-        if (roomIds) post.roomIds = Array.isArray(roomIds) ? roomIds : [roomIds];
 
-        if (roomIds && roomIds.length > 0) {
+        if (buildingId && req.user.role === "landlord") {
+            const newBuilding = await Building.findById(buildingId);
+            if (!newBuilding || String(newBuilding.landlordId) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Không thể chuyển sang tòa nhà không thuộc quyền sở hữu!" });
+            }
+            post.buildingId = buildingId;
+        }
+
+        if (roomIds) {
+            const roomArray = Array.isArray(roomIds) ? roomIds : [roomIds];
+            const validRoomIds = roomArray
+                .flatMap(id => id.split(','))
+                .map(id => id.trim())
+                .filter(id => mongoose.Types.ObjectId.isValid(id));
+
+            if (!validRoomIds.length) {
+                return res.status(400).json({ message: "Danh sách roomIds không hợp lệ!" });
+            }
+
+            const roomObjectIds = validRoomIds.map(id => new mongoose.Types.ObjectId(id));
+            post.roomIds = roomObjectIds;
+
             const rooms = await Room.find({
-                _id: { $in: post.roomIds },
+                _id: { $in: roomObjectIds },
                 buildingId: post.buildingId,
+                status: "available",
                 isDeleted: false,
             }).select('price area');
 
+            if (rooms.length === 0) {
+                return res.status(400).json({ message: "Không tìm thấy phòng hợp lệ!" });
+            }
+
             const prices = rooms.map(r => r.price);
             const areas = rooms.map(r => r.area);
-
             post.priceMin = Math.min(...prices);
             post.priceMax = Math.max(...prices);
             post.areaMin = Math.min(...areas);
             post.areaMax = Math.max(...areas);
         }
 
-        const imageUrls = req.files?.map(file => file.path) || [];
-        if (imageUrls.length > 0) {
-            post.images = [...post.images, ...imageUrls];
+        const newImageUrls = req.files?.map(file => file.path) || [];
+        if (newImageUrls.length > 0) {
+            post.images = [...post.images, ...newImageUrls];
         }
 
         if (isDraft !== undefined) {
@@ -178,7 +226,7 @@ const updatePost = async (req, res) => {
         res.json({ success: true, message: 'Cập nhật bài đăng thành công!', data: post });
     } catch (err) {
         console.error('Lỗi updatePost:', err);
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
 };
 
@@ -285,24 +333,50 @@ Yêu cầu:
 
 const listByLandlord = async (req, res) => {
     try {
-        const landlordId = req.user._id;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
+        const filter = { isDeleted: false };
 
-        const { isDraft } = req.query;
+        if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds?.length) {
+                return res.json({
+                    success: true,
+                    data: [],
+                    pagination: { total: 0, page: 1, limit: 10, totalPages: 0 }
+                });
+            }
 
-        const filter = { landlordId, isDeleted: false };
+            filter.buildingId = { $in: req.staff.assignedBuildingIds };
+            filter.createdBy = req.user._id;
+
+        } else if (req.user.role === "landlord") {
+            filter.landlordId = req.user._id;
+        } else {
+            return res.status(403).json({ message: "Không có quyền truy cập" });
+        }
+
+        const { isDraft, page = 1, limit = 10 } = req.query;
         if (isDraft !== undefined) {
             filter.isDraft = isDraft === "true";
         }
 
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
         const [posts, total] = await Promise.all([
             Post.find(filter)
                 .populate('buildingId', 'name address')
+                .populate({
+                    path: "createdBy",
+                    select: "email userInfo",
+                    populate: {
+                        path: "userInfo",
+                        model: "UserInformation",
+                        select: "fullName phoneNumber",
+                    },
+                })
                 .sort({ createdAt: -1 })
                 .skip(skip)
-                .limit(limit),
+                .limit(parseInt(limit))
+                .lean(),
+
             Post.countDocuments(filter),
         ]);
 
@@ -311,8 +385,8 @@ const listByLandlord = async (req, res) => {
             data: posts,
             pagination: {
                 total,
-                page,
-                limit,
+                page: +page,
+                limit: +limit,
                 totalPages: Math.ceil(total / limit),
             },
         });
@@ -324,50 +398,49 @@ const listByLandlord = async (req, res) => {
 const getPostDetail = async (req, res) => {
     try {
         const { id } = req.params;
-        const landlordId = req.user._id;
-        console.log(id);
-        const post = await Post.findById({
-            _id: id,
-            landlordId,
-            isDeleted: false,
-        })
-            .populate('buildingId', 'name address eIndexType ePrice wIndexType wPrice description status')
+
+        const post = await Post.findById(id)
+            .populate('buildingId', 'name address eIndexType ePrice wIndexType wPrice description status landlordId')
+            .populate({
+                path: "createdBy",
+                select: "email userInfo",
+                populate: {
+                    path: "userInfo",
+                    model: "UserInformation",
+                    select: "fullName phoneNumber",
+                },
+            })
             .lean();
 
-        if (!post) {
+        if (!post || post.isDeleted) {
             return res.status(404).json({ message: 'Không tìm thấy bài đăng!' });
         }
 
-        const rooms = await Room.find({
-            _id: { $in: post.roomIds },
-            isDeleted: false,
-        }).select('id roomNumber floorId price area images status').lean();
+        if (req.user.role === "staff") {
+            if (String(post.createdBy?._id || post.createdBy) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Bạn chỉ được xem bài đăng do mình tạo!" });
+            }
+            if (!req.staff?.assignedBuildingIds.includes(String(post.buildingId._id))) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        } else if (req.user.role === "landlord") {
+            if (String(post.landlordId) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Không có quyền" });
+            }
+        }
 
-        const [services, regulations] = await Promise.all([
-            BuildingService.find({
-                buildingId: post.buildingId._id,
-                landlordId,
-                isDeleted: false,
-            })
-                .select('name label description chargeType fee currency')
-                .lean(),
-            Regulation.find({
-                buildingId: post.buildingId._id,
-                status: 'active',
-            })
-                .select('title description type effectiveFrom')
-                .lean(),
+        const [rooms, services, regulations] = await Promise.all([
+            Room.find({ _id: { $in: post.roomIds }, isDeleted: false })
+                .select('id roomNumber floorId price area images status').lean(),
+            BuildingService.find({ buildingId: post.buildingId._id, isDeleted: false })
+                .select('name label description chargeType fee currency').lean(),
+            Regulation.find({ buildingId: post.buildingId._id, status: 'active' })
+                .select('title description type effectiveFrom').lean(),
         ]);
 
         res.json({
             success: true,
-            data: {
-                post,
-                building: post.buildingId,
-                rooms,
-                services,
-                regulations,
-            },
+            data: { post, building: post.buildingId, rooms, services, regulations },
         });
     } catch (err) {
         console.error('Lỗi getPostDetail:', err);
@@ -377,14 +450,33 @@ const getPostDetail = async (req, res) => {
 
 const softDelete = async (req, res) => {
     try {
-        const post = await Post.findOneAndUpdate(
-            { _id: req.params.id, landlordId: req.user._id },
-            { isDeleted: true, status: 'hidden' },
-            { new: true }
-        );
-        if (!post) return res.status(404).json({ message: 'Không tìm thấy bài đăng!' });
+        const { id } = req.params;
+
+        const post = await Post.findById(id);
+        if (!post || post.isDeleted) {
+            return res.status(404).json({ message: 'Không tìm thấy bài đăng!' });
+        }
+
+        if (req.user.role === "staff") {
+            if (String(post.createdBy) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Bạn chỉ được xóa bài đăng do mình tạo!" });
+            }
+            if (!req.staff?.assignedBuildingIds.includes(String(post.buildingId))) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        } else if (req.user.role === "landlord") {
+            if (String(post.landlordId) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Không có quyền" });
+            }
+        }
+
+        post.isDeleted = true;
+        post.status = 'hidden';
+        await post.save();
+
         res.json({ success: true, message: 'Đã xóa bài đăng (mềm)!' });
     } catch (err) {
+        console.error('Lỗi softDelete:', err);
         res.status(500).json({ message: err.message });
     }
 };

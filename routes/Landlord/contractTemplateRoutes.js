@@ -3,6 +3,8 @@ const router = express.Router();
 const ctrl = require("../../controllers/Landlord/ContractTemplateController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 
 /**
  * @swagger
@@ -59,7 +61,10 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       409:
  *         description: Template đã tồn tại cho tòa này
  */
-router.post("/", checkAuthorize(["landlord"]), ctrl.create);
+router.post("/",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, { checkBuilding: true }),
+  ctrl.create);
 
 /**
  * @swagger
@@ -73,7 +78,10 @@ router.post("/", checkAuthorize(["landlord"]), ctrl.create);
  *       200:
  *         description: Danh sách template của landlord
  */
-router.get("/", checkAuthorize(["landlord"]), ctrl.listMine);
+router.get("/",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW),
+  ctrl.listMine);
 
 /**
  * @swagger
@@ -98,7 +106,8 @@ router.get("/", checkAuthorize(["landlord"]), ctrl.listMine);
  */
 router.get(
   "/by-building/:buildingId",
-  checkAuthorize(["landlord"]),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW, { checkBuilding: true }),
   ctrl.getByBuilding
 );
 
@@ -153,7 +162,10 @@ router.get(
  *       404:
  *         description: Không tìm thấy template
  */
-router.put("/:id", checkAuthorize(["landlord"]), ctrl.update);
+router.put("/:id",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT),
+  ctrl.update);
 
 /**
  * @swagger
@@ -176,7 +188,10 @@ router.put("/:id", checkAuthorize(["landlord"]), ctrl.update);
  *       404:
  *         description: Không tìm thấy template
  */
-router.delete("/:id", checkAuthorize(["landlord"]), ctrl.remove);
+router.delete("/:id",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_DELETE, { checkBuilding: true }),
+  ctrl.remove);
 
 /**
  * @swagger
@@ -218,6 +233,9 @@ router.delete("/:id", checkAuthorize(["landlord"]), ctrl.remove);
 //   checkAuthorize(["landlord"]),
 //   ctrl.downloadTemplatePdf
 // );
-router.get("/preview-pdf", checkAuthorize(["landlord"]), ctrl.previewPdf);
+router.get("/preview-pdf",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW, { checkBuilding: true }),
+  ctrl.previewPdf);
 
 module.exports = router;

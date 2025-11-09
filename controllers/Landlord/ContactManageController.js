@@ -2,12 +2,30 @@ const Contact = require("../../models/Contact");
 
 const getAllContacts = async (req, res) => {
     try {
-        const landlordId = req.user._id;
         const { status, buildingId, page = 1, limit = 10 } = req.query;
+        const filter = { isDeleted: false };
 
-        const filter = { landlordId, isDeleted: false };
+        if (req.user.role === "landlord") {
+            filter.landlordId = req.user._id;
+        } else if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds?.length) {
+                return res.json({
+                    success: true,
+                    pagination: { total: 0, page: +page, limit: +limit, totalPages: 0 },
+                    data: []
+                });
+            }
+            // Staff chỉ thấy contact của tòa nhà được giao
+            filter.buildingId = { $in: req.staff.assignedBuildingIds };
+        }
+
         if (status) filter.status = status;
-        if (buildingId) filter.buildingId = buildingId;
+        if (buildingId) {
+            if (req.user.role === "staff" && !req.staff.assignedBuildingIds.includes(buildingId)) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+            filter.buildingId = buildingId;
+        }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -19,7 +37,8 @@ const getAllContacts = async (req, res) => {
                 .populate("postId", "title")
                 .sort({ createdAt: -1 })
                 .skip(skip)
-                .limit(parseInt(limit)),
+                .limit(parseInt(limit))
+                .lean(),
             Contact.countDocuments(filter),
         ]);
 
@@ -40,12 +59,25 @@ const getAllContacts = async (req, res) => {
 };
 const updateContractStatus = async (req, res) => {
     try {
-        const landlordId = req.user._id;
         const { id } = req.params;
         const { action, landlordNote } = req.body;
 
-        const request = await Contact.findOne({ _id: id, landlordId });
-        if (!request) return res.status(404).json({ message: "Không tìm thấy yêu cầu!" });
+        const request = await Contact.findOne({ _id: id, isDeleted: false })
+            .populate("buildingId", "_id");
+
+        if (!request) {
+            return res.status(404).json({ message: "Không tìm thấy yêu cầu!" });
+        }
+
+        if (req.user.role === "landlord") {
+            if (String(request.landlordId) !== String(req.user._id)) {
+                return res.status(403).json({ message: "Không có quyền" });
+            }
+        } else if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds.includes(String(request.buildingId._id))) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        }
 
         switch (action) {
             case "accepted":

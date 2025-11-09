@@ -5,15 +5,7 @@ const userInformationSchema = new mongoose.Schema({
     phoneNumber: { type: String },
     dob: { type: Date },
     gender: { type: String },
-
-    address: [
-        {
-            address: { type: String, required: true },
-            provinceName: { type: String, required: true },
-            districtName: { type: String, required: true },
-            wardName: { type: String, required: true },
-        }
-    ]
+    address: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.model('UserInformation', userInformationSchema);

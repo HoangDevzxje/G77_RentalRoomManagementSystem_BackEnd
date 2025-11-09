@@ -52,7 +52,13 @@ exports.listRequests = async (req, res) => {
       }
       filter.roomId = { $in: roomIds };
     }
-
+    // staff: chỉ xem phiếu thuộc tòa được giao ===
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds?.length) {
+        return res.json({ data: [], total: 0, page: 1, limit: toInt(limit, 10) });
+      }
+      filter.buildingId = { $in: req.staff.assignedBuildingIds };
+    }
     // landlord: nếu không truyền buildingId thì auto lọc tòa thuộc landlord
     if (
       req.user?.role === "landlord" &&
@@ -195,6 +201,11 @@ exports.getRequest = async (req, res) => {
       });
 
     if (!doc) return res.status(404).json({ message: "Không tìm thấy" });
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId._id))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
     return res.json({ data: doc });
   } catch (e) {
     console.error(e);
@@ -221,8 +232,14 @@ exports.updateRequest = async (req, res) => {
     const isAssignee =
       doc.assigneeAccountId &&
       String(doc.assigneeAccountId) === String(req.user._id);
-    if (!(isAdmin(req.user) || isLandlord(req.user) || isAssignee)) {
+    if (!(isAdmin(req.user) || isLandlord(req.user) || isAssignee || req.user.role === "staff")) {
       return res.status(403).json({ message: "Không có quyền" });
+    }
+
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
     }
 
     if (status) {
@@ -281,10 +298,17 @@ exports.comment = async (req, res) => {
     const can =
       isAdmin(req.user) ||
       isLandlord(req.user) ||
+      req.user.role === "staff" ||
       String(doc.reporterAccountId) === String(req.user._id) ||
       String(doc.assigneeAccountId) === String(req.user._id);
 
     if (!can) return res.status(403).json({ message: "Không có quyền" });
+
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
 
     doc.pushEvent(req.user._id, "comment", note || "");
     await doc.save();

@@ -2,7 +2,8 @@ const express = require("express");
 const router = express.Router();
 const svc = require("../../controllers/Landlord/BuildingServiceController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 /**
  * @swagger
  * components:
@@ -300,7 +301,11 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 // Lấy danh sách dịch vụ của 1 tòa
 router.get(
   "/:buildingId/services",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.SERVICE_VIEW, {
+    checkBuilding: true,
+    buildingField: "buildingId"
+  }),
   svc.listByBuilding
 );
 
@@ -515,28 +520,44 @@ router.get(
 // Tạo dịch vụ mới
 router.post(
   "/:buildingId/services",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.SERVICE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   svc.create
 );
 
 // Cập nhật dịch vụ
 router.patch(
   "/:buildingId/services/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.SERVICE_EDIT, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   svc.update
 );
 
 // Xóa mềm dịch vụ
 router.delete(
   "/:buildingId/services/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.SERVICE_DELETE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   svc.remove
 );
 
 // Khôi phục dịch vụ đã xóa
 router.post(
   "/:buildingId/services/:id/restore",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.SERVICE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   svc.restore
 );
 

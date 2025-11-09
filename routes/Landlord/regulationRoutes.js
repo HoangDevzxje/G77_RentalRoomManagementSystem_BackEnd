@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const RegulationCtrl = require("../../controllers/Landlord/RegulationController");
+const checkSubscription = require("../../middleware/checkSubscription");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const { PERMISSIONS } = require("../../constants/permissions");
 
 /**
  * @swagger
@@ -110,7 +113,8 @@ const RegulationCtrl = require("../../controllers/Landlord/RegulationController"
 // Tenant & Landlord đều xem được
 router.get(
   "/",
-  checkAuthorize(["admin", "landlord", "tenant"]),
+  checkAuthorize(["admin", "landlord", "resident", "staff"]),
+  checkStaffPermission(PERMISSIONS.REGULATION_VIEW, { checkBuilding: true }),
   RegulationCtrl.getList
 );
 
@@ -260,7 +264,10 @@ router.get(
  *                   example: Lỗi server
  */
 // Landlord: CRUD
-router.post("/", checkAuthorize(["admin", "landlord"]), RegulationCtrl.create);
+router.post("/",
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.REGULATION_CREATE, { checkBuilding: true }),
+  RegulationCtrl.create);
 
 /**
  * @swagger
@@ -404,7 +411,8 @@ router.post("/", checkAuthorize(["admin", "landlord"]), RegulationCtrl.create);
  */
 router.put(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.REGULATION_EDIT),
   RegulationCtrl.update
 );
 
@@ -479,7 +487,8 @@ router.put(
  */
 router.delete(
   "/:id",
-  checkAuthorize(["admin", "landlord"]),
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.REGULATION_DELETE),
   RegulationCtrl.remove
 );
 
