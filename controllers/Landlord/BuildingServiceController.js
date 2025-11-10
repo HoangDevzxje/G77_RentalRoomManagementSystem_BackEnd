@@ -18,7 +18,7 @@ async function assertCanAccessBuilding(req, buildingId) {
     if (!staff?.assignedBuildingIds?.includes(buildingId)) {
       throw Object.assign(new Error("Bạn không được quản lý tòa nhà này"), { statusCode: 403 });
     }
-    const b = await Building.findById(buildingId).select("_id");
+    const b = await Building.findById(buildingId).select("_id landlordId").lean();
     if (!b) throw Object.assign(new Error("Không tìm thấy tòa nhà"), { statusCode: 404 });
     return b;
   }
@@ -60,7 +60,6 @@ exports.create = async (req, res) => {
     } = req.body;
 
     if (!name?.trim()) return res.status(400).json({ message: "Thiếu tên dịch vụ" });
-
     const service = await BuildingService.create({
       buildingId,
       landlordId: building.landlordId,

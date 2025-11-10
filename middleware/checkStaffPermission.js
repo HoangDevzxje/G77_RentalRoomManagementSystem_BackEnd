@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Employee = require("../models/Employee");
 const Account = require("../models/Account");
 
@@ -57,7 +58,7 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
                 });
             }
 
-            if (!employeeData.permissions || !employeeData.permissions.includes(requiredPermission)) {
+            if (!employeeData.permissions?.includes(requiredPermission)) {
                 return res.status(403).json({
                     message: `Bạn không có quyền: ${requiredPermission}`,
                     required: requiredPermission,
@@ -72,16 +73,47 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
                 permissions: employeeData.permissions,
             };
 
-            // kiểm tra buildingId hợp lệ
+            let buildingId = null;
+            const buildingField = options.buildingField || "buildingId";
+
+            buildingId = req.query[buildingField] || req.body?.[buildingField] || req.params[buildingField];
+            console.log("buildingId:", buildingId);
+            if (!buildingId && options.allowFromDb && options.model) {
+                const idField = options.idField || "id";
+                const recordId = req.params[idField]
+                if (!recordId) {
+                    console.error("Lỗi allowFromDb: idField không tìm thấy");
+                } else {
+                    try {
+                        const Model = require(`../models/${options.model}`);
+                        console.log("Model:", req.params);
+                        const record = await Model.findById(recordId)
+                            .select("buildingId isDeleted")
+                            .lean();
+                        console.log("record:", record);
+                        if (!record || record.isDeleted) return res.status(404).json({ message: "Không tìm thấy buildingId theo params truyền vào hoặc đã bị xóa" });
+                        console.log("record:", record);
+                        if (record && !record.isDeleted) {
+                            buildingId = record.buildingId.toString();
+                            req.body = req.body || {};
+                            req.body[buildingField] = buildingId;
+                            req.staff.currentBuildingId = buildingId;
+                            console.log(`🔥 allowFromDb: Tự động lấy buildingId = ${buildingId} từ params.${idField}`);
+                        }
+                    } catch (err) {
+                        console.error("Lỗi allowFromDb:", err);
+                        // return res.status(500).json({ message: "Lỗi kiểm tra tòa nhà từ dữ liệu" });
+                    }
+                }
+
+            }
+
+            // === CHECK BUILDING BẮT BUỘC ===
             if (options.checkBuilding) {
-                const buildingField = options.buildingField || "buildingId";
-                const buildingId =
-                    req.query[buildingField] ||
-                    req.body?.[buildingField] ||
-                    req.params[buildingField];
                 console.log("🔍 CHECK BUILDING ID:", {
                     from_query: req.query[buildingField],
                     from_body: req.body?.[buildingField],
+                    from_db: buildingId && !req.query[buildingField] && !req.body?.[buildingField] ? "DB" : undefined,
                     final: buildingId
                 });
                 if (!buildingId) {

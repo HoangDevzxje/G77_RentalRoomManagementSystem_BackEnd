@@ -158,7 +158,7 @@ const update = async (req, res) => {
         .json({ message: "Tòa nhà đang tạm dừng hoạt động" });
     }
     if (req.user.role === "staff") {
-      if (!req.staff?.assignedBuildingIds.includes(f.buildingId)) {
+      if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
         return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
@@ -205,6 +205,7 @@ const softDelete = async (req, res) => {
     const { force } = req.query;
 
     const f = await Floor.findById(id).select("buildingId isDeleted");
+    console.log(f);
     if (!f || f.isDeleted)
       return res.status(404).json({ message: "Không tìm thấy tầng" });
 
@@ -396,6 +397,7 @@ const quickCreate = async (req, res) => {
     // Quyền
     const isOwner =
       req.user.role === "admin" ||
+      req.user.role === "staff" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });

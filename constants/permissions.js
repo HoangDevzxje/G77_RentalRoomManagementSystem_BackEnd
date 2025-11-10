@@ -84,6 +84,11 @@ const PERMISSIONS = {
     MAINTENANCE_CREATE: "maintenance:create",
     MAINTENANCE_EDIT: "maintenance:edit",
     MAINTENANCE_DELETE: "maintenance:delete",
+    //revenue-expenditure
+    REVENUE_EXPENDITURE_VIEW: "revenue-expenditure:view",
+    REVENUE_EXPENDITURE_CREATE: "revenue-expenditure:create",
+    REVENUE_EXPENDITURE_EDIT: "revenue-expenditure:edit",
+    REVENUE_EXPENDITURE_DELETE: "revenue-expenditure:delete",
 
     // === HÓA ĐƠN ===
     INVOICE_VIEW: "invoice:view",

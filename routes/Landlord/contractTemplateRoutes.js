@@ -164,7 +164,13 @@ router.get(
  */
 router.put("/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT),
+  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "ContractTemplate"
+    }
+  ),
   ctrl.update);
 
 /**
@@ -190,13 +196,18 @@ router.put("/:id",
  */
 router.delete("/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_DELETE, { checkBuilding: true }),
+  checkStaffPermission(PERMISSIONS.CONTRACT_DELETE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "ContractTemplate"
+    }),
   ctrl.remove);
 
 /**
  * @swagger
  * /landlords/contract-templates/preview:
- *   post:
+ *   get:
  *     summary: Xem trước file PDF hợp đồng mẫu (preview)
  *     tags: [Landlord - Contract Templates]
  *     security:

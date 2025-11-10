@@ -8,12 +8,14 @@ const RoomFurniture = require("../../models/RoomFurniture");
 // Tạo mới
 exports.create = async (req, res) => {
   try {
-    const { buildingId } = req.body;
+    const { buildingId, furnitureId } = req.body;
+    console.log(req.body);
     if (!buildingId) return res.status(400).json({ message: "buildingId là bắt buộc" });
-
+    if (!furnitureId) return res.status(400).json({ message: "furnitureId là bắt buộc" });
     const b = await Building.findById(buildingId).lean();
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
-
+    const f = await Furniture.findById(furnitureId).lean();
+    if (!f) return res.status(404).json({ message: "Không tìm thấy nội thất" });
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
         return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
@@ -234,7 +236,7 @@ exports.getAll = async (req, res) => {
         .populate("buildingId", "name address description")
         .populate("furnitureId", "name")
         .sort({ createdAt: -1 });
-
+      console.log(list);
       return res.json(list);
     }
 
