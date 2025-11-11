@@ -340,7 +340,13 @@ router.get(
 router.get(
   "/:id",
   checkAuthorize(["admin", "landlord", "resident", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_VIEW),
+  checkStaffPermission(PERMISSIONS.ROOM_VIEW,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Room"
+    }
+  ),
   RoomCtrl.getById
 );
 
@@ -603,7 +609,13 @@ router.post(
 router.put(
   "/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_EDIT),
+  checkStaffPermission(PERMISSIONS.ROOM_EDIT,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Room"
+    }
+  ),
   checkSubscription,
   RoomCtrl.update
 );
@@ -679,7 +691,12 @@ router.put(
 router.delete(
   "/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_DELETE, { checkBuilding: true }),
+  checkStaffPermission(PERMISSIONS.ROOM_DELETE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Room"
+    }),
   checkSubscription,
   RoomCtrl.remove
 );
@@ -1142,7 +1159,13 @@ router.post(
 router.delete(
   "/:id/soft",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_DELETE),
+  checkStaffPermission(PERMISSIONS.ROOM_DELETE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Room"
+    }
+  ),
   checkSubscription,
   RoomCtrl.softDelete
 );
@@ -1218,6 +1241,14 @@ router.delete(
 router.post(
   "/:id/restore",
   checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_EDIT,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Room"
+    }
+  ),
+  checkSubscription,
   RoomCtrl.restore
 );
 
@@ -1315,6 +1346,14 @@ router.post(
 router.patch(
   "/:id/active",
   checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_EDIT,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Room"
+    }
+  ),
+  checkSubscription,
   RoomCtrl.updateActive
 );
 

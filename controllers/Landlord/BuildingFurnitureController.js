@@ -217,27 +217,61 @@ exports.getAll = async (req, res) => {
   try {
     const { buildingId, withStats = "true" } = req.query;
 
-    // 1) Nếu chưa chọn tòa: trả danh sách tất cả (không thống kê) để tránh 400
-    if (!buildingId) {
-      const buildingFilter =
-        req.user?.role === "landlord" ? { landlordId: req.user._id } : {};
-      const buildings = await Building.find(buildingFilter)
-        .select("_id name address description")
-        .lean();
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds?.length) {
+        return res.json([]);
+      }
 
-      if (!buildings.length) return res.json([]);
+      if (buildingId && !req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
 
-      const buildingIds = buildings.map((b) => b._id);
+      if (!buildingId) {
+        const allowedBuildings = await Building.find({
+          _id: { $in: req.staff.assignedBuildingIds },
+          isDeleted: { $ne: true }
+        }).select("_id name address description").lean();
 
-      // có thể bật populate nhẹ
-      const list = await BuildingFurniture.find({
-        buildingId: { $in: buildingIds },
-      })
-        .populate("buildingId", "name address description")
-        .populate("furnitureId", "name")
-        .sort({ createdAt: -1 });
-      console.log(list);
-      return res.json(list);
+        if (!allowedBuildings.length) return res.json([]);
+
+        const buildingIds = allowedBuildings.map(b => b._id);
+
+        const list = await BuildingFurniture.find({
+          buildingId: { $in: buildingIds }
+        })
+          .populate("buildingId", "name address description")
+          .populate("furnitureId", "name")
+          .sort({ createdAt: -1 })
+          .lean();
+
+        return res.json(list);
+      }
+    }
+
+    if (req.user.role === "landlord") {
+      if (buildingId) {
+        const building = await Building.findById(buildingId).lean();
+        if (!building) return res.status(404).json({ message: "Không tìm thấy tòa" });
+        if (String(building.landlordId) !== String(req.user._id)) {
+          return res.status(403).json({ message: "Không có quyền truy cập tòa này" });
+        }
+      } else {
+        const buildings = await Building.find({ landlordId: req.user._id })
+          .select("_id name address description")
+          .lean();
+
+        if (!buildings.length) return res.json([]);
+
+        const buildingIds = buildings.map(b => b._id);
+
+        const list = await BuildingFurniture.find({ buildingId: { $in: buildingIds } })
+          .populate("buildingId", "name address description")
+          .populate("furnitureId", "name")
+          .sort({ createdAt: -1 })
+          .lean();
+
+        return res.json(list);
+      }
     }
 
     // 2) Có buildingId: kiểm tra quyền

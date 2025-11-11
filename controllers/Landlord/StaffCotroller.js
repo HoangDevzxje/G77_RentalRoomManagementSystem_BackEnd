@@ -235,7 +235,6 @@ const updateStaffPermissions = async (req, res) => {
 
         if (permissions && permissions.length > 0) {
             const validPerms = await Permission.find({ code: { $in: permissions } });
-            console.log(validPerms);
             if (validPerms.length !== permissions.length) {
                 return res.status(400).json({ message: 'Một số quyền không tồn tại' });
             }

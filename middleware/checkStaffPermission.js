@@ -71,6 +71,7 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
                 employeeId: employeeData._id.toString(),
                 assignedBuildingIds: employeeData.assignedBuildings.map((b) => b._id.toString()),
                 permissions: employeeData.permissions,
+                landlordId: employeeData.landlordId?.toString()
             };
 
             let buildingId = null;
@@ -88,17 +89,14 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
                         const Model = require(`../models/${options.model}`);
                         console.log("Model:", req.params);
                         const record = await Model.findById(recordId)
-                            .select("buildingId isDeleted")
+                            .select("buildingId")
                             .lean();
-                        console.log("record:", record);
                         if (!record || record.isDeleted) return res.status(404).json({ message: "Không tìm thấy buildingId theo params truyền vào hoặc đã bị xóa" });
-                        console.log("record:", record);
                         if (record && !record.isDeleted) {
                             buildingId = record.buildingId.toString();
                             req.body = req.body || {};
                             req.body[buildingField] = buildingId;
                             req.staff.currentBuildingId = buildingId;
-                            console.log(`🔥 allowFromDb: Tự động lấy buildingId = ${buildingId} từ params.${idField}`);
                         }
                     } catch (err) {
                         console.error("Lỗi allowFromDb:", err);

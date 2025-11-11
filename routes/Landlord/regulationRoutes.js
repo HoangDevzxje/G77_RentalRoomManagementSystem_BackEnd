@@ -412,7 +412,13 @@ router.post("/",
 router.put(
   "/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.REGULATION_EDIT),
+  checkStaffPermission(PERMISSIONS.REGULATION_EDIT,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Regulation"
+    }
+  ),
   RegulationCtrl.update
 );
 
@@ -488,7 +494,13 @@ router.put(
 router.delete(
   "/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.REGULATION_DELETE),
+  checkStaffPermission(PERMISSIONS.REGULATION_DELETE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Regulation"
+    }
+  ),
   RegulationCtrl.remove
 );
 

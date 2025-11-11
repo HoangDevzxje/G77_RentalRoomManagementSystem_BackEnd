@@ -8,16 +8,7 @@ const {
   checkStaffPermission,
 } = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
-// === MIDDLEWARE: Chỉ validate buildingId nếu có ===
-const checkBuildingIfProvided = (field) => (req, res, next) => {
-  const buildingId = req.body[field] || req.query[field] || req.params[field];
-  console.log(buildingId);
-  if (!buildingId) return next();
-  return checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_VIEW, {
-    checkBuilding: true,
-    buildingField: "buildingId",
-  })(req, res, next);
-};
+
 /**
  * @swagger
  * tags:
@@ -448,7 +439,6 @@ router.get(
   "/building",
   checkAuthorize(["admin", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_VIEW),
-  checkBuildingIfProvided,
   checkSubscription,
   BuildingFurnitureCtrl.getAll
 );
@@ -512,7 +502,13 @@ router.get(
 router.put(
   "/building/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_EDIT),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_EDIT,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "BuildingFurniture"
+    }
+  ),
   checkSubscription,
   BuildingFurnitureCtrl.update
 );
@@ -554,7 +550,13 @@ router.put(
 router.delete(
   "/building/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_DELETE),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_DELETE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "BuildingFurniture"
+    }
+  ),
   checkSubscription,
   BuildingFurnitureCtrl.remove
 );
@@ -704,10 +706,7 @@ router.post(
 router.post(
   "/room",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_CREATE, {
-    checkRoom: true,
-    buildingField: "roomId",
-  }),
+  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_CREATE),
   checkSubscription,
   RoomFurnitureCtrl.create
 );
