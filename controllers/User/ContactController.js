@@ -80,6 +80,14 @@ const getMyContacts = async (req, res) => {
         .populate("buildingId", "name address")
         .populate("roomId", "roomNumber price area")
         .populate("postId", "title")
+        .populate({
+          path: "landlordId",
+          select: "email",
+          populate: {
+            path: "userInfo",
+            select: "fullName phoneNumber"
+          }
+        })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
