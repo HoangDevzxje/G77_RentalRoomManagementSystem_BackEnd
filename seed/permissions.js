@@ -75,6 +75,16 @@ const permissions = [
     { code: 'schedule:create', name: 'Thêm', group: 'Dịch vụ', action: 'create' },
     { code: 'schedule:edit', name: 'Sửa', group: 'Dịch vụ', action: 'edit' },
     { code: 'schedule:delete', name: 'Xóa', group: 'Dịch vụ', action: 'delete' },
+    //mainten
+    { code: 'maintenance:view', name: 'Xem', group: 'Dịch vụ', action: 'view' },
+    { code: 'maintenance:create', name: 'Thêm', group: 'Dịch vụ', action: 'create' },
+    { code: 'maintenance:edit', name: 'Sửa', group: 'Dịch vụ', action: 'edit' },
+    { code: 'maintenance:delete', name: 'Xóa', group: 'Dịch vụ', action: 'delete' },
+    //revenue-expenditure
+    { code: 'revenue-expenditure:view', name: 'Xem', group: 'Dịch vụ', action: 'view' },
+    { code: 'revenue-expenditure:create', name: 'Thêm', group: 'Dịch vụ', action: 'create' },
+    { code: 'revenue-expenditure:edit', name: 'Sửa', group: 'Dịch vụ', action: 'edit' },
+    { code: 'revenue-expenditure:delete', name: 'Xóa', group: 'Dịch vụ', action: 'delete' },
 
     // === BÁO CÁO ===
     { code: 'report:view', name: 'Xem báo cáo', group: 'Báo cáo', action: 'view' },

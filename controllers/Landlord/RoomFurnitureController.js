@@ -1,13 +1,16 @@
 const RoomFurniture = require("../../models/RoomFurniture");
 const Room = require("../../models/Room");
 const Building = require("../../models/Building");
-
+const Furniture = require("../../models/Furniture");
+const mongoose = require("mongoose");
 // Tạo mới
 exports.create = async (req, res) => {
   try {
-    const { roomId } = req.body;
+    const { roomId, furnitureId } = req.body;
     if (!roomId) return res.status(400).json({ message: "roomId là bắt buộc" });
-
+    if (!furnitureId) return res.status(400).json({ message: "furnitureId là bắt buộc" });
+    const f = await Furniture.findById(furnitureId).lean();
+    if (!f) return res.status(404).json({ message: "Không tìm thấy nội thất" });
     const room = await Room.findById(roomId).select("buildingId").lean();
     if (!room) return res.status(404).json({ message: "Không tìm thấy phòng" });
 
@@ -34,39 +37,89 @@ exports.getAll = async (req, res) => {
   try {
     const { buildingId, floorId, roomId } = req.query;
     const filter = {};
+    if (req.user.role === "staff") {
 
-    if (roomId) filter.roomId = roomId;
+      if (!req.staff?.assignedBuildingIds?.length) {
+        return res.json([]);
+      }
+      const roomIds = await Room.find({
+        buildingId: { $in: req.staff.assignedBuildingIds }
+      }).distinct("_id");
+      const furnitures = await RoomFurniture.find({
+        roomId: { $in: roomIds }
+      }).distinct("roomId");
+      if (!furnitures.length) {
+        return res.json([]);
+      }
 
-    let query = RoomFurniture.find(filter)
+      filter.roomId = { $in: furnitures };
+    }
+
+    if (req.user.role === "landlord" && buildingId) {
+      const building = await Building.findOne({
+        _id: buildingId,
+        landlordId: req.user._id
+      }).lean();
+
+      if (!building) {
+        return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+      }
+
+      const roomIds = await RoomFurniture.find({
+        roomId: { $in: await Room.find({ buildingId }).distinct("_id") }
+      }).distinct("roomId");
+
+      if (!roomIds.length) return res.json([]);
+
+      filter.roomId = { $in: roomIds };
+    }
+
+    if (roomId) {
+      if (!mongoose.isValidObjectId(roomId)) {
+        return res.status(400).json({ message: "roomId không hợp lệ" });
+      }
+      filter.roomId = roomId;
+    }
+
+    if (floorId) {
+      if (!mongoose.isValidObjectId(floorId)) {
+        return res.status(400).json({ message: "floorId không hợp lệ" });
+      }
+
+      const roomIdsInFloor = await Room.find({ floorId }).distinct("_id");
+      const roomIdsWithFurniture = await RoomFurniture.find({
+        roomId: { $in: roomIdsInFloor }
+      }).distinct("roomId");
+
+      if (!roomIdsWithFurniture.length) return res.json([]);
+
+      filter.roomId = filter.roomId
+        ? { $in: roomIdsWithFurniture.filter(id => filter.roomId.$in?.includes(id)) }
+        : { $in: roomIdsWithFurniture };
+    }
+
+    const list = await RoomFurniture.find(filter)
       .populate({
         path: "roomId",
+        select: "name",
         populate: [
           { path: "buildingId", select: "name address" },
           { path: "floorId", select: "name level" },
         ],
       })
-      .populate("furnitureId");
+      .populate("furnitureId", "name")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const list = await query;
-
-    const filtered = list.filter((item) => {
-      const r = item.roomId;
-      if (!r) return false;
-      if (buildingId && String(r.buildingId?._id) !== buildingId) return false;
-      if (floorId && String(r.floorId?._id) !== floorId) return false;
-      return true;
-    });
-
-    if (req.user.role === "staff") {
-      const allowedBuildingIds = req.staff.assignedBuildingIds.map(String);
-      const staffFiltered = filtered.filter(item =>
-        item.roomId?.buildingId && allowedBuildingIds.includes(String(item.roomId.buildingId._id))
-      );
-      return res.json(staffFiltered);
+    if (!list.length) {
+      return res.json({ message: "Không tìm thấy nội thất của phòng" });
     }
-    res.json(filtered);
+
+    res.json(list);
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("[RoomFurniture] Lỗi getAll:", err);
+    res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
 

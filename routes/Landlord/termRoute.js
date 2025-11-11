@@ -260,39 +260,39 @@ const { checkStaffPermission } = require("../../middleware/checkStaffPermission"
 router.post(
   "/",
   checkAuthorize(["landlord", "staff"]),
-  checkSubscription,
   checkStaffPermission(PERMISSIONS.TERM_CREATE, { checkBuilding: true }),
+  checkSubscription,
   termController.createTerm
 );
 router.get(
   "/building/:buildingId",
   checkAuthorize(["landlord", "staff"]),
-  checkSubscription,
   checkStaffPermission(PERMISSIONS.TERM_VIEW, { checkBuilding: true, buildingField: "buildingId" }),
+  checkSubscription,
   termController.getTermsByBuilding
 );
 
 router.get(
   "/detail/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkSubscription,
   checkStaffPermission(PERMISSIONS.TERM_VIEW),
+  checkSubscription,
   termController.getTermDetail
 );
 
 router.patch(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkSubscription,
   checkStaffPermission(PERMISSIONS.TERM_EDIT),
+  checkSubscription,
   termController.updateTerm
 );
 
 router.delete(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkSubscription,
   checkStaffPermission(PERMISSIONS.TERM_DELETE),
+  checkSubscription,
   termController.deleteTerm
 );
 module.exports = router;

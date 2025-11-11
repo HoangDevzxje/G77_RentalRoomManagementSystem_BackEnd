@@ -90,7 +90,7 @@ const getTermDetail = async (req, res) => {
 
         if (req.user.role === "staff") {
             if (!req.staff?.assignedBuildingIds.includes(building._id.toString())) {
-                return res.status(403).json({ message: "Không có quyền xem" });
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
             }
         } else {
             if (building.landlordId.toString() !== req.user._id.toString()) {
@@ -118,7 +118,7 @@ const updateTerm = async (req, res) => {
 
         if (req.user.role === "staff") {
             if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
-                return res.status(403).json({ message: "Không có quyền chỉnh sửa" });
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
             }
         } else {
             if (term.buildingId.landlordId.toString() !== req.user._id.toString()) {
@@ -150,7 +150,7 @@ const deleteTerm = async (req, res) => {
 
         if (req.user.role === "staff") {
             if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
-                return res.status(403).json({ message: "Không có quyền xóa" });
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
             }
         } else {
             if (term.buildingId.landlordId.toString() !== req.user._id.toString()) {

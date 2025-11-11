@@ -3,6 +3,7 @@ const ctrl = require("../../controllers/Landlord/RevenueExpenditureController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
+const checkSubscription = require("../../middleware/checkSubscription");
 
 const auth = ["landlord", "staff"];
 
@@ -380,18 +381,22 @@ const auth = ["landlord", "staff"];
 router.post("/",
     checkAuthorize(auth),
     checkStaffPermission(PERMISSIONS.REVENUE_EXPENDITURE_CREATE, { checkBuilding: true }),
+    checkSubscription,
     ctrl.create);
 router.get("/",
     checkAuthorize(auth),
     checkStaffPermission(PERMISSIONS.REVENUE_EXPENDITURE_VIEW),
+    checkSubscription,
     ctrl.list);
 router.get("/stats",
     checkAuthorize(auth),
     checkStaffPermission(PERMISSIONS.REVENUE_EXPENDITURE_VIEW, { checkBuilding: true }),
+    checkSubscription,
     ctrl.stats);
 router.get("/export",
     checkAuthorize(auth),
     checkStaffPermission(PERMISSIONS.REVENUE_EXPENDITURE_VIEW, { checkBuilding: true }),
+    checkSubscription,
     ctrl.exportExcel);
 router.get("/:id",
     checkAuthorize(auth),
@@ -402,6 +407,7 @@ router.get("/:id",
             model: "RevenueExpenditures"
         }
     ),
+    checkSubscription,
     ctrl.getById);
 router.put("/:id",
     checkAuthorize(auth),
@@ -412,6 +418,7 @@ router.put("/:id",
             model: "RevenueExpenditures"
         }
     ),
+    checkSubscription,
     ctrl.update);
 router.delete("/:id",
     checkAuthorize(auth),
@@ -421,7 +428,7 @@ router.delete("/:id",
             allowFromDb: true,
             model: "RevenueExpenditures"
         }),
-
+    checkSubscription,
     ctrl.softDelete);
 
 

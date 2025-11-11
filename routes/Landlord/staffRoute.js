@@ -1,6 +1,6 @@
 // routes/staff.js
 const router = require("express").Router();
-const employeeController = require("../../controllers/Landlord/EmployCotroller");
+const staffController = require("../../controllers/Landlord/StaffCotroller");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
 
@@ -13,7 +13,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
- * /landlords/employees/create:
+ * /landlords/staffs/create:
  *   post:
  *     summary: Tạo nhân viên mới
  *     description: |
@@ -110,7 +110,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
- * /landlords/employees/list:
+ * /landlords/staffs/list:
  *   get:
  *     summary: Lấy danh sách nhân viên
  *     description: Lấy toàn bộ nhân viên đang hoạt động của chủ trọ
@@ -167,7 +167,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
- * /landlords/employees/permissions:
+ * /landlords/staffs/permissions:
  *   get:
  *     summary: Lấy danh sách quyền có thể cấp
  *     description: Trả về tất cả quyền có sẵn trong hệ thống (dùng để hiển thị bảng chọn quyền khi tạo nhân viên)
@@ -205,7 +205,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  */
 /**
  * @swagger
- * /landlords/employees/{staffId}/status:
+ * /landlords/staffs/{staffId}/status:
  *   patch:
  *     summary: Cập nhật trạng thái hoạt động của nhân viên
  *     description: |
@@ -264,7 +264,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
- * /landlords/employees/{staffId}/info:
+ * /landlords/staffs/{staffId}/info:
  *   patch:
  *     summary: Cập nhật thông tin cá nhân nhân viên
  *     description: Chủ trọ cập nhật họ tên, số điện thoại, ngày sinh, giới tính, địa chỉ của nhân viên
@@ -312,7 +312,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
- * /landlords/employees/{staffId}/permissions:
+ * /landlords/staffs/{staffId}/permissions:
  *   patch:
  *     summary: Cập nhật quyền và tòa nhà được giao cho nhân viên
  *     description: |
@@ -374,39 +374,39 @@ router.post(
     "/create",
     checkAuthorize(["landlord"]),
     checkSubscription,
-    employeeController.createStaff
+    staffController.createStaff
 );
 router.patch(
     "/:staffId/status",
     checkAuthorize(["landlord"]),
     checkSubscription,
-    employeeController.updateStaffStatus
+    staffController.updateStaffStatus
 );
 router.patch(
     "/:staffId/info",
     checkAuthorize(["landlord"]),
     checkSubscription,
-    employeeController.updateStaffInfo
+    staffController.updateStaffInfo
 );
 
 router.patch(
     "/:staffId/permissions",
     checkAuthorize(["landlord"]),
     checkSubscription,
-    employeeController.updateStaffPermissions
+    staffController.updateStaffPermissions
 );
 router.get(
     "/list",
     checkAuthorize(["landlord"]),
     checkSubscription,
-    employeeController.getStaffList
+    staffController.getStaffList
 );
 
 router.get(
     "/permissions",
     checkAuthorize(["landlord"]),
     checkSubscription,
-    employeeController.getPermissions
+    staffController.getPermissions
 );
 
 module.exports = router;

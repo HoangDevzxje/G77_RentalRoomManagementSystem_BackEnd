@@ -63,11 +63,7 @@ const PERMISSIONS = {
     REGULATION_CREATE: "regulation:create",
     REGULATION_EDIT: "regulation:edit",
     REGULATION_DELETE: "regulation:delete",
-    //room
-    ROOM_VIEW: "room:view",
-    ROOM_CREATE: "room:create",
-    ROOM_EDIT: "room:edit",
-    ROOM_DELETE: "room:delete",
+
     //room-furniture
     ROOM_FURNITURE_VIEW: "room-furniture:view",
     ROOM_FURNITURE_CREATE: "room-furniture:create",

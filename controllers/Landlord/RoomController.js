@@ -198,7 +198,11 @@ const create = async (req, res) => {
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
-
+    if (req.user.role === "staff") {
+      if (!req.staff?.assignedBuildingIds.includes(String(buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      }
+    }
     // validate inputs
     const numPrice = Number(price);
     if (Number.isNaN(numPrice) || numPrice < 0) {
