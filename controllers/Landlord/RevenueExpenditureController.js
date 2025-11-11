@@ -56,6 +56,10 @@ const list = async (req, res) => {
             }
             if (!buildingId) {
                 filter.buildingId = { $in: req.staff.assignedBuildingIds };
+            } else {
+                if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+                    return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+                }
             }
         } else if (req.user.role === "landlord") {
             if (!buildingId) {
@@ -64,7 +68,7 @@ const list = async (req, res) => {
         }
 
         if (buildingId) {
-            filter.buildingId = mongoose.Types.ObjectId(buildingId);
+            filter.buildingId = new mongoose.Types.ObjectId(buildingId);
         }
 
         if (type) filter.type = type;
