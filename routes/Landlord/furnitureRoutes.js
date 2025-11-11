@@ -4,7 +4,9 @@ const BuildingFurnitureCtrl = require("../../controllers/Landlord/BuildingFurnit
 const RoomFurnitureCtrl = require("../../controllers/Landlord/RoomFurnitureController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
-const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const {
+  checkStaffPermission,
+} = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
 // === MIDDLEWARE: Chỉ validate buildingId nếu có ===
 const checkBuildingIfProvided = (field) => (req, res, next) => {
@@ -298,7 +300,10 @@ router.get(
 router.post(
   "/building",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   checkSubscription,
   BuildingFurnitureCtrl.create
 );
@@ -400,7 +405,10 @@ router.post(
 router.post(
   "/building/bulk",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   checkSubscription,
   BuildingFurnitureCtrl.bulkCreate
 );
@@ -633,7 +641,10 @@ router.delete(
 router.post(
   "/:buildingId/apply-to-rooms",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   checkSubscription,
   BuildingFurnitureCtrl.applyToRooms
 );
@@ -693,7 +704,10 @@ router.post(
 router.post(
   "/room",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_CREATE, { checkRoom: true, buildingField: "roomId" }),
+  checkStaffPermission(PERMISSIONS.ROOM_FURNITURE_CREATE, {
+    checkRoom: true,
+    buildingField: "roomId",
+  }),
   checkSubscription,
   RoomFurnitureCtrl.create
 );
