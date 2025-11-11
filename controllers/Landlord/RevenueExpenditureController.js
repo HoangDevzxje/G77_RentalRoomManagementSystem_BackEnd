@@ -99,7 +99,16 @@ const getById = async (req, res) => {
     try {
         const record = await RevenueExpenditure.findById(req.params.id)
             .populate("createBy", "email")
-            .populate("buildingId", "name");
+            .populate("buildingId", "name")
+            .populate({
+                path: "landlordId",
+                select: "email userInfo",
+                populate: {
+                path: "userInfo",
+                model: "UserInformation",
+                select: "fullName phoneNumber address",
+        },
+      });
 
         if (!record || record.isDeleted) return res.status(404).json({ message: "Không tìm thấy" });
         res.json(record);
