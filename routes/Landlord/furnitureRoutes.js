@@ -4,7 +4,9 @@ const BuildingFurnitureCtrl = require("../../controllers/Landlord/BuildingFurnit
 const RoomFurnitureCtrl = require("../../controllers/Landlord/RoomFurnitureController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
-const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const {
+  checkStaffPermission,
+} = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
 
 /**
@@ -289,7 +291,10 @@ router.get(
 router.post(
   "/building",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   checkSubscription,
   BuildingFurnitureCtrl.create
 );
@@ -391,7 +396,10 @@ router.post(
 router.post(
   "/building/bulk",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   checkSubscription,
   BuildingFurnitureCtrl.bulkCreate
 );
@@ -635,7 +643,10 @@ router.delete(
 router.post(
   "/:buildingId/apply-to-rooms",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.BUILDING_FURNITURE_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   checkSubscription,
   BuildingFurnitureCtrl.applyToRooms
 );

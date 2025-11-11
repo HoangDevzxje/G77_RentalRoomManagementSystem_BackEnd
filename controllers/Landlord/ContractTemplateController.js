@@ -116,7 +116,8 @@ exports.remove = async (req, res) => {
   try {
     const { id } = req.params;
     const template = await ContractTemplate.findById(id).select("buildingId");
-    if (!template) return res.status(404).json({ message: "Template not found" });
+    if (!template)
+      return res.status(404).json({ message: "Template not found" });
 
     req.body.buildingId = String(template.buildingId);
 
@@ -141,7 +142,7 @@ exports.listMine = async (req, res) => {
     if (req.user.role === "staff") {
       const buildings = await Building.find({
         _id: { $in: req.staff.assignedBuildingIds },
-        isDeleted: false
+        isDeleted: false,
       }).distinct("_id");
       filter.buildingId = { $in: buildings };
     } else {
@@ -239,7 +240,6 @@ exports.previewPdf = async (req, res) => {
   let doc;
 
   try {
-
     const buildingId = String(req.query.buildingId || "").trim();
     req.query.buildingId = buildingId;
     if (!buildingId)
@@ -259,7 +259,7 @@ exports.previewPdf = async (req, res) => {
 
     // Lấy template theo quyền sở hữu
     const template = await ContractTemplate.findOne({
-      buildingId
+      buildingId,
     }).lean();
     if (!template)
       return res.status(404).json({ message: "Template not found" });
@@ -268,20 +268,20 @@ exports.previewPdf = async (req, res) => {
     const [terms, regs] = await Promise.all([
       termIds.length
         ? Term.find({
-          _id: { $in: termIds },
-          status: "active",
-          isDeleted: { $ne: true },
-        })
-          .select("name description") // <-- name + description
-          .lean()
+            _id: { $in: termIds },
+            status: "active",
+            isDeleted: { $ne: true },
+          })
+            .select("name description") // <-- name + description
+            .lean()
         : Promise.resolve([]),
       regulationIds.length
         ? Regulation.find({
-          _id: { $in: regulationIds },
-          status: "active",
-        })
-          .select("title description effectiveFrom") // <-- title + description + effectiveFrom
-          .lean()
+            _id: { $in: regulationIds },
+            status: "active",
+          })
+            .select("title description effectiveFrom") // <-- title + description + effectiveFrom
+            .lean()
         : Promise.resolve([]),
     ]);
 
@@ -302,7 +302,7 @@ exports.previewPdf = async (req, res) => {
       } else {
         try {
           res.end();
-        } catch { }
+        } catch {}
       }
     });
 
@@ -322,15 +322,15 @@ exports.previewPdf = async (req, res) => {
     doc.moveDown(0.8);
     try {
       doc.font(FONT_BOLD);
-    } catch { }
-    doc.fontSize(16).text(template.name || "HỢP ĐỒNG THUÊ PHÒNG", {
+    } catch {}
+    doc.fontSize(16).text("HỢP ĐỒNG THUÊ PHÒNG" || template.name, {
       align: "center",
       underline: true,
     });
 
     try {
       doc.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     doc.moveDown(0.5);
     doc
       .fontSize(10)
@@ -380,21 +380,21 @@ exports.previewPdf = async (req, res) => {
       doc.moveDown(1);
       try {
         doc.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       doc.fontSize(13).text("I. NỘI DUNG ĐIỀU KHOẢN", { underline: true });
       try {
         doc.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
       doc.moveDown(0.3);
 
       terms.forEach((t, idx) => {
         try {
           doc.font(FONT_BOLD);
-        } catch { }
+        } catch {}
         doc.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
         try {
           doc.font(FONT_REGULAR);
-        } catch { }
+        } catch {}
 
         const desc = t.description || "";
         if (!desc) {
@@ -410,11 +410,11 @@ exports.previewPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 doc.font(FONT_BOLD);
-              } catch { }
+              } catch {}
               doc.fontSize(11).text(prefix, { continued: true });
               try {
                 doc.font(FONT_REGULAR);
-              } catch { }
+              } catch {}
               doc.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -441,21 +441,21 @@ exports.previewPdf = async (req, res) => {
       doc.moveDown(0.6);
       try {
         doc.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       doc.fontSize(13).text("II. QUY ĐỊNH", { underline: true });
       try {
         doc.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
       doc.moveDown(0.3);
 
       regs.forEach((r, idx) => {
         try {
           doc.font(FONT_BOLD);
-        } catch { }
+        } catch {}
         doc.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
         try {
           doc.font(FONT_REGULAR);
-        } catch { }
+        } catch {}
 
         if (r.effectiveFrom) {
           const d = new Date(r.effectiveFrom);
@@ -480,11 +480,11 @@ exports.previewPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 doc.font(FONT_BOLD);
-              } catch { }
+              } catch {}
               doc.fontSize(11).text(prefix, { continued: true });
               try {
                 doc.font(FONT_REGULAR);
-              } catch { }
+              } catch {}
               doc.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -530,6 +530,6 @@ exports.previewPdf = async (req, res) => {
     }
     try {
       res.end();
-    } catch { }
+    } catch {}
   }
 };
