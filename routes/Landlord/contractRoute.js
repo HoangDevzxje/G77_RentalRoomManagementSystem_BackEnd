@@ -9,6 +9,75 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *     description: Quản lý quy trình tạo & ký hợp đồng (landlord / staff)
  */
 
+/**
+ * @swagger
+ * /landlords/contracts:
+ *   get:
+ *     summary: Danh sách hợp đồng của landlord
+ *     description: |
+ *       Lấy danh sách toàn bộ hợp đồng mà landlord đã tạo hoặc đang quản lý.  
+ *       Trả về thông tin cơ bản gồm tòa nhà, phòng, người thuê và trạng thái.
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Danh sách hợp đồng của landlord
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                     example: 6742baf3f8899c00123abcd1
+ *                   status:
+ *                     type: string
+ *                     example: sent_to_tenant
+ *                   buildingId:
+ *                     type: object
+ *                     properties:
+ *                       _id: 
+ *                         type: string
+ *                         example: 673ffb17c0d011b27e33ee22
+ *                       name:
+ *                         type: string
+ *                         example: "Tòa nhà Trường Sơn 25"
+ *                   roomId:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: 673ffb2ac0d011b27e33ee45
+ *                       name:
+ *                         type: string
+ *                         example: "Phòng 302"
+ *                   tenantId:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: 673aa901c0d011b27e11aabb
+ *                       name:
+ *                         type: string
+ *                         example: "Nguyễn Văn A"
+ *                       email:
+ *                         type: string
+ *                         example: "nguyenvana@example.com"
+ *                   updatedAt:
+ *                     type: string
+ *                     format: date-time
+ *                     example: "2025-11-11T10:30:00Z"
+ *                   createdAt:
+ *                     type: string
+ *                     format: date-time
+ *                     example: "2025-11-01T08:20:00Z"
+ *       400:
+ *         description: Lỗi hệ thống hoặc tham số không hợp lệ
+ */
+
 router.get(
   "/",
   checkAuthorize("landlord"),
