@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const contractController = require("../../controllers/Landlord/ContractController");
+const contractController = require("../../controllers/Landlord/contractController");
 const checkSubscription = require("../../middleware/checkSubscription");
 /**
  * @swagger
@@ -9,6 +9,11 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *     description: Quản lý quy trình tạo & ký hợp đồng (landlord / staff)
  */
 
+router.get(
+  "/",
+  checkAuthorize("landlord"),
+  contractController.listMine
+);
 /**
  * @swagger
  * /landlords/contracts/from-contact:

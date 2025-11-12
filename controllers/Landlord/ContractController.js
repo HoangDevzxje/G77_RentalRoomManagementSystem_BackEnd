@@ -9,6 +9,22 @@ function getValueByKeyPath(obj, keyPath) {
   return keyPath.split(".").reduce((acc, k) => (acc ? acc[k] : undefined), obj);
 }
 
+// GET /landlords/contracts
+exports.listMine = async (req, res) => {
+  try {
+    const landlordId = req.user._id;
+    const items = await Contract.find({ landlordId })
+      .populate("buildingId", "name")
+      .populate("roomId", "name")
+      .populate("tenantId", "name email")
+      .sort({ updatedAt: -1 })
+      .lean();
+    res.json(items);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
 /** Validate required by template.fields before sign/send */
 function validateRequiredByTemplate(template, contractDoc) {
   const requiredFields = (template?.fields || []).filter((f) => f.required);
