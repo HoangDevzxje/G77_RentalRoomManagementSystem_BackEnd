@@ -16,7 +16,6 @@ const contractTemplateSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Building",
       required: true,
-      index: true,
     },
 
     // Chủ sở hữu mẫu (landlord)
