@@ -6,7 +6,6 @@ const floorSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Building",
       required: true,
-      index: true,
     },
     level: { type: Number, required: true }, // ví dụ: 1, 2, 3...
     description: String,
