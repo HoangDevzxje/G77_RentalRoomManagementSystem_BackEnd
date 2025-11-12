@@ -1,8 +1,13 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const contractController = require("../../controllers/Landlord/ContractController");
+const contractController = require("../../controllers/Landlord/contractController");
 const checkSubscription = require("../../middleware/checkSubscription");
 
+router.get(
+  "/",
+  checkAuthorize("landlord"),
+  contractController.listMine
+);
 router.post(
   "/from-contact",
   checkAuthorize("landlord"),

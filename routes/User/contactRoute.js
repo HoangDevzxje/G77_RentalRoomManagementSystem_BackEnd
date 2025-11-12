@@ -15,12 +15,12 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *   post:
  *     summary: Gửi yêu cầu tạo hợp đồng thuê phòng
  *     description: |
- *       Người thuê có thể gửi yêu cầu tạo hợp đồng đến **chủ trọ**.  
- *       Yêu cầu này có thể được gửi từ **bài đăng** hoặc **trang chi tiết tòa nhà**.  
- *       
- *       🔹 Nếu gửi từ **bài đăng**, cần có `postId` và `buildingId` phải thuộc bài đăng đó.  
- *       🔹 Nếu gửi từ **tòa nhà**, chỉ cần `buildingId` và `roomId`.  
- *       
+ *       Người thuê có thể gửi yêu cầu tạo hợp đồng đến **chủ trọ**.
+ *       Yêu cầu này có thể được gửi từ **bài đăng** hoặc **trang chi tiết tòa nhà**.
+ *
+ *       🔹 Nếu gửi từ **bài đăng**, cần có `postId` và `buildingId` phải thuộc bài đăng đó.
+ *       🔹 Nếu gửi từ **tòa nhà**, chỉ cần `buildingId` và `roomId`.
+ *
  *       Hệ thống sẽ tự động xác định chủ trọ (`landlordId`) từ tòa nhà.
  *     tags: [Resident Contact Request]
  *     security:
@@ -122,7 +122,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *   get:
  *     summary: Lấy danh sách yêu cầu hợp đồng của người thuê
  *     description: |
- *       Hiển thị danh sách các yêu cầu hợp đồng mà người thuê đã gửi đến các chủ trọ.  
+ *       Hiển thị danh sách các yêu cầu hợp đồng mà người thuê đã gửi đến các chủ trọ.
  *       Có thể lọc theo trạng thái (pending, accepted, rejected, cancelled).
  *     tags: [Resident Contact Request]
  *     security:
@@ -215,7 +215,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *   patch:
  *     summary: Hủy yêu cầu tạo hợp đồng
  *     description: |
- *       Người thuê có thể hủy yêu cầu hợp đồng nếu chủ trọ chưa chấp nhận.  
+ *       Người thuê có thể hủy yêu cầu hợp đồng nếu chủ trọ chưa chấp nhận.
  *       Trạng thái sẽ chuyển sang **cancelled**.
  *     tags: [Resident Contact Request]
  *     security:
@@ -248,8 +248,13 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *       500:
  *         description: Lỗi hệ thống khi hủy yêu cầu
  */
+
 router.post("/", checkAuthorize(["resident"]), contactController.createContact);
 router.get("/", checkAuthorize(["resident"]), contactController.getMyContacts);
-router.patch("/:id/status", checkAuthorize(["resident"]), contactController.cancelContact);
+router.patch(
+  "/:id/status",
+  checkAuthorize(["resident"]),
+  contactController.cancelContact
+);
 
 module.exports = router;

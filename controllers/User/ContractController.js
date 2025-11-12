@@ -11,6 +11,8 @@ exports.listMyContracts = async (req, res) => {
 
     const items = await Contract.find(filter)
       .select("_id status buildingId roomId sentToTenantAt updatedAt createdAt")
+      .populate("buildingId", "name")
+      .populate("roomId", "name")
       .sort({ updatedAt: -1 })
       .lean();
 
