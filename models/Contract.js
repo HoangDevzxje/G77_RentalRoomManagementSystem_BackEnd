@@ -111,6 +111,11 @@ const contractSchema = new mongoose.Schema(
       startDate: { type: Date }, // Ngày bắt đầu thuê
       endDate: { type: Date }, // Ngày kết thúc
       signPlace: { type: String }, // Địa điểm ký
+      paymentCycleMonths: {
+        type: Number,
+        default: 1, // 1 tháng / lần
+        min: 1, // tối thiểu 1 tháng
+      },
     },
 
     // Term/Regulation áp dụng

@@ -480,7 +480,7 @@ router.get(
 router.post(
   "/:id/confirm-move-in",
   checkAuthorize("landlord", "staff"),
-  checkSubscription,
+
   contractController.confirmMoveIn
 );
 

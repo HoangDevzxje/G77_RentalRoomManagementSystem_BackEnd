@@ -261,21 +261,33 @@ const contractController = require("../../controllers/User/ContractController");
  *       404:
  *         description: Không tìm thấy tài khoản phù hợp
  */
-router.get("/", checkAuthorize("resident"), contractController.listMyContracts);
-router.get(
-  "/:id",
-  checkAuthorize("resident"),
-  contractController.getMyContract
-);
-router.post(
-  "/:id/sign",
-  checkAuthorize("resident"),
-  contractController.signByTenant
-);
 router.get(
   "/accounts/search-by-email",
   checkAuthorize("resident"),
   contractController.searchAccountByEmail
 );
 
+// GET /contracts
+router.get("/", checkAuthorize("resident"), contractController.listMyContracts);
+
+// GET /contracts/:id
+router.get(
+  "/:id",
+  checkAuthorize("resident"),
+  contractController.getMyContract
+);
+
+// PATCH /contracts/:id
+router.patch(
+  "/:id",
+  checkAuthorize("resident"),
+  contractController.updateMyData
+);
+
+// POST /contracts/:id/sign
+router.post(
+  "/:id/sign",
+  checkAuthorize("resident"),
+  contractController.signByTenant
+);
 module.exports = router;

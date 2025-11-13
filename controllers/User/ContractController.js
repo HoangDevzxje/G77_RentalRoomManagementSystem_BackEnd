@@ -14,7 +14,7 @@ function mapAccountToPerson(acc) {
     name: ui.fullName || "",
     dob: ui.dob || null,
     phone: ui.phoneNumber || "",
-    permanentAddress: ui.address || "",
+    permanentAddress: normalizeAddress(ui.address),
     email: acc.email || "",
 
     // Các field này chưa có trong UserInformation – để trống
@@ -24,6 +24,29 @@ function mapAccountToPerson(acc) {
     bankAccount: "",
     bankName: "",
   };
+}
+function normalizeAddress(raw) {
+  if (!raw) return "";
+
+  // Trường hợp là array (lịch sử địa chỉ)
+  if (Array.isArray(raw)) {
+    if (!raw.length) return "";
+    const last = raw[raw.length - 1]; // lấy địa chỉ gần nhất
+
+    return [last.address, last.wardName, last.districtName, last.provinceName]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  // Trường hợp là object đơn lẻ
+  if (typeof raw === "object") {
+    return [raw.address, raw.wardName, raw.districtName, raw.provinceName]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  // Trường hợp đã là string
+  return String(raw);
 }
 
 // GET /tenants/contracts
@@ -69,12 +92,18 @@ exports.getMyContract = async (req, res) => {
       .populate({
         path: "landlordId",
         select: "email userInfo",
-        populate: { path: "userInfo", select: "fullName phoneNumber address dob" },
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber address dob",
+        },
       })
       .populate({
         path: "roommateIds",
         select: "email userInfo",
-        populate: { path: "userInfo", select: "fullName phoneNumber address dob" },
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber address dob",
+        },
       })
       .lean();
 
@@ -127,10 +156,16 @@ exports.updateMyData = async (req, res) => {
 
     // Cập nhật thông tin Bên B
     if (B) {
-      contract.B = {
+      const merged = {
         ...(contract.B?.toObject?.() || contract.B || {}),
         ...B,
       };
+
+      if (merged.permanentAddress) {
+        merged.permanentAddress = normalizeAddress(merged.permanentAddress);
+      }
+
+      contract.B = merged;
     }
 
     // Danh sách xe
