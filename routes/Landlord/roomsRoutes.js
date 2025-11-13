@@ -478,8 +478,8 @@ router.post(
   "/",
   checkAuthorize(["admin", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.ROOM_CREATE),
-  checkSubscription,
   uploadMultiple,
+  checkSubscription,
   RoomCtrl.create
 );
 
