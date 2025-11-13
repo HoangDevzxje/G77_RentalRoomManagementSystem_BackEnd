@@ -87,7 +87,7 @@ module.exports = async (req, res, next) => {
       if (Array.isArray(bodyData)) {
         additionalRooms = bodyData.length;
       } else {
-        additionalRooms = 1;
+        additionalRooms = 0;
       }
     }
     // === 7. KIỂM TRA GIỚI HẠN ===
