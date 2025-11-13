@@ -7,6 +7,7 @@ const create = async (req, res) => {
     try {
         const { buildingId, title, description, type, amount, recordedAt } = req.body;
         req.body.buildingId = buildingId;
+        if (!title || !description || !type || !amount || !recordedAt) return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
         const building = await Building.findOne({
             _id: buildingId,
             isDeleted: false
@@ -104,13 +105,13 @@ const getById = async (req, res) => {
                 path: "landlordId",
                 select: "email userInfo",
                 populate: {
-                path: "userInfo",
-                model: "UserInformation",
-                select: "fullName phoneNumber address",
-        },
-      });
+                    path: "userInfo",
+                    model: "UserInformation",
+                    select: "fullName phoneNumber address",
+                },
+            });
 
-        if (!record || record.isDeleted) return res.status(404).json({ message: "Không tìm thấy" });
+        if (!record || record.isDeleted) return res.status(404).json({ message: "Không tìm thấy thu chi" });
         res.json(record);
     } catch (err) {
         res.status(500).json({ message: err.message });

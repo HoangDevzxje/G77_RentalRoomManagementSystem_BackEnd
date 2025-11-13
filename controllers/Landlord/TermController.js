@@ -113,7 +113,7 @@ const updateTerm = async (req, res) => {
 
         const term = await Term.findById(id).populate("buildingId");
         if (!term) return res.status(404).json({ message: "Không tìm thấy điều khoản!" });
-
+        if (!name || !description || !status) return res.status(400).json({ message: "Thiếu thông tin bắt buộc!" });
         const buildingId = term.buildingId._id.toString();
 
         if (req.user.role === "staff") {

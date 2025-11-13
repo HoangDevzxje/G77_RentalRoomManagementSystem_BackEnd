@@ -57,14 +57,14 @@ module.exports = async (req, res, next) => {
     // === 6. TÍNH SỐ PHÒNG SẮP TẠO (CHO TẤT CẢ API) ===
     let additionalRooms = 0;
     let bodyData;
-    if (req.body.data) {
+    if (req.body && req.body.data) {
       try {
         bodyData = JSON.parse(req.body.data);
       } catch {
         bodyData = {};
       }
     } else {
-      bodyData = req.body;
+      bodyData = req.body || {};
     }
 
     // 1. quickSetup (tạo tòa + tầng + phòng)

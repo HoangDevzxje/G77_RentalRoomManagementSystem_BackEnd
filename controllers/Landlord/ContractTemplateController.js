@@ -102,7 +102,7 @@ exports.update = async (req, res) => {
       { new: true }
     );
 
-    if (!doc) return res.status(404).json({ message: "Template not found" });
+    if (!doc) return res.status(404).json({ message: "Không tìm thấy mẫu hợp đồng" });
     return res.json(doc);
   } catch (e) {
     return res.status(400).json({ message: e.message });
@@ -117,13 +117,13 @@ exports.remove = async (req, res) => {
     const { id } = req.params;
     const template = await ContractTemplate.findById(id).select("buildingId");
     if (!template)
-      return res.status(404).json({ message: "Template not found" });
+      return res.status(404).json({ message: "Không tìm thấy mẫu hợp đồng" });
 
     const doc = await ContractTemplate.findOneAndDelete({
       _id: id,
     });
-    if (!doc) return res.status(404).json({ message: "Template not found" });
-    return res.json({ message: "Deleted" });
+    if (!doc) return res.status(404).json({ message: "Không tìm thấy mẫu hợp đồng" });
+    return res.json({ message: "Xóa mẫu hợp đồng thành công" });
   } catch (e) {
     return res.status(400).json({ message: e.message });
   }
