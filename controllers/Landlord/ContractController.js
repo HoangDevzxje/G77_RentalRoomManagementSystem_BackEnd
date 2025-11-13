@@ -1,268 +1,364 @@
 const Contract = require("../../models/Contract");
 const Contact = require("../../models/Contact");
 const ContractTemplate = require("../../models/ContractTemplate");
+const Room = require("../../models/Room");
 const Term = require("../../models/Term");
 const Regulation = require("../../models/Regulation");
+const Account = require("../../models/Account");
+const RoomFurniture = require("../../models/RoomFurniture");
+const Furniture = require("../../models/Furniture");
 
-/** Helper: get value by key path "a.b.c" */
-function getValueByKeyPath(obj, keyPath) {
-  return keyPath.split(".").reduce((acc, k) => (acc ? acc[k] : undefined), obj);
-}
-
-// GET /landlords/contracts
-exports.listMine = async (req, res) => {
-  try {
-    const landlordId = req.user._id;
-    const items = await Contract.find({ landlordId })
-      .populate("buildingId", "name")
-      .populate("roomId", "name")
-      .populate("tenantId", "name email")
-      .sort({ updatedAt: -1 })
-      .lean();
-    res.json(items);
-  } catch (e) {
-    res.status(400).json({ message: e.message });
-  }
-};
-
-/** Validate required by template.fields before sign/send */
-function validateRequiredByTemplate(template, contractDoc) {
-  const requiredFields = (template?.fields || []).filter((f) => f.required);
-  const dataRoot = {
-    A: contractDoc.A || {},
-    B: contractDoc.B || {},
-    contract: contractDoc.contract || {},
-    room: contractDoc.room || {},
-  };
-
-  const missing = [];
-  for (const f of requiredFields) {
-    const override = (contractDoc.fieldValues || []).find(
-      (v) => v.key === f.key
-    );
-    const v = override?.value ?? getValueByKeyPath(dataRoot, f.key);
-    const isEmpty =
-      v === null || v === undefined || (typeof v === "string" && !v.trim());
-    if (isEmpty)
-      missing.push({ key: f.key, pdfField: f.pdfField, type: f.type });
-  }
-
-  if (missing.length) {
-    const err = new Error(
-      `Thiếu dữ liệu bắt buộc: ${missing.map((m) => m.key).join(", ")}`
-    );
-    err.code = "VALIDATION_REQUIRED_MISSING";
-    err.missing = missing;
-    throw err;
-  }
-}
-
-/**
- * POST /landlords/contracts/from-contact
- * Body: { contactId }
- * Tạo contract draft từ contact + template của building (kèm default terms/regs)
- */
+// POST /landlords/contracts/from-contact
+// body: { contactId }
 exports.createFromContact = async (req, res) => {
   try {
     const landlordId = req.user?._id;
-    const { contactId } = req.body;
+    const { contactId } = req.body || {};
+
+    if (!contactId) {
+      return res.status(400).json({ message: "Thiếu contactId" });
+    }
 
     const contact = await Contact.findOne({
       _id: contactId,
       landlordId,
       isDeleted: { $ne: true },
     }).lean();
-    if (!contact) return res.status(404).json({ message: "Contact not found" });
 
+    if (!contact) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy yêu cầu liên hệ" });
+    }
+
+    // Nếu đã có hợp đồng từ contact này rồi thì trả luôn
+    const existed = await Contract.findOne({ contactId: contact._id }).lean();
+    if (existed) return res.json(existed);
+
+    // Lấy template
     const template = await ContractTemplate.findOne({
       buildingId: contact.buildingId,
       ownerId: landlordId,
       status: "active",
     }).lean();
-    if (!template)
-      return res
-        .status(404)
-        .json({ message: "Contract template not found for building" });
 
-    const [terms, regs] = await Promise.all([
-      Term.find({
-        _id: { $in: template.defaultTermIds || [] },
-        status: "active",
-        isDeleted: { $ne: true },
-      })
-        .select("_id")
-        .lean(),
-      Regulation.find({
-        _id: { $in: template.defaultRegulationIds || [] },
-        status: "active",
-      })
-        .select("_id")
-        .lean(),
+    const termIds = template?.defaultTermIds || [];
+    const regulationIds = template?.defaultRegulationIds || [];
+
+    // Lấy info landlord & tenant & room để prefill
+    const [landlordAcc, tenantAcc, room] = await Promise.all([
+      Account.findById(landlordId).lean(),
+      Account.findById(contact.tenantId).lean(),
+      Room.findById(contact.roomId).lean(),
     ]);
 
+    const A = landlordAcc
+      ? {
+          name: landlordAcc.name || "",
+          phone: landlordAcc.phone || "",
+          email: landlordAcc.email || "",
+        }
+      : undefined;
+
+    const B = tenantAcc
+      ? {
+          name: tenantAcc.name || "",
+          phone: tenantAcc.phone || "",
+          email: tenantAcc.email || "",
+        }
+      : undefined;
+
+    const contractInfo = {
+      price: room?.price || undefined,
+    };
+
     const doc = await Contract.create({
-      contactId: contact._id,
       landlordId,
       tenantId: contact.tenantId,
       buildingId: contact.buildingId,
       roomId: contact.roomId,
-      templateId: template._id,
-
-      A: {}, // điền ở FE
-      B: { name: contact.contactName, phone: contact.contactPhone }, // gợi ý
-      contract: {},
-      room: {},
-
-      termIds: terms.map((t) => t._id),
-      regulationIds: regs.map((r) => r._id),
-
+      contactId: contact._id,
+      templateId: template?._id,
+      termIds,
+      regulationIds,
+      A,
+      B,
+      contract: contractInfo,
       status: "draft",
     });
 
-    return res.json(doc);
+    res.json(doc);
   } catch (e) {
-    return res
-      .status(400)
-      .json({ message: e.message, code: e.code, missing: e.missing });
+    res.status(400).json({ message: e.message });
   }
 };
 
-/**
- * PUT /landlords/contracts/:id
- * Body: { A?, B?, contract?, room?, fieldValues?, termIds?, regulationIds?, status? }
- * Cập nhật dữ liệu hợp đồng (form). Cho phép chuyển draft -> ready_for_sign
- */
+// PUT /landlords/contracts/:id
+// body: { A, contract, termIds, regulationIds }
 exports.updateData = async (req, res) => {
   try {
     const landlordId = req.user?._id;
     const { id } = req.params;
-    const payload = req.body || {};
+    const {
+      A,
+      contract: contractInfo,
+      termIds,
+      regulationIds,
+    } = req.body || {};
 
     const doc = await Contract.findOne({ _id: id, landlordId });
-    if (!doc) return res.status(404).json({ message: "Contract not found" });
+    if (!doc) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
 
-    if (payload.A) doc.A = payload.A;
-    if (payload.B) doc.B = payload.B;
-    if (payload.contract) doc.contract = payload.contract;
-    if (payload.room) doc.room = payload.room;
+    if (doc.status !== "draft") {
+      // tùy bạn, có thể cho sửa cả khi signed_by_tenant, v.v.
+      // ở đây mình cho sửa khi chưa gửi cho người thuê
+      // nếu muốn thoáng hơn thì bỏ điều kiện này
+      // return res.status(400).json({ message: "Chỉ sửa hợp đồng khi đang ở trạng thái nháp" });
+    }
 
-    if (Array.isArray(payload.fieldValues))
-      doc.fieldValues = payload.fieldValues;
-    if (Array.isArray(payload.termIds) && payload.termIds.length)
-      doc.termIds = payload.termIds;
-    if (Array.isArray(payload.regulationIds) && payload.regulationIds.length)
-      doc.regulationIds = payload.regulationIds;
+    if (A) {
+      doc.A = {
+        ...(doc.A?.toObject?.() || doc.A || {}),
+        ...A,
+      };
+    }
 
-    if (
-      payload.status &&
-      ["draft", "ready_for_sign"].includes(payload.status)
-    ) {
-      doc.status = payload.status;
+    if (contractInfo) {
+      doc.contract = {
+        ...doc.contract,
+        ...contractInfo,
+      };
+    }
+
+    if (Array.isArray(termIds)) {
+      // kiểm tra active
+      const count = await Term.countDocuments({
+        _id: { $in: termIds },
+        status: "active",
+      });
+      if (count !== termIds.length) {
+        return res
+          .status(400)
+          .json({ message: "Một số điều khoản không hợp lệ" });
+      }
+      doc.termIds = termIds;
+    }
+
+    if (Array.isArray(regulationIds)) {
+      const count = await Regulation.countDocuments({
+        _id: { $in: regulationIds },
+        status: "active",
+      });
+      if (count !== regulationIds.length) {
+        return res
+          .status(400)
+          .json({ message: "Một số quy định không hợp lệ" });
+      }
+      doc.regulationIds = regulationIds;
     }
 
     await doc.save();
-    return res.json(doc);
+    res.json(doc);
   } catch (e) {
-    return res.status(400).json({ message: e.message });
+    res.status(400).json({ message: e.message });
   }
 };
 
-/**
- * POST /landlords/contracts/:id/sign-landlord
- * Body: { signatureUrl }
- * Lưu chữ ký chủ trọ (ảnh) và chuyển status -> signed_by_landlord
- */
-exports.signByLandlord = async (req, res) => {
-  try {
-    const landlordId = req.user?._id;
-    const { id } = req.params;
-    const { signatureUrl } = req.body || {};
-    if (!signatureUrl)
-      return res.status(400).json({ message: "signatureUrl is required" });
-
-    const doc = await Contract.findOne({ _id: id, landlordId }).populate(
-      "templateId"
-    );
-    if (!doc) return res.status(404).json({ message: "Contract not found" });
-
-    // Validate required trước khi ký
-    try {
-      validateRequiredByTemplate(doc.templateId, doc);
-    } catch (err) {
-      return res
-        .status(422)
-        .json({ message: err.message, code: err.code, missing: err.missing });
-    }
-
-    doc.landlordSignatureUrl = signatureUrl;
-    doc.status = "signed_by_landlord";
-    await doc.save();
-
-    return res.json({ message: "Đã lưu chữ ký chủ trọ", status: doc.status });
-  } catch (e) {
-    return res.status(400).json({ message: e.message });
-  }
-};
-
-/**
- * POST /landlords/contracts/:id/send-to-tenant
- * Đổi status -> sent_to_tenant (gửi trong hệ thống). Không cho tenant chỉnh sửa.
- */
+// POST /landlords/contracts/:id/send-to-tenant
 exports.sendToTenant = async (req, res) => {
   try {
     const landlordId = req.user?._id;
     const { id } = req.params;
 
-    const doc = await Contract.findOne({ _id: id, landlordId }).populate(
-      "templateId"
-    );
-    if (!doc) return res.status(404).json({ message: "Contract not found" });
-
-    // Validate required lần cuối
-    try {
-      validateRequiredByTemplate(doc.templateId, doc);
-    } catch (err) {
-      return res
-        .status(422)
-        .json({ message: err.message, code: err.code, missing: err.missing });
+    const contract = await Contract.findOne({ _id: id, landlordId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    const ALLOWED = new Set(["ready_for_sign", "signed_by_landlord"]);
-    if (!ALLOWED.has(doc.status)) {
+    if (!["draft", "signed_by_landlord"].includes(contract.status)) {
       return res.status(400).json({
-        message: `Không thể gửi khi đang ở trạng thái: ${doc.status}`,
+        message: `Không thể gửi ở trạng thái hiện tại: ${contract.status}`,
       });
     }
 
-    doc.status = "sent_to_tenant";
-    doc.sentToTenantAt = new Date();
-    await doc.save();
+    contract.status = "sent_to_tenant";
+    contract.sentToTenantAt = new Date();
+    await contract.save();
 
-    // (Tuỳ chọn) gửi notification real-time cho tenant ở đây
-
-    return res.json({
-      message: "Đã gửi hợp đồng trong hệ thống",
-      status: doc.status,
+    res.json({
+      message: "Đã gửi hợp đồng cho người thuê",
+      status: contract.status,
     });
   } catch (e) {
-    return res.status(400).json({ message: e.message });
+    res.status(400).json({ message: e.message });
   }
 };
 
-/** GET /landlords/contracts/:id - xem chi tiết (read-only) */
+// POST /landlords/contracts/:id/sign-landlord
+// body: { signatureUrl }
+exports.signByLandlord = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { id } = req.params;
+    const { signatureUrl } = req.body || {};
+
+    if (!signatureUrl) {
+      return res.status(400).json({ message: "Thiếu signatureUrl" });
+    }
+
+    const contract = await Contract.findOne({ _id: id, landlordId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    if (
+      !["draft", "sent_to_tenant", "signed_by_tenant"].includes(contract.status)
+    ) {
+      return res.status(400).json({
+        message: `Không thể ký ở trạng thái hiện tại: ${contract.status}`,
+      });
+    }
+
+    contract.landlordSignatureUrl = signatureUrl;
+
+    if (contract.tenantSignatureUrl) {
+      contract.status = "completed";
+      contract.completedAt = new Date();
+    } else {
+      contract.status = "signed_by_landlord";
+    }
+
+    await contract.save();
+    res.json({
+      message: "Ký hợp đồng (bên A) thành công",
+      status: contract.status,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// POST /landlords/contracts/:id/confirm-move-in
+exports.confirmMoveIn = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { id } = req.params;
+
+    const contract = await Contract.findOne({ _id: id, landlordId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    if (contract.status !== "completed") {
+      return res.status(400).json({
+        message: "Chỉ xác nhận vào ở khi hợp đồng đã hoàn tất",
+      });
+    }
+
+    const room = await Room.findById(contract.roomId);
+    if (!room) {
+      return res.status(404).json({ message: "Không tìm thấy phòng" });
+    }
+
+    const roommateCount = (contract.roommateIds || []).length;
+    const totalTenant = 1 + roommateCount;
+    if (room.maxTenants && totalTenant > room.maxTenants) {
+      return res.status(400).json({
+        message: `Số người ở (${totalTenant}) vượt quá giới hạn cho phép (${room.maxTenants})`,
+      });
+    }
+
+    room.status = "rented";
+    room.currentTenantIds = [
+      contract.tenantId,
+      ...(contract.roommateIds || []),
+    ];
+    room.currentContractId = contract._id;
+    await room.save();
+
+    res.json({
+      message: "Đã xác nhận người thuê vào ở",
+      roomStatus: room.status,
+      currentTenantIds: room.currentTenantIds,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// GET /landlords/contracts/:id
 exports.getDetail = async (req, res) => {
   try {
     const landlordId = req.user?._id;
     const { id } = req.params;
 
-    const doc = await Contract.findOne({ _id: id, landlordId })
+    const contract = await Contract.findOne({ _id: id, landlordId })
+      .populate("buildingId", "name address")
+      .populate("roomId", "roomNumber price maxTenants")
+      .populate("tenantId", "name email")
+      .populate("roommateIds", "name email")
       .populate("termIds", "name description")
       .populate("regulationIds", "title description effectiveFrom")
       .lean();
 
-    if (!doc) return res.status(404).json({ message: "Contract not found" });
-    return res.json(doc);
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    const roomFurnitures = await RoomFurniture.find({
+      roomId: contract.roomId,
+    })
+      .populate("furnitureId", "name category code")
+      .lean();
+
+    // gom vào response
+    contract.furnitures = roomFurnitures.map((rf) => ({
+      id: rf._id,
+      name: rf.furnitureId?.name,
+      code: rf.furnitureId?.code,
+      category: rf.furnitureId?.category,
+      quantity: rf.quantity,
+      condition: rf.condition,
+      damageCount: rf.damageCount,
+      notes: rf.notes,
+    }));
+
+    res.json(contract);
   } catch (e) {
-    return res.status(400).json({ message: e.message });
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// GET /landlords/contracts
+exports.listMine = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { status, page = 1, limit = 20 } = req.query;
+
+    const filter = { landlordId };
+    if (status) filter.status = status;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [items, total] = await Promise.all([
+      Contract.find(filter)
+        .select(
+          "_id status createdAt updatedAt buildingId roomId tenantId contract.no contract.startDate contract.endDate"
+        )
+        .populate("buildingId", "name")
+        .populate("roomId", "roomNumber")
+        .populate("tenantId", "name email")
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      Contract.countDocuments(filter),
+    ]);
+
+    res.json({ items, total, page: Number(page), limit: Number(limit) });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
   }
 };

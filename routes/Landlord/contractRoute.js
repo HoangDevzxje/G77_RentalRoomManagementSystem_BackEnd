@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const contractController = require("../../controllers/Landlord/contractController");
+const contractController = require("../../controllers/Landlord/ContractController");
 const checkSubscription = require("../../middleware/checkSubscription");
 /**
  * @swagger
@@ -15,7 +15,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *   get:
  *     summary: Danh sách hợp đồng của landlord
  *     description: |
- *       Lấy danh sách toàn bộ hợp đồng mà landlord đã tạo hoặc đang quản lý.  
+ *       Lấy danh sách toàn bộ hợp đồng mà landlord đã tạo hoặc đang quản lý.
  *       Trả về thông tin cơ bản gồm tòa nhà, phòng, người thuê và trạng thái.
  *     tags: [Landlord Contracts]
  *     security:
@@ -39,7 +39,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   buildingId:
  *                     type: object
  *                     properties:
- *                       _id: 
+ *                       _id:
  *                         type: string
  *                         example: 673ffb17c0d011b27e33ee22
  *                       name:
@@ -78,18 +78,13 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         description: Lỗi hệ thống hoặc tham số không hợp lệ
  */
 
-router.get(
-  "/",
-  checkAuthorize("landlord"),
-  contractController.listMine
-);
 /**
  * @swagger
  * /landlords/contracts/from-contact:
  *   post:
  *     summary: Tạo hợp đồng draft từ Contact (yêu cầu tạo hợp đồng)
  *     description: |
- *       Tạo một hợp đồng nháp (draft) dựa trên `Contact` (yêu cầu tạo hợp đồng của tenant) và ContractTemplate của tòa.  
+ *       Tạo một hợp đồng nháp (draft) dựa trên `Contact` (yêu cầu tạo hợp đồng của tenant) và ContractTemplate của tòa.
  *       Endpoint này chỉ dành cho landlord hoặc staff của landlord.
  *     tags: [Landlord Contracts]
  *     security:
@@ -139,7 +134,7 @@ router.get(
  *   put:
  *     summary: Cập nhật dữ liệu hợp đồng (form)
  *     description: |
- *       Cập nhật nội dung hợp đồng (Bên A, B, thông tin hợp đồng, room, fieldValues, termIds, regulationIds...).  
+ *       Cập nhật nội dung hợp đồng (Bên A, B, thông tin hợp đồng, room, fieldValues, termIds, regulationIds...).
  *       Chỉ cho phép chuyển trạng thái: `draft` -> `ready_for_sign`. (Trạng thái khác bị chặn)
  *     tags: [Landlord Contracts]
  *     security:
@@ -216,7 +211,7 @@ router.get(
  *   post:
  *     summary: Lưu chữ ký của chủ trọ và đánh dấu đã ký bởi chủ trọ
  *     description: |
- *       Lưu `signatureUrl` (URL ảnh/chữ ký) cho hợp đồng và chuyển trạng thái sang `signed_by_landlord`.  
+ *       Lưu `signatureUrl` (URL ảnh/chữ ký) cho hợp đồng và chuyển trạng thái sang `signed_by_landlord`.
  *       Trước khi ký sẽ validate các trường `required` theo template; nếu thiếu sẽ trả về 422 với chi tiết missing fields.
  *     tags: [Landlord Contracts]
  *     security:
@@ -286,7 +281,7 @@ router.get(
  *   post:
  *     summary: Gửi hợp đồng nội bộ tới tenant (change status -> sent_to_tenant)
  *     description: |
- *       Gửi hợp đồng cho tenant sau khi chủ trọ đã ký. Kiểm tra validate required lần cuối trước khi gửi.  
+ *       Gửi hợp đồng cho tenant sau khi chủ trọ đã ký. Kiểm tra validate required lần cuối trước khi gửi.
  *       Chỉ cho phép khi status đã ở `ready_for_sign` hoặc `signed_by_landlord`.
  *     tags: [Landlord Contracts]
  *     security:
@@ -385,16 +380,19 @@ router.get(
  *       404:
  *         description: Contract không tìm thấy
  */
+router.get("/", checkAuthorize("landlord"), contractController.listMine);
 router.post(
   "/from-contact",
   checkAuthorize("landlord", "staff"),
   checkSubscription,
   contractController.createFromContact
 );
-router.put("/:id",
+router.put(
+  "/:id",
   checkAuthorize("landlord", "staff"),
   checkSubscription,
-  contractController.updateData);
+  contractController.updateData
+);
 router.post(
   "/:id/sign-landlord",
   checkAuthorize("landlord", "staff"),
@@ -407,9 +405,17 @@ router.post(
   checkSubscription,
   contractController.sendToTenant
 );
-router.get("/:id",
+router.post(
+  "/:id/confirm-move-in",
   checkAuthorize("landlord", "staff"),
   checkSubscription,
-  contractController.getDetail);
+  contractController.confirmMoveIn
+);
+router.get(
+  "/:id",
+  checkAuthorize("landlord", "staff"),
+  checkSubscription,
+  contractController.getDetail
+);
 
 module.exports = router;
