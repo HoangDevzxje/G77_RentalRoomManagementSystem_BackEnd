@@ -89,8 +89,8 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts/from-contact:
  *   post:
- *     summary: Tạo hợp đồng draft từ Contact (yêu cầu tạo hợp đồng)
- *     description: Tạo một contract draft dựa trên Contact; nếu đã tồn tại contract từ contact đó sẽ trả về luôn document đã có.
+ *     summary: Tạo hợp đồng draft từ Contact
+ *     description: Nếu Contact đã có contract, trả về contract cũ. Nếu chưa, tạo contract draft có sẵn snapshot terms/regulations.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -100,15 +100,14 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - contactId
+ *             required: [contactId]
  *             properties:
  *               contactId:
  *                 type: string
  *                 example: 67201df5c1234ab987654321
  *     responses:
  *       200:
- *         description: Trả về contract (draft) vừa tạo hoặc đã tồn tại
+ *         description: Contract draft được trả về
  *         content:
  *           application/json:
  *             schema:
@@ -116,15 +115,20 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       400:
  *         description: Thiếu contactId hoặc lỗi dữ liệu
  *       404:
- *         description: Contact hoặc ContractTemplate không tìm thấy
+ *         description: Không tìm thấy Contact hoặc Template
  */
 
 /**
  * @swagger
  * /landlords/contracts/{id}:
  *   put:
- *     summary: Cập nhật dữ liệu hợp đồng (draft hoặc cập nhật)
- *     description: Cập nhật thông tin hợp đồng, snapshot terms/regulations, thông tin A/B, thông tin contract (no, price, dates...), có thể gửi status = ready_for_sign.
+ *     summary: Cập nhật dữ liệu hợp đồng (chỉ khi trạng thái là draft)
+ *     description:
+ *       - Cập nhật thông tin hợp đồng
+ *       - Cập nhật snapshot điều khoản (terms)
+ *       - Cập nhật nội quy (regulations)
+ *       - Cập nhật thông tin bên A
+ *       - Các trường không gửi sẽ giữ nguyên
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -144,39 +148,54 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *               A:
  *                 type: object
  *                 description: Thông tin bên A (chủ trọ)
+ *                 properties:
+ *                   name: { type: string }
+ *                   dob: { type: string, format: date }
+ *                   phone: { type: string }
+ *                   permanentAddress: { type: string }
+ *                   email: { type: string }
+ *
  *               contract:
  *                 type: object
  *                 properties:
  *                   no: { type: string }
  *                   price: { type: number }
  *                   deposit: { type: number }
+ *                   signDate: { type: string, format: date }
  *                   startDate: { type: string, format: date }
  *                   endDate: { type: string, format: date }
  *                   signPlace: { type: string }
- *               termIds:
- *                 type: array
- *                 items: { type: string }
- *               regulationIds:
- *                 type: array
- *                 items: { type: string }
+ *
  *               terms:
  *                 type: array
+ *                 description: Danh sách snapshot điều khoản (ghi đè hoàn toàn)
  *                 items:
  *                   type: object
+ *                   required: [name, description]
+ *                   properties:
+ *                     name: { type: string }
+ *                     description: { type: string }
+ *                     order: { type: number }
+ *
  *               regulations:
  *                 type: array
+ *                 description: Danh sách snapshot nội quy (ghi đè hoàn toàn)
  *                 items:
  *                   type: object
- *               status:
- *                 type: string
- *                 enum: [draft, ready_for_sign]
+ *                   required: [title, description]
+ *                   properties:
+ *                     title: { type: string }
+ *                     description: { type: string }
+ *                     effectiveFrom: { type: string, format: date }
+ *                     order: { type: number }
+ *
  *     responses:
  *       200:
- *         description: Cập nhật thành công, trả về document contract đã cập nhật
+ *         description: Cập nhật thành công
  *       400:
  *         description: Dữ liệu không hợp lệ
  *       404:
- *         description: Không tìm thấy contract
+ *         description: Không tìm thấy hợp đồng
  */
 
 /**

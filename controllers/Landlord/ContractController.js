@@ -8,6 +8,30 @@ const Account = require("../../models/Account");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Furniture = require("../../models/Furniture");
 
+function normalizeAddress(raw) {
+  if (!raw) return "";
+
+  // Trường hợp là array (lịch sử địa chỉ)
+  if (Array.isArray(raw)) {
+    if (!raw.length) return "";
+    const last = raw[raw.length - 1]; // lấy địa chỉ gần nhất
+
+    return [last.address, last.wardName, last.districtName, last.provinceName]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  // Trường hợp là object đơn lẻ
+  if (typeof raw === "object") {
+    return [raw.address, raw.wardName, raw.districtName, raw.provinceName]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  // Trường hợp đã là string
+  return String(raw);
+}
+
 // Helper: map Account + UserInformation -> personSchema
 function mapAccountToPerson(acc) {
   if (!acc) return undefined;
@@ -17,10 +41,9 @@ function mapAccountToPerson(acc) {
     name: ui.fullName || "",
     dob: ui.dob || null,
     phone: ui.phoneNumber || "",
-    permanentAddress: ui.address || "",
+    permanentAddress: normalizeAddress(ui.address),
     email: acc.email || "",
 
-    // Các field này hiện chưa lưu trong UserInformation
     cccd: "",
     cccdIssuedDate: null,
     cccdIssuedPlace: "",
@@ -150,14 +173,7 @@ exports.updateData = async (req, res) => {
   try {
     const landlordId = req.user?._id;
     const { id } = req.params;
-    const {
-      A,
-      contract: contractInfo,
-      termIds,
-      regulationIds,
-      terms,
-      regulations,
-    } = req.body || {};
+    const { A, contract: contractInfo, terms, regulations } = req.body || {};
 
     const doc = await Contract.findOne({ _id: id, landlordId });
     if (!doc) {
@@ -183,54 +199,12 @@ exports.updateData = async (req, res) => {
       };
     }
 
-    // Nếu FE gửi sẵn snapshot terms -> dùng luôn
     if (Array.isArray(terms)) {
       doc.terms = terms;
-    } else if (Array.isArray(termIds)) {
-      // Nếu FE chỉ gửi danh sách termIds -> fetch & snapshot
-      const list = await Term.find({
-        _id: { $in: termIds },
-        status: "active",
-      })
-        .sort({ createdAt: 1 })
-        .lean();
-
-      if (list.length !== termIds.length) {
-        return res
-          .status(400)
-          .json({ message: "Một số điều khoản không hợp lệ" });
-      }
-
-      doc.terms = list.map((t, idx) => ({
-        name: t.name,
-        description: t.description,
-        order: idx + 1,
-      }));
     }
 
-    // Tương tự cho regulations
     if (Array.isArray(regulations)) {
       doc.regulations = regulations;
-    } else if (Array.isArray(regulationIds)) {
-      const list = await Regulation.find({
-        _id: { $in: regulationIds },
-        status: "active",
-      })
-        .sort({ createdAt: 1 })
-        .lean();
-
-      if (list.length !== regulationIds.length) {
-        return res
-          .status(400)
-          .json({ message: "Một số quy định không hợp lệ" });
-      }
-
-      doc.regulations = list.map((r, idx) => ({
-        title: r.title,
-        description: r.description,
-        effectiveFrom: r.effectiveFrom,
-        order: idx + 1,
-      }));
     }
 
     await doc.save();
