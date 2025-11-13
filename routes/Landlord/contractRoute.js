@@ -387,32 +387,38 @@ const checkSubscription = require("../../middleware/checkSubscription");
 router.post(
   "/from-contact",
   checkAuthorize("landlord", "staff"),
-  checkSubscription,
+
   contractController.createFromContact
 );
 router.put(
   "/:id",
   checkAuthorize("landlord", "staff"),
-  checkSubscription,
+
   contractController.updateData
 );
 router.post(
   "/:id/sign-landlord",
   checkAuthorize("landlord", "staff"),
-  checkSubscription,
+
   contractController.signByLandlord
 );
 router.post(
   "/:id/send-to-tenant",
   checkAuthorize("landlord", "staff"),
-  checkSubscription,
+
   contractController.sendToTenant
 );
 router.get(
   "/:id",
   checkAuthorize("landlord", "staff"),
-  checkSubscription,
+
   contractController.getDetail
+);
+router.get(
+  "/",
+  checkAuthorize("landlord", "staff"),
+
+  contractController.listMine
 );
 
 module.exports = router;
