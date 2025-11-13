@@ -78,11 +78,9 @@ exports.createFromContact = async (req, res) => {
       for (let i = 0; i < terms.length; i++) {
         const t = terms[i];
         termSnapshots.push({
-          termId: t._id,
           name: t.name,
           description: t.description,
           order: i + 1,
-          isCustom: false,
         });
       }
     }
@@ -98,12 +96,10 @@ exports.createFromContact = async (req, res) => {
       for (let i = 0; i < regs.length; i++) {
         const r = regs[i];
         regulationSnapshots.push({
-          regulationId: r._id,
           title: r.title,
           description: r.description,
           effectiveFrom: r.effectiveFrom,
           order: i + 1,
-          isCustom: false,
         });
       }
     }
@@ -206,11 +202,9 @@ exports.updateData = async (req, res) => {
       }
 
       doc.terms = list.map((t, idx) => ({
-        termId: t._id,
         name: t.name,
         description: t.description,
         order: idx + 1,
-        isCustom: false,
       }));
     }
 
@@ -232,12 +226,10 @@ exports.updateData = async (req, res) => {
       }
 
       doc.regulations = list.map((r, idx) => ({
-        regulationId: r._id,
         title: r.title,
         description: r.description,
         effectiveFrom: r.effectiveFrom,
         order: idx + 1,
-        isCustom: false,
       }));
     }
 

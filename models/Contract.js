@@ -26,29 +26,19 @@ const bikeSchema = new mongoose.Schema(
 
 const termSnapshotSchema = new mongoose.Schema(
   {
-    termId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Term", // để biết lấy từ term nào, nếu có
-    },
     name: { type: String, required: true }, // tên điều khoản tại thời điểm ký
     description: { type: String, required: true }, // nội dung điều khoản
     order: { type: Number }, // thứ tự hiển thị
-    isCustom: { type: Boolean, default: false }, // điều khoản tự thêm
   },
   { _id: false }
 );
 
 const regulationSnapshotSchema = new mongoose.Schema(
   {
-    regulationId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Regulation",
-    },
     title: { type: String, required: true }, // tiêu đề nội quy
     description: { type: String, required: true }, // nội dung chi tiết
     effectiveFrom: { type: Date }, // nếu muốn lưu luôn mốc hiệu lực
     order: { type: Number }, // thứ tự
-    isCustom: { type: Boolean, default: false }, // nội quy do landlord tự thêm riêng cho HĐ này
   },
   { _id: false }
 );
