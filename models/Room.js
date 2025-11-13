@@ -27,20 +27,6 @@ const roomSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Danh sách người đang ở trong phòng
-    currentTenantIds: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Account",
-      },
-    ],
-
-    // Hợp đồng hiện tại
-    currentContractId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Contract",
-    },
-
     eStart: { type: Number, default: 0, min: 0 }, // chỉ số điện bắt đầu
     wStart: { type: Number, default: 0, min: 0 }, // chỉ số nước bắt đầu
 

@@ -9,13 +9,12 @@ const personSchema = new mongoose.Schema(
     cccdIssuedPlace: { type: String }, // Nơi cấp
     permanentAddress: { type: String }, // Hộ khẩu thường trú
     phone: { type: String }, // Điện thoại
-    bankAccount: { type: String }, // Số tài khoản
-    bankName: { type: String }, // Tên ngân hàng
     email: { type: String }, // Email (tiện map với Account)
   },
   { _id: false }
 );
 
+// Hợp đồng hiện tại
 const bikeSchema = new mongoose.Schema(
   {
     bikeNumber: { type: String, required: true }, // Biển số xe / mã xe
@@ -24,6 +23,7 @@ const bikeSchema = new mongoose.Schema(
   },
   { _id: true }
 );
+
 const termSnapshotSchema = new mongoose.Schema(
   {
     termId: {
@@ -101,6 +101,11 @@ const contractSchema = new mongoose.Schema(
     A: personSchema, // Bên A – chủ nhà
     B: personSchema, // Bên B – người thuê chính
 
+    occupants: {
+      type: [personSchema],
+      default: [],
+    },
+
     // Danh sách xe của người thuê (và roommate nếu muốn gom chung)
     bikes: {
       type: [bikeSchema],
@@ -145,7 +150,6 @@ const contractSchema = new mongoose.Schema(
       default: "draft",
       index: true,
     },
-
     sentToTenantAt: { type: Date },
     completedAt: { type: Date },
   },

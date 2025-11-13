@@ -1,10 +1,30 @@
 const Contract = require("../../models/Contract");
 const Account = require("../../models/Account");
 const Room = require("../../models/Room");
-const Term = require("../../models/Term");
-const Regulation = require("../../models/Regulation");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Furniture = require("../../models/Furniture");
+const UserInformation = require("../../models/UserInformation");
+
+// Helper: map Account + UserInformation -> personSchema
+function mapAccountToPerson(acc) {
+  if (!acc) return undefined;
+  const ui = acc.userInfo || {};
+
+  return {
+    name: ui.fullName || "",
+    dob: ui.dob || null,
+    phone: ui.phoneNumber || "",
+    permanentAddress: ui.address || "",
+    email: acc.email || "",
+
+    // Các field này chưa có trong UserInformation – để trống
+    cccd: "",
+    cccdIssuedDate: null,
+    cccdIssuedPlace: "",
+    bankAccount: "",
+    bankName: "",
+  };
+}
 
 // GET /tenants/contracts
 exports.listMyContracts = async (req, res) => {
@@ -46,14 +66,22 @@ exports.getMyContract = async (req, res) => {
     const doc = await Contract.findOne({ _id: id, tenantId })
       .populate("buildingId", "name address")
       .populate("roomId", "roomNumber price maxTenants")
-      .populate("termIds", "name description")
-      .populate("regulationIds", "title description")
-      .populate("roommateIds", "name email")
+      .populate({
+        path: "landlordId",
+        select: "email userInfo",
+        populate: { path: "userInfo", select: "fullName phoneNumber address dob" },
+      })
+      .populate({
+        path: "roommateIds",
+        select: "email userInfo",
+        populate: { path: "userInfo", select: "fullName phoneNumber address dob" },
+      })
       .lean();
 
     if (!doc)
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
 
+    // Lấy danh sách nội thất trong phòng
     const roomFurnitures = await RoomFurniture.find({
       roomId: doc.roomId,
     })
@@ -97,6 +125,7 @@ exports.updateMyData = async (req, res) => {
       });
     }
 
+    // Cập nhật thông tin Bên B
     if (B) {
       contract.B = {
         ...(contract.B?.toObject?.() || contract.B || {}),
@@ -104,7 +133,7 @@ exports.updateMyData = async (req, res) => {
       };
     }
 
-    // bikes
+    // Danh sách xe
     if (Array.isArray(bikes)) {
       contract.bikes = bikes
         .filter((b) => b && b.bikeNumber)
@@ -147,6 +176,27 @@ exports.updateMyData = async (req, res) => {
 
       contract.roommateIds = Array.from(idSet);
     }
+
+    // 🔥 Build lại occupants (danh sách người ở) từ B + roommateIds
+    const occupants = [];
+    if (contract.B && contract.B.name) {
+      occupants.push(contract.B);
+    }
+
+    if (Array.isArray(contract.roommateIds) && contract.roommateIds.length) {
+      const roommateAccounts = await Account.find({
+        _id: { $in: contract.roommateIds },
+      })
+        .populate("userInfo")
+        .lean();
+
+      for (const acc of roommateAccounts) {
+        const person = mapAccountToPerson(acc);
+        if (person && person.name) occupants.push(person);
+      }
+    }
+
+    contract.occupants = occupants;
 
     await contract.save();
     res.json(contract);
@@ -194,5 +244,53 @@ exports.signByTenant = async (req, res) => {
     });
   } catch (e) {
     res.status(400).json({ message: e.message });
+  }
+};
+
+// GET /tenants/accounts/search-by-email?email=...
+exports.searchAccountByEmail = async (req, res) => {
+  try {
+    const tenantId = req.user?._id;
+    const { email } = req.query || {};
+
+    if (!email) {
+      return res.status(400).json({ message: "Thiếu email" });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const acc = await Account.findOne({
+      email: normalizedEmail,
+      isActivated: true,
+      role: "resident", // chỉ cho phép thêm tài khoản người thuê khác
+    })
+      .populate("userInfo")
+      .lean();
+
+    if (!acc) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy tài khoản với email này" });
+    }
+
+    // Không cho tự add chính mình làm roommate
+    if (String(acc._id) === String(tenantId)) {
+      return res.status(400).json({
+        message: "Bạn không thể thêm chính mình làm người ở cùng",
+      });
+    }
+
+    const ui = acc.userInfo || {};
+
+    return res.json({
+      id: acc._id,
+      email: acc.email,
+      fullName: ui.fullName || "",
+      phoneNumber: ui.phoneNumber || "",
+      dob: ui.dob || null,
+      address: ui.address || "",
+    });
+  } catch (e) {
+    return res.status(400).json({ message: e.message });
   }
 };

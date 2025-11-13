@@ -8,6 +8,27 @@ const Account = require("../../models/Account");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Furniture = require("../../models/Furniture");
 
+// Helper: map Account + UserInformation -> personSchema
+function mapAccountToPerson(acc) {
+  if (!acc) return undefined;
+  const ui = acc.userInfo || {};
+
+  return {
+    name: ui.fullName || "",
+    dob: ui.dob || null,
+    phone: ui.phoneNumber || "",
+    permanentAddress: ui.address || "",
+    email: acc.email || "",
+
+    // Các field này hiện chưa lưu trong UserInformation
+    cccd: "",
+    cccdIssuedDate: null,
+    cccdIssuedPlace: "",
+    bankAccount: "",
+    bankName: "",
+  };
+}
+
 // POST /landlords/contracts/from-contact
 // body: { contactId }
 exports.createFromContact = async (req, res) => {
@@ -42,31 +63,60 @@ exports.createFromContact = async (req, res) => {
       status: "active",
     }).lean();
 
-    const termIds = template?.defaultTermIds || [];
-    const regulationIds = template?.defaultRegulationIds || [];
+    // Chuẩn bị snapshot điều khoản & nội quy từ template
+    const termSnapshots = [];
+    const regulationSnapshots = [];
+
+    if (template?.defaultTermIds?.length) {
+      const terms = await Term.find({
+        _id: { $in: template.defaultTermIds },
+        status: "active",
+      })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      for (let i = 0; i < terms.length; i++) {
+        const t = terms[i];
+        termSnapshots.push({
+          termId: t._id,
+          name: t.name,
+          description: t.description,
+          order: i + 1,
+          isCustom: false,
+        });
+      }
+    }
+
+    if (template?.defaultRegulationIds?.length) {
+      const regs = await Regulation.find({
+        _id: { $in: template.defaultRegulationIds },
+        status: "active",
+      })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      for (let i = 0; i < regs.length; i++) {
+        const r = regs[i];
+        regulationSnapshots.push({
+          regulationId: r._id,
+          title: r.title,
+          description: r.description,
+          effectiveFrom: r.effectiveFrom,
+          order: i + 1,
+          isCustom: false,
+        });
+      }
+    }
 
     // Lấy info landlord & tenant & room để prefill
     const [landlordAcc, tenantAcc, room] = await Promise.all([
-      Account.findById(landlordId).lean(),
-      Account.findById(contact.tenantId).lean(),
+      Account.findById(landlordId).populate("userInfo").lean(),
+      Account.findById(contact.tenantId).populate("userInfo").lean(),
       Room.findById(contact.roomId).lean(),
     ]);
 
-    const A = landlordAcc
-      ? {
-          name: landlordAcc.name || "",
-          phone: landlordAcc.phone || "",
-          email: landlordAcc.email || "",
-        }
-      : undefined;
-
-    const B = tenantAcc
-      ? {
-          name: tenantAcc.name || "",
-          phone: tenantAcc.phone || "",
-          email: tenantAcc.email || "",
-        }
-      : undefined;
+    const A = mapAccountToPerson(landlordAcc);
+    const B = mapAccountToPerson(tenantAcc);
 
     const contractInfo = {
       price: room?.price || undefined,
@@ -79,11 +129,16 @@ exports.createFromContact = async (req, res) => {
       roomId: contact.roomId,
       contactId: contact._id,
       templateId: template?._id,
-      termIds,
-      regulationIds,
+
+      // snapshot điều khoản & nội quy
+      terms: termSnapshots,
+      regulations: regulationSnapshots,
+
+      // prefill thông tin hai bên
       A,
       B,
       contract: contractInfo,
+
       status: "draft",
     });
 
@@ -94,7 +149,7 @@ exports.createFromContact = async (req, res) => {
 };
 
 // PUT /landlords/contracts/:id
-// body: { A, contract, termIds, regulationIds }
+// body: { A, contract, termIds?, regulationIds?, terms?, regulations? }
 exports.updateData = async (req, res) => {
   try {
     const landlordId = req.user?._id;
@@ -104,6 +159,8 @@ exports.updateData = async (req, res) => {
       contract: contractInfo,
       termIds,
       regulationIds,
+      terms,
+      regulations,
     } = req.body || {};
 
     const doc = await Contract.findOne({ _id: id, landlordId });
@@ -112,9 +169,7 @@ exports.updateData = async (req, res) => {
     }
 
     if (doc.status !== "draft") {
-      // tùy bạn, có thể cho sửa cả khi signed_by_tenant, v.v.
-      // ở đây mình cho sửa khi chưa gửi cho người thuê
-      // nếu muốn thoáng hơn thì bỏ điều kiện này
+      // nếu muốn chặt chẽ thì mở comment dưới:
       // return res.status(400).json({ message: "Chỉ sửa hợp đồng khi đang ở trạng thái nháp" });
     }
 
@@ -132,31 +187,58 @@ exports.updateData = async (req, res) => {
       };
     }
 
-    if (Array.isArray(termIds)) {
-      // kiểm tra active
-      const count = await Term.countDocuments({
+    // Nếu FE gửi sẵn snapshot terms -> dùng luôn
+    if (Array.isArray(terms)) {
+      doc.terms = terms;
+    } else if (Array.isArray(termIds)) {
+      // Nếu FE chỉ gửi danh sách termIds -> fetch & snapshot
+      const list = await Term.find({
         _id: { $in: termIds },
         status: "active",
-      });
-      if (count !== termIds.length) {
+      })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      if (list.length !== termIds.length) {
         return res
           .status(400)
           .json({ message: "Một số điều khoản không hợp lệ" });
       }
-      doc.termIds = termIds;
+
+      doc.terms = list.map((t, idx) => ({
+        termId: t._id,
+        name: t.name,
+        description: t.description,
+        order: idx + 1,
+        isCustom: false,
+      }));
     }
 
-    if (Array.isArray(regulationIds)) {
-      const count = await Regulation.countDocuments({
+    // Tương tự cho regulations
+    if (Array.isArray(regulations)) {
+      doc.regulations = regulations;
+    } else if (Array.isArray(regulationIds)) {
+      const list = await Regulation.find({
         _id: { $in: regulationIds },
         status: "active",
-      });
-      if (count !== regulationIds.length) {
+      })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      if (list.length !== regulationIds.length) {
         return res
           .status(400)
           .json({ message: "Một số quy định không hợp lệ" });
       }
-      doc.regulationIds = regulationIds;
+
+      doc.regulations = list.map((r, idx) => ({
+        regulationId: r._id,
+        title: r.title,
+        description: r.description,
+        effectiveFrom: r.effectiveFrom,
+        order: idx + 1,
+        isCustom: false,
+      }));
     }
 
     await doc.save();
@@ -297,23 +379,35 @@ exports.getDetail = async (req, res) => {
     const contract = await Contract.findOne({ _id: id, landlordId })
       .populate("buildingId", "name address")
       .populate("roomId", "roomNumber price maxTenants")
-      .populate("tenantId", "name email")
-      .populate("roommateIds", "name email")
-      .populate("termIds", "name description")
-      .populate("regulationIds", "title description effectiveFrom")
+      .populate({
+        path: "tenantId",
+        select: "email userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber address dob",
+        },
+      })
+      .populate({
+        path: "roommateIds",
+        select: "email userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber address dob",
+        },
+      })
       .lean();
 
     if (!contract) {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
+    // Lấy danh sách nội thất trong phòng
     const roomFurnitures = await RoomFurniture.find({
       roomId: contract.roomId,
     })
       .populate("furnitureId", "name category code")
       .lean();
 
-    // gom vào response
     contract.furnitures = roomFurnitures.map((rf) => ({
       id: rf._id,
       name: rf.furnitureId?.name,
@@ -349,7 +443,11 @@ exports.listMine = async (req, res) => {
         )
         .populate("buildingId", "name")
         .populate("roomId", "roomNumber")
-        .populate("tenantId", "name email")
+        .populate({
+          path: "tenantId",
+          select: "email userInfo",
+          populate: { path: "userInfo", select: "fullName phoneNumber" },
+        })
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(Number(limit))

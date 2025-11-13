@@ -14,5 +14,10 @@ router.post(
   checkAuthorize("resident"),
   contractController.signByTenant
 );
+router.get(
+  "/accounts/search-by-email",
+  checkAuthorize("resident"),
+  contractController.searchAccountByEmail
+);
 
 module.exports = router;
