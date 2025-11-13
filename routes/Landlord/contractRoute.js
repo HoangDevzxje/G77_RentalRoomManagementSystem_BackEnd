@@ -383,6 +383,63 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       404:
  *         description: Contract không tìm thấy
  */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/confirm-move-in:
+ *   post:
+ *     summary: Xác nhận người thuê đã vào ở
+ *     description: >
+ *       Sau khi hợp đồng đã ở trạng thái **completed**, landlord xác nhận tenant vào ở.
+ *       Endpoint sẽ cập nhật:
+ *         - trạng thái phòng → "rented"
+ *         - danh sách currentTenantIds trong Room
+ *         - currentContractId của phòng
+ *
+ *       Chỉ hoạt động khi:
+ *         - Hợp đồng tồn tại và thuộc về landlord đang đăng nhập
+ *         - Contract.status === "completed"
+ *         - Số người thuê không vượt quá room.maxTenants
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: ID của hợp đồng
+ *         schema:
+ *           type: string
+ *           example: 6915aa921f76ddc90308da5f
+ *     responses:
+ *       200:
+ *         description: Xác nhận vào ở thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã xác nhận người thuê vào ở
+ *                 roomStatus:
+ *                   type: string
+ *                   example: rented
+ *                 currentTenantIds:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example:
+ *                     - 68d7dad6cadcf51ed611e121
+ *                     - 68f21dd6cadcf51ab5a1d333
+ *
+ *       400:
+ *         description: >
+ *           Các trường hợp lỗi:
+ *             - Hợp đồng chưa hoàn tất (status != completed)
+ *             - Số lượng tenant vượt quá room.maxTenants
+ *       404:
+ *         description: Contract hoặc Room không tìm thấy
+ */
 
 router.post(
   "/from-contact",
@@ -419,6 +476,12 @@ router.get(
   checkAuthorize("landlord", "staff"),
 
   contractController.listMine
+);
+router.post(
+  "/:id/confirm-move-in",
+  checkAuthorize("landlord", "staff"),
+  checkSubscription,
+  contractController.confirmMoveIn
 );
 
 module.exports = router;
