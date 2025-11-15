@@ -77,7 +77,7 @@ const contractController = require("../../controllers/User/ContractController");
  * /contracts/{id}:
  *   get:
  *     summary: Lấy chi tiết hợp đồng của người thuê
- *     description: Trả về toàn bộ thông tin hợp đồng, bên A (landlord), roommate, danh sách nội thất trong phòng,...
+ *     description: Trả về toàn bộ thông tin hợp đồng, bên A (landlord), bên B (tenant chính), danh sách roommates (người ở cùng), danh sách nội thất,...
  *     tags: [Resident Contracts]
  *     security:
  *       - bearerAuth: []
@@ -107,18 +107,59 @@ const contractController = require("../../controllers/User/ContractController");
  *                     roomNumber: { type: string }
  *                     price: { type: number }
  *                     maxTenants: { type: number }
- *                 landlordId:
+ *                 A:
  *                   type: object
+ *                   description: Thông tin bên A – chủ trọ
  *                   properties:
+ *                     name: { type: string }
+ *                     dob: { type: string, format: date }
+ *                     cccd: { type: string }
+ *                     phone: { type: string }
+ *                     permanentAddress: { type: string }
  *                     email: { type: string }
- *                     userInfo:
- *                       type: object
- *                       properties:
- *                         fullName: { type: string }
- *                         phoneNumber: { type: string }
- *                         address: { type: string }
+ *                 B:
+ *                   type: object
+ *                   description: Thông tin bên B – người thuê chính
+ *                   properties:
+ *                     name: { type: string }
+ *                     dob: { type: string, format: date }
+ *                     cccd: { type: string }
+ *                     phone: { type: string }
+ *                     permanentAddress: { type: string }
+ *                     email: { type: string }
+ *                 roommates:
+ *                   type: array
+ *                   description: Danh sách người ở cùng (không bắt buộc có tài khoản)
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name: { type: string }
+ *                       dob: { type: string, format: date }
+ *                       cccd: { type: string }
+ *                       phone: { type: string }
+ *                       permanentAddress: { type: string }
+ *                       email: { type: string }
+ *                 bikes:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       bikeNumber: { type: string }
+ *                       color: { type: string }
+ *                       brand: { type: string }
  *                 contract:
  *                   type: object
+ *                   properties:
+ *                     no: { type: string }
+ *                     price: { type: number }
+ *                     deposit: { type: number }
+ *                     signDate: { type: string, format: date }
+ *                     startDate: { type: string, format: date }
+ *                     endDate: { type: string, format: date }
+ *                     signPlace: { type: string }
+ *                     paymentCycleMonths:
+ *                       type: number
+ *                       description: Số tháng đóng tiền một lần (1 = 1 tháng/lần, 3 = 3 tháng/lần, ...)
  *                 furnitures:
  *                   type: array
  *                   items:
@@ -179,7 +220,7 @@ const contractController = require("../../controllers/User/ContractController");
  * /contracts/{id}:
  *   patch:
  *     summary: Người thuê cập nhật thông tin hợp đồng (Bên B, xe, roommates)
- *     description: Cho phép người thuê chỉnh sửa thông tin cá nhân, xe, danh sách người ở cùng (bằng email)
+ *     description: Cho phép người thuê chỉnh sửa thông tin cá nhân (Bên B), danh sách xe, và danh sách người ở cùng (roommates) nhập thủ công theo personSchema.
  *     tags: [Resident Contracts]
  *     security:
  *       - bearerAuth: []
@@ -202,8 +243,11 @@ const contractController = require("../../controllers/User/ContractController");
  *                   name: { type: string }
  *                   dob: { type: string, format: date }
  *                   cccd: { type: string }
+ *                   cccdIssuedDate: { type: string, format: date }
+ *                   cccdIssuedPlace: { type: string }
  *                   phone: { type: string }
  *                   permanentAddress: { type: string }
+ *                   email: { type: string }
  *               bikes:
  *                 type: array
  *                 items:
@@ -212,11 +256,20 @@ const contractController = require("../../controllers/User/ContractController");
  *                     bikeNumber: { type: string }
  *                     color: { type: string }
  *                     brand: { type: string }
- *               roommateEmails:
+ *               roommates:
  *                 type: array
+ *                 description: Danh sách người ở cùng nhập thủ công
  *                 items:
- *                   type: string
- *                   example: example@gmail.com
+ *                   type: object
+ *                   properties:
+ *                     name: { type: string }
+ *                     dob: { type: string, format: date }
+ *                     cccd: { type: string }
+ *                     cccdIssuedDate: { type: string, format: date }
+ *                     cccdIssuedPlace: { type: string }
+ *                     phone: { type: string }
+ *                     permanentAddress: { type: string }
+ *                     email: { type: string }
  *     responses:
  *       200:
  *         description: Cập nhật thông tin thành công

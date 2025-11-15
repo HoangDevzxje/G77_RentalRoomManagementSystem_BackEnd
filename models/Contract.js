@@ -57,12 +57,6 @@ const contractSchema = new mongoose.Schema(
       required: true,
       index: true, // người thuê chính
     },
-    roommateIds: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Account", // bạn cùng phòng
-      },
-    ],
 
     buildingId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -91,7 +85,7 @@ const contractSchema = new mongoose.Schema(
     A: personSchema, // Bên A – chủ nhà
     B: personSchema, // Bên B – người thuê chính
 
-    occupants: {
+    roommates: {
       type: [personSchema],
       default: [],
     },

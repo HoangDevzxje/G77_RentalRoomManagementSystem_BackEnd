@@ -310,19 +310,19 @@ exports.confirmMoveIn = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
 
-    const roommateCount = (contract.roommateIds || []).length;
+    // Số người ở: 1 (Bên B) + số roommates
+    const roommateCount = (contract.roommates || []).length;
     const totalTenant = 1 + roommateCount;
+
     if (room.maxTenants && totalTenant > room.maxTenants) {
       return res.status(400).json({
         message: `Số người ở (${totalTenant}) vượt quá giới hạn cho phép (${room.maxTenants})`,
       });
     }
 
+    // Chỉ gán tenant chính (người có Account) vào Room
     room.status = "rented";
-    room.currentTenantIds = [
-      contract.tenantId,
-      ...(contract.roommateIds || []),
-    ];
+    room.currentTenantIds = [contract.tenantId];
     room.currentContractId = contract._id;
     await room.save();
 
@@ -335,6 +335,8 @@ exports.confirmMoveIn = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
+
+
 
 // GET /landlords/contracts/:id
 exports.getDetail = async (req, res) => {

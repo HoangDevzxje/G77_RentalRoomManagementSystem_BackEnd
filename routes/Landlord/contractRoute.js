@@ -387,18 +387,13 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts/{id}/confirm-move-in:
  *   post:
- *     summary: Xác nhận người thuê đã vào ở
- *     description: >
- *       Sau khi hợp đồng đã ở trạng thái **completed**, landlord xác nhận tenant vào ở.
- *       Endpoint sẽ cập nhật:
- *         - trạng thái phòng → "rented"
- *         - danh sách currentTenantIds trong Room
- *         - currentContractId của phòng
- *
- *       Chỉ hoạt động khi:
- *         - Hợp đồng tồn tại và thuộc về landlord đang đăng nhập
- *         - Contract.status === "completed"
- *         - Số người thuê không vượt quá room.maxTenants
+ *     summary: Xác nhận người thuê đã vào ở (update room status)
+ *     description: 
+ *       Sau khi hợp đồng ở trạng thái `completed`, landlord xác nhận tenant vào ở. 
+ *       Endpoint sẽ:
+ *       - Kiểm tra số người ở = 1 (Bên B) + số roommates trong hợp đồng, không vượt quá `room.maxTenants`.
+ *       - Cập nhật trạng thái phòng (`status = rented`) và gán tenant chính vào `currentTenantIds`.
+ *       Lưu ý: roommates trong hợp đồng chỉ là thông tin khai báo, không tự động gán Account vào phòng.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -406,37 +401,23 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       - name: id
  *         in: path
  *         required: true
- *         description: ID của hợp đồng
  *         schema:
  *           type: string
- *           example: 6915aa921f76ddc90308da5f
  *     responses:
  *       200:
- *         description: Xác nhận vào ở thành công
+ *         description: Xác nhận vào ở thành công (trả về trạng thái phòng & danh sách tenant chính)
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message:
- *                   type: string
- *                   example: Đã xác nhận người thuê vào ở
- *                 roomStatus:
- *                   type: string
- *                   example: rented
+ *                 message: { type: string }
+ *                 roomStatus: { type: string }
  *                 currentTenantIds:
  *                   type: array
- *                   items:
- *                     type: string
- *                   example:
- *                     - 68d7dad6cadcf51ed611e121
- *                     - 68f21dd6cadcf51ab5a1d333
- *
+ *                   items: { type: string }
  *       400:
- *         description: >
- *           Các trường hợp lỗi:
- *             - Hợp đồng chưa hoàn tất (status != completed)
- *             - Số lượng tenant vượt quá room.maxTenants
+ *         description: Không thể xác nhận khi contract chưa hoàn tất hoặc số lượng người ở vượt quá giới hạn
  *       404:
  *         description: Contract hoặc Room không tìm thấy
  */

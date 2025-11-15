@@ -135,12 +135,12 @@ exports.getMyContract = async (req, res) => {
 };
 
 // PATCH /tenants/contracts/:id
-// body: { B, bikes, roommateEmails }
+// body: { B, bikes, roommates }
 exports.updateMyData = async (req, res) => {
   try {
     const tenantId = req.user?._id;
     const { id } = req.params;
-    const { B, bikes, roommateEmails } = req.body || {};
+    const { B, bikes, roommates } = req.body || {};
 
     const contract = await Contract.findOne({ _id: id, tenantId });
     if (!contract) {
@@ -154,13 +154,14 @@ exports.updateMyData = async (req, res) => {
       });
     }
 
-    // Cập nhật thông tin Bên B
+    // Cập nhật Bên B
     if (B) {
       const merged = {
         ...(contract.B?.toObject?.() || contract.B || {}),
         ...B,
       };
 
+      // nếu B.permanentAddress FE gửi dạng object/array thì normalize
       if (merged.permanentAddress) {
         merged.permanentAddress = normalizeAddress(merged.permanentAddress);
       }
@@ -180,57 +181,44 @@ exports.updateMyData = async (req, res) => {
         }));
     }
 
-    // Roommates từ email
-    if (Array.isArray(roommateEmails) && roommateEmails.length) {
-      const emails = roommateEmails
-        .map((e) => (e || "").trim().toLowerCase())
-        .filter(Boolean);
+    //Roommates: nhập thủ công theo personSchema
+    if (Array.isArray(roommates)) {
+      const normalizedRoommates = roommates
+        .filter((r) => r && r.name)
+        .map((r) => ({
+          name: r.name,
+          dob: r.dob || null,
+          cccd: r.cccd || "",
+          cccdIssuedDate: r.cccdIssuedDate || null,
+          cccdIssuedPlace: r.cccdIssuedPlace || "",
+          permanentAddress: normalizeAddress(r.permanentAddress),
+          phone: r.phone || "",
+          email: r.email || "",
+        }));
 
-      const accounts = await Account.find({ email: { $in: emails } })
-        .select("_id email")
-        .lean();
-
-      const idSet = new Set((contract.roommateIds || []).map((x) => String(x)));
-
-      for (const acc of accounts) {
-        if (String(acc._id) !== String(tenantId)) {
-          idSet.add(String(acc._id));
-        }
-      }
-
-      // check maxTenants
-      const room = await Room.findById(contract.roomId)
-        .select("maxTenants")
-        .lean();
-      const totalTenant = 1 + idSet.size; // 1: tenant chính
-      if (room?.maxTenants && totalTenant > room.maxTenants) {
-        return res.status(400).json({
-          message: `Số người ở (${totalTenant}) vượt quá giới hạn cho phép (${room.maxTenants})`,
-        });
-      }
-
-      contract.roommateIds = Array.from(idSet);
+      contract.roommates = normalizedRoommates;
     }
 
-    // 🔥 Build lại occupants (danh sách người ở) từ B + roommateIds
+    //Check maxTenants: 1 (B) + số roommates
+    const room = await Room.findById(contract.roomId)
+      .select("maxTenants")
+      .lean();
+
+    const roommateCount = (contract.roommates || []).length;
+    const totalTenant = 1 + roommateCount; // 1 = B (tenant chính trong hợp đồng)
+
+    if (room?.maxTenants && totalTenant > room.maxTenants) {
+      return res.status(400).json({
+        message: `Số người ở (${totalTenant}) vượt quá giới hạn cho phép (${room.maxTenants})`,
+      });
+    }
+
+    //Build lại occupants = B + roommates
     const occupants = [];
-    if (contract.B && contract.B.name) {
-      occupants.push(contract.B);
+    if (contract.B && contract.B.name) occupants.push(contract.B);
+    if (Array.isArray(contract.roommates) && contract.roommates.length) {
+      occupants.push(...contract.roommates);
     }
-
-    if (Array.isArray(contract.roommateIds) && contract.roommateIds.length) {
-      const roommateAccounts = await Account.find({
-        _id: { $in: contract.roommateIds },
-      })
-        .populate("userInfo")
-        .lean();
-
-      for (const acc of roommateAccounts) {
-        const person = mapAccountToPerson(acc);
-        if (person && person.name) occupants.push(person);
-      }
-    }
-
     contract.occupants = occupants;
 
     await contract.save();
