@@ -6,7 +6,6 @@ const mongoose = require("mongoose");
 const create = async (req, res) => {
     try {
         const { buildingId, title, description, type, amount, recordedAt } = req.body;
-        req.body.buildingId = buildingId;
         if (!title || !description || !type || !amount || !recordedAt) return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
         const building = await Building.findOne({
             _id: buildingId,
@@ -16,9 +15,17 @@ const create = async (req, res) => {
         if (!building) {
             return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
         }
-
+        if (req.user.role === "staff" && !req.staff.assignedBuildingIds.includes(buildingId)) {
+            return res.status(403).json({ message: "Tòa nhà không thuộc quyền quản lý của bạn!" });
+        }
         if (req.user.role === "landlord" && String(building.landlordId) !== String(req.user._id)) {
             return res.status(403).json({ message: "Tòa nhà không thuộc quyền quản lý của bạn!" });
+        }
+        const imageUrls = Array.isArray(req.files)
+            ? req.files.map((f) => f.path)
+            : [];
+        if (imageUrls.length === 0) {
+            return res.status(400).json({ message: "Phải có ít nhất một ảnh làm bằng chứng cho thu chi" });
         }
         const record = await RevenueExpenditure.create({
             createBy: req.user._id,
@@ -28,6 +35,7 @@ const create = async (req, res) => {
             description,
             type,
             amount,
+            images: imageUrls,
             recordedAt: recordedAt ? new Date(recordedAt) : undefined
         });
 
@@ -80,7 +88,15 @@ const list = async (req, res) => {
         }
         const [data, total] = await Promise.all([
             RevenueExpenditure.find(filter)
-                .populate("createBy", "email userInfo")
+                .populate({
+                    path: "createBy",
+                    select: "email userInfo",
+                    populate: {
+                        path: "userInfo",
+                        model: "UserInformation",
+                        select: "fullName phoneNumber",
+                    },
+                })
                 .populate("buildingId", "name")
                 .sort({ recordedAt: -1 })
                 .skip((page - 1) * limit)
@@ -99,7 +115,15 @@ const list = async (req, res) => {
 const getById = async (req, res) => {
     try {
         const record = await RevenueExpenditure.findById(req.params.id)
-            .populate("createBy", "email")
+            .populate({
+                path: "createBy",
+                select: "email userInfo",
+                populate: {
+                    path: "userInfo",
+                    model: "UserInformation",
+                    select: "fullName phoneNumber",
+                },
+            })
             .populate("buildingId", "name")
             .populate({
                 path: "landlordId",
@@ -107,7 +131,7 @@ const getById = async (req, res) => {
                 populate: {
                     path: "userInfo",
                     model: "UserInformation",
-                    select: "fullName phoneNumber address",
+                    select: "fullName phoneNumber",
                 },
             });
 
@@ -121,18 +145,74 @@ const getById = async (req, res) => {
 const update = async (req, res) => {
     try {
         const record = await RevenueExpenditure.findById(req.params.id);
-        if (!record || record.isDeleted) return res.status(404).json({ message: "Không tìm thấy" });
+        if (!record || record.isDeleted) {
+            return res.status(404).json({ message: "Không tìm thấy bản ghi thu chi" });
+        }
 
-        const allowed = ["title", "description", "amount", "recordedAt"];
-        allowed.forEach(field => {
-            if (req.body[field] !== undefined) record[field] = req.body[field];
+        if (req.user.role === "landlord" && String(record.landlordId) !== String(req.user._id)) {
+            return res.status(403).json({ message: "Bạn không có quyền chỉnh sửa bản ghi này" });
+        }
+        if (req.user.role === "staff") {
+            const building = await Building.findById(record.buildingId).select("landlordId");
+            if (!req.staff.assignedBuildingIds.includes(String(record.buildingId))) {
+                return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+            }
+        }
+
+        const allowedFields = ["title", "description", "amount", "recordedAt", "type"];
+        allowedFields.forEach(field => {
+            if (req.body[field] !== undefined) {
+                record[field] = req.body[field];
+            }
         });
+        if (req.body.recordedAt) {
+            record.recordedAt = new Date(req.body.recordedAt);
+        }
 
-        if (req.body.recordedAt) record.recordedAt = new Date(req.body.recordedAt);
+        const currentImages = record.images || [];
+
+        // Nếu có gửi danh sách ảnh muốn xóa (ví dụ: deleteImages=["url1","url2"])
+        if (req.body.deleteImages && Array.isArray(req.body.deleteImages)) {
+            const deleteSet = new Set(req.body.deleteImages);
+            record.images = currentImages.filter(img => !deleteSet.has(img));
+        }
+
+        // Nếu có file mới được upload
+        const newImageUrls = Array.isArray(req.files)
+            ? req.files.map(f => f.path)
+            : [];
+
+        if (newImageUrls.length > 0) {
+            record.images = [...record.images, ...newImageUrls];
+        }
+
+        // Bắt buộc luôn có ít nhất 1 ảnh
+        if (record.images.length === 0) {
+            return res.status(400).json({
+                message: "Phải có ít nhất một ảnh làm bằng chứng cho giao dịch thu chi"
+            });
+        }
 
         await record.save();
-        res.json({ message: "Cập nhật thành công", data: record });
+
+        const populated = await RevenueExpenditure.findById(record._id)
+            .populate({
+                path: "createBy",
+                select: "email userInfo",
+                populate: {
+                    path: "userInfo",
+                    model: "UserInformation",
+                    select: "fullName phoneNumber",
+                },
+            })
+            .populate("buildingId", "name");
+
+        res.json({
+            message: "Cập nhật thu chi thành công",
+            data: populated
+        });
     } catch (err) {
+        console.error("Lỗi update thu chi:", err);
         res.status(400).json({ message: err.message });
     }
 };
@@ -155,12 +235,40 @@ const softDelete = async (req, res) => {
 const stats = async (req, res) => {
     try {
         const { buildingId, year = new Date().getFullYear(), month } = req.query;
-        if (buildingId) req.query.buildingId = buildingId;
 
         const match = { isDeleted: false };
-        if (buildingId) {
-            match.buildingId = new mongoose.Types.ObjectId(buildingId);
+
+        if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds?.length) {
+                return res.json({
+                    revenue: 0,
+                    expenditure: 0,
+                    profit: 0
+                });
+            }
+            if (buildingId) {
+                if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+                    return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+                }
+                match.buildingId = new mongoose.Types.ObjectId(buildingId);
+            } else {
+                match.buildingId = { $in: req.staff.assignedBuildingIds.map(id => new mongoose.Types.ObjectId(id)) };
+            }
+        } else if (req.user.role === "landlord") {
+            if (buildingId) {
+                const building = await Building.findOne({
+                    _id: buildingId,
+                    isDeleted: false
+                }).select("landlordId");
+                if (!building || String(building.landlordId) !== String(req.user._id)) {
+                    return res.status(403).json({ message: "Tòa nhà không thuộc quyền quản lý của bạn!" });
+                }
+                match.buildingId = new mongoose.Types.ObjectId(buildingId);
+            } else {
+                match.landlordId = req.user._id;
+            }
         }
+
         if (month) {
             const start = new Date(year, month - 1, 1);
             const end = new Date(year, month, 0, 23, 59, 59);
@@ -195,17 +303,140 @@ const stats = async (req, res) => {
     }
 };
 
+const monthlyComparison = async (req, res) => {
+    try {
+        const { buildingId, year = new Date().getFullYear() } = req.query;
+
+        const match = {
+            isDeleted: false,
+            recordedAt: {
+                $gte: new Date(year, 0, 1),
+                $lte: new Date(year, 11, 31, 23, 59, 59)
+            }
+        };
+
+        if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds?.length) {
+                return res.json({
+                    year,
+                    data: []
+                });
+            }
+            if (buildingId) {
+                if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+                    return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+                }
+                match.buildingId = new mongoose.Types.ObjectId(buildingId);
+            } else {
+                match.buildingId = { $in: req.staff.assignedBuildingIds.map(id => new mongoose.Types.ObjectId(id)) };
+            }
+        } else if (req.user.role === "landlord") {
+            if (buildingId) {
+                const building = await Building.findOne({
+                    _id: buildingId,
+                    isDeleted: false
+                }).select("landlordId");
+                if (!building || String(building.landlordId) !== String(req.user._id)) {
+                    return res.status(403).json({ message: "Tòa nhà không thuộc quyền quản lý của bạn!" });
+                }
+                match.buildingId = new mongoose.Types.ObjectId(buildingId);
+            } else {
+                match.landlordId = req.user._id;
+            }
+        }
+
+        const result = await RevenueExpenditure.aggregate([
+            { $match: match },
+            {
+                $group: {
+                    _id: {
+                        month: { $month: "$recordedAt" },
+                        type: "$type"
+                    },
+                    total: { $sum: "$amount" }
+                }
+            },
+            { $sort: { "_id.month": 1 } }
+        ]);
+
+        const monthlyData = Array.from({ length: 12 }, (_, i) => {
+            const month = i + 1;
+            const revenue = result.find(r => r._id.month === month && r._id.type === "revenue")?.total || 0;
+            const expenditure = result.find(r => r._id.month === month && r._id.type === "expenditure")?.total || 0;
+            return {
+                month,
+                revenue,
+                expenditure,
+                profit: revenue - expenditure
+            };
+        });
+
+        // Thêm so sánh với tháng trước (lên/xuống)
+        const comparedData = monthlyData.map((current, index) => {
+            if (index === 0) {
+                return { ...current, profitChange: 0, profitChangePercent: 0 };
+            }
+            const previous = monthlyData[index - 1];
+            const profitChange = current.profit - previous.profit;
+            const profitChangePercent = previous.profit !== 0 ? (profitChange / previous.profit) * 100 : 0;
+            return {
+                ...current,
+                profitChange,
+                profitChangePercent: profitChangePercent.toFixed(2)
+            };
+        });
+
+        res.json({
+            year,
+            data: comparedData
+        });
+    } catch (err) {
+        console.error("Lỗi so sánh hàng tháng:", err);
+        res.status(500).json({ message: err.message });
+    }
+};
+
 const exportExcel = async (req, res) => {
     try {
         const { buildingId, startDate, endDate } = req.query;
-        if (buildingId) req.query.buildingId = buildingId;
 
         const filter = { isDeleted: false };
-        if (buildingId) filter.buildingId = buildingId;
+
+        if (req.user.role === "staff") {
+            if (!req.staff?.assignedBuildingIds?.length) {
+                return res.status(403).json({ message: "Bạn chưa được giao quản lý tòa nhà nào" });
+            }
+            if (buildingId) {
+                if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+                    return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+                }
+                filter.buildingId = buildingId;
+            } else {
+                filter.buildingId = { $in: req.staff.assignedBuildingIds };
+            }
+        } else if (req.user.role === "landlord") {
+            if (buildingId) {
+                const building = await Building.findOne({
+                    _id: buildingId,
+                    isDeleted: false
+                }).select("landlordId");
+                if (!building || String(building.landlordId) !== String(req.user._id)) {
+                    return res.status(403).json({ message: "Tòa nhà không thuộc quyền quản lý của bạn!" });
+                }
+                filter.buildingId = buildingId;
+            } else {
+                filter.landlordId = req.user._id;
+            }
+        }
+
         if (startDate || endDate) {
             filter.recordedAt = {};
             if (startDate) filter.recordedAt.$gte = new Date(startDate);
-            if (endDate) filter.recordedAt.$lte = new Date(endDate);
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                filter.recordedAt.$lte = end;
+            }
         }
 
         const data = await RevenueExpenditure.find(filter)
@@ -235,23 +466,28 @@ const exportExcel = async (req, res) => {
         ];
 
         data.forEach(item => {
-            const fullName = item.createBy?.userInfo?.fullName;
-            const creatorName = fullName ? fullName : (item.createBy?.email || "Không xác định");
-
+            const fullName = item.createBy?.userInfo?.fullName || item.createBy?.email || "Không xác định";
             sheet.addRow({
                 date: new Date(item.recordedAt).toLocaleDateString("vi-VN"),
                 building: item.buildingId?.name || "Không xác định",
                 type: item.type === "revenue" ? "Thu" : "Chi",
                 title: item.title || "",
                 amount: item.amount?.toLocaleString("vi-VN") || 0,
-                creator: creatorName,
+                creator: fullName,
                 description: item.description || ""
             });
         });
 
+        const revenueTotal = data.filter(d => d.type === "revenue").reduce((sum, d) => sum + d.amount, 0);
+        const expenditureTotal = data.filter(d => d.type === "expenditure").reduce((sum, d) => sum + d.amount, 0);
+        sheet.addRow([]);
+        sheet.addRow({ date: "TỔNG THU", amount: revenueTotal?.toLocaleString("vi-VN") });
+        sheet.addRow({ date: "TỔNG CHI", amount: expenditureTotal?.toLocaleString("vi-VN") });
+        sheet.addRow({ date: "LỢI NHUẬN", amount: (revenueTotal - expenditureTotal)?.toLocaleString("vi-VN") });
+
         const fileName = `thu-chi_${new Date().toISOString().slice(0, 10)}.xlsx`;
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+        res.setHeader("Content-Disposition", `attachment; filename=${encodeURIComponent(fileName)}`);
 
         await workbook.xlsx.write(res);
         res.end();
@@ -263,4 +499,4 @@ const exportExcel = async (req, res) => {
     }
 };
 
-module.exports = { create, list, getById, update, softDelete, stats, exportExcel };
+module.exports = { create, list, getById, update, softDelete, stats, monthlyComparison, exportExcel };

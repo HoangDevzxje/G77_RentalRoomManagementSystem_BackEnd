@@ -39,6 +39,10 @@ const revenueExpenditureSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    images: {
+        type: [String],
+        default: []
+    },
     isDeleted: {
         type: Boolean,
         default: false
