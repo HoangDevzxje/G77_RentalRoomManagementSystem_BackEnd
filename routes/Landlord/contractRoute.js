@@ -388,11 +388,13 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * /landlords/contracts/{id}/confirm-move-in:
  *   post:
  *     summary: Xác nhận người thuê đã vào ở (update room status)
- *     description: 
- *       Sau khi hợp đồng ở trạng thái `completed`, landlord xác nhận tenant vào ở. 
+ *     description: |
+ *       Sau khi hợp đồng ở trạng thái "completed", landlord xác nhận tenant vào ở.
+ *       
  *       Endpoint sẽ:
- *       - Kiểm tra số người ở = 1 (Bên B) + số roommates trong hợp đồng, không vượt quá `room.maxTenants`.
- *       - Cập nhật trạng thái phòng (`status = rented`) và gán tenant chính vào `currentTenantIds`.
+ *       - Kiểm tra số người ở = 1 (Bên B) + số roommates trong hợp đồng, không vượt quá room.maxTenants.
+ *       - Cập nhật trạng thái phòng (status = rented) và gán tenant chính vào currentTenantIds.
+ *
  *       Lưu ý: roommates trong hợp đồng chỉ là thông tin khai báo, không tự động gán Account vào phòng.
  *     tags: [Landlord Contracts]
  *     security:
@@ -405,7 +407,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *           type: string
  *     responses:
  *       200:
- *         description: Xác nhận vào ở thành công (trả về trạng thái phòng & danh sách tenant chính)
+ *         description: Xác nhận vào ở thành công
  *         content:
  *           application/json:
  *             schema:
@@ -417,7 +419,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   type: array
  *                   items: { type: string }
  *       400:
- *         description: Không thể xác nhận khi contract chưa hoàn tất hoặc số lượng người ở vượt quá giới hạn
+ *         description: Không thể xác nhận khi contract chưa hoàn tất hoặc vượt quá giới hạn
  *       404:
  *         description: Contract hoặc Room không tìm thấy
  */
