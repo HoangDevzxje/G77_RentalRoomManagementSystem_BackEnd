@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-
+const crypto = require('crypto');
 const accountSchema = new mongoose.Schema({
     email: { type: String, unique: true, required: true },
     password: { type: String, required: true },
@@ -12,9 +12,37 @@ const accountSchema = new mongoose.Schema({
         default: "resident",
     },
     isActivated: { type: Boolean, default: true },
-
+    mustChangePassword: {
+        type: Boolean,
+        default: false
+    },
+    passwordResetToken: { type: String },
+    passwordResetExpires: { type: Date },
     accessToken: { type: String, default: null },
     refreshToken: { type: String, default: null }
 }, { timestamps: true });
+// Tạo token đổi mật khẩu lần đầu (dùng khi tạo staff)
+accountSchema.methods.createPasswordResetToken = function () {
+    const resetToken = crypto.randomBytes(32).toString('hex');
 
+    this.passwordResetToken = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
+
+    this.passwordResetExpires = Date.now() + 30 * 1000; // 24 giờ
+
+    return resetToken;
+};
+
+// Xóa token sau khi dùng xong hoặc hết hạn
+accountSchema.methods.clearPasswordReset = function () {
+    this.passwordResetToken = undefined;
+    this.passwordResetExpires = undefined;
+};
+
+// Kiểm tra xem có bắt buộc đổi mật khẩu không
+accountSchema.methods.requiresPasswordChange = function () {
+    return this.mustChangePassword === true;
+};
 module.exports = mongoose.model('Account', accountSchema);

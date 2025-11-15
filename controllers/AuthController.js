@@ -8,6 +8,7 @@ const UserInformation = require("../models/UserInformation");
 const generateToken = require("../utils/generalToken");
 const verifyEmail = require("../utils/verifyMail");
 const validateUtils = require("../utils/validateInput");
+const crypto = require("crypto");
 // const { OAuth2Client } = require("google-auth-library");
 dotenv.config();
 let otpStore = {};
@@ -64,32 +65,86 @@ const sendOtp = async (req, res) => {
     res.status(500).json({ message: "Lỗi hệ thống!" });
   }
 };
-const verifyOtp = (req, res) => {
+const verifyOtp = async (req, res) => {
   const { type, email, otp } = req.body;
 
   if (!["register", "reset-password"].includes(type)) {
     return res.status(400).json({ message: "Loại OTP không hợp lệ!" });
   }
-  if (!otpStore[email] || !otpStore[email][type])
-    return res
-      .status(400)
-      .json({ message: "OTP không tồn tại hoặc đã hết hạn!" });
-  const storedOtp = otpStore[email][type];
 
-  if (Date.now() > storedOtp.expiresAt) {
+  if (!otpStore[email] || !otpStore[email][type]) {
+    return res.status(400).json({ message: "OTP không tồn tại hoặc đã hết hạn!" });
+  }
+
+  const stored = otpStore[email][type];
+
+  if (Date.now() > stored.expiresAt) {
     delete otpStore[email][type];
+    if (Object.keys(otpStore[email]).length === 0) delete otpStore[email];
     return res.status(400).json({ message: "OTP đã hết hạn!" });
   }
 
-  if (storedOtp.otp !== otp) {
-    return res.status(400).json({ message: "OTP không chính xác!" });
+  if (stored.otp !== otp) {
+    stored.attempts = (stored.attempts || 0) + 1;
+    if (stored.attempts >= 5) {
+      delete otpStore[email][type];
+      return res.status(400).json({ message: "Nhập sai quá nhiều lần. Vui lòng thử lại từ đầu!" });
+    }
+    return res.status(400).json({
+      message: `OTP không chính xác! Còn ${5 - stored.attempts} lần thử.`
+    });
   }
 
-  storedOtp.isVerified = true;
-  res.status(200).json({
-    status: true,
-    message: "OTP xác thực thành công!",
-  });
+  try {
+    if (type === "register") {
+      const registerData = stored.data;
+
+      if (!registerData) {
+        return res.status(400).json({ message: "Dữ liệu đăng ký bị mất. Vui lòng đăng ký lại!" });
+      }
+
+      const userInfo = new UserInformation({
+        fullName: registerData.fullName,
+        email: registerData.email,
+        role: registerData.role || "resident",
+      });
+      await userInfo.save();
+
+      const account = new Account({
+        email: registerData.email,
+        password: registerData.password,
+        role: registerData.role || "resident",
+        userInfo: userInfo._id,
+      });
+      await account.save();
+
+      // Xóa dữ liệu tạm
+      delete otpStore[email];
+
+      return res.status(200).json({
+        success: true,
+        message: "Xác thực thành công! Tài khoản đã được tạo.",
+        data: {
+          email: account.email,
+          fullName: userInfo.fullName,
+          role: account.role,
+        },
+      });
+    }
+
+    if (type === "reset-password") {
+      stored.isVerified = true;
+      stored.verifiedAt = Date.now();
+
+      return res.status(200).json({
+        success: true,
+        message: "Xác thực thành công!",
+      });
+    }
+  } catch (error) {
+    console.error("Lỗi khi tạo tài khoản sau verify:", error);
+    return res.status(500).json({ message: "Lỗi hệ thống khi tạo tài khoản!" });
+  }
 };
 const refreshToken = async (req, res) => {
   try {
@@ -152,66 +207,45 @@ const register = async (req, res) => {
 
     const existingAcc = await Account.findOne({ email });
     if (existingAcc) {
-      return res.status(400).json({ message: "Email đã tồn tại!" });
+      return res.status(400).json({ message: "Email đã được đăng ký!" });
     }
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Tạo UserInformation
-    const userInfo = new UserInformation({
-      fullName,
-      email,
-      role: role || "resident",
-    });
-    await userInfo.save();
-
-    // Tạo Account
-    const account = new Account({
-      email,
-      password: hashedPassword,
-      role: role || "resident",
-      userInfo: userInfo._id,
-    });
-    await account.save();
-
-    // delete otpStore[email]["register"];
-
-    // res.status(201).json({ message: "Đăng ký thành công!" });
-    // Generate OTP
+    // 4. Tạo OTP
     const otp = otpGenerator.generate(6, {
       digits: true,
       lowerCaseAlphabets: false,
       upperCaseAlphabets: false,
       specialChars: false,
     });
-    const expiresAt = Date.now() + 5 * 60 * 1000;
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 phút
 
-    if (!otpStore[email]) otpStore[email] = {};
-    otpStore[email]["register"] = { otp, isVerified: false, expiresAt };
-
-    // Send OTP email
-    try {
-      await sendEmail(email, otp, "register");
-    } catch (error) {
-      // Rollback: Delete created account and user info
-      await Account.deleteOne({ _id: account._id });
-      await UserInformation.deleteOne({ _id: userInfo._id });
-
-      return res.status(500).json({
-        message: "Không thể gửi email xác thực. Vui lòng thử lại!",
-      });
-    }
-
-    res.status(201).json({
-      message:
-        "Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.",
-      data: {
-        email,
+    otpStore[email] = {
+      register: {
+        data: {
+          fullName,
+          email,
+          password: hashedPassword,
+          role: role || "resident",
+        },
+        otp,
+        expiresAt,
+        isVerified: false,
+        attempts: 0,
       },
+    };
+
+    // 6. Gửi OTP
+    await sendEmail(email, otp, "register");
+
+    return res.status(201).json({
+      message: "Vui lòng kiểm tra email để nhận mã OTP xác minh!",
+      data: { email },
     });
   } catch (error) {
     console.error("Lỗi đăng ký:", error);
-    res.status(500).json({ message: "Lỗi hệ thống!" });
+    return res.status(500).json({ message: "Lỗi hệ thống!" });
   }
 };
 // const resetPassword = async (req, res) => {
@@ -270,7 +304,30 @@ const resetPassword = async (req, res) => {
 
   try {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await Account.updateOne({ email }, { password: hashedPassword });
+
+    const updateData = {
+      password: hashedPassword,
+      $unset: {
+        passwordResetToken: "",
+        passwordResetExpires: ""
+      }
+    };
+
+    const accountBefore = await Account.findOne({ email });
+    if (accountBefore && accountBefore.mustChangePassword) {
+      updateData.isActivated = true;
+      updateData.mustChangePassword = false;
+    }
+
+    const result = await Account.findOneAndUpdate(
+      { email },
+      updateData,
+      { new: true }
+    );
+
+    if (!result) {
+      return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
+    }
     res.status(200).json({
       status: true,
       message: "Mật khẩu đã được cập nhật thành công!"
@@ -492,6 +549,31 @@ const logoutUser = async (req, res) => {
     });
   }
 };
+const changeFirstPassword = async (req, res) => {
+  const { token, newPassword } = req.body;
+  const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+  const account = await Account.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: Date.now() }
+  });
+
+  if (!account) {
+    return res.status(400).json({ message: "Token không hợp lệ hoặc đã hết hạn!" });
+  }
+
+  const errMsg = validateUtils.validatePassword(newPassword);
+  if (errMsg) return res.status(400).json({ message: errMsg });
+
+  const salt = await bcrypt.genSalt(10);
+  account.password = await bcrypt.hash(newPassword, salt);
+  account.mustChangePassword = false;
+  account.clearPasswordReset();
+  account.isActivated = true;
+
+  await account.save();
+
+  res.json({ message: "Đổi mật khẩu thành công! Bạn có thể đăng nhập ngay." });
+};
 module.exports = {
   refreshToken,
   register,
@@ -503,4 +585,5 @@ module.exports = {
   // googleLogin,
   // facebookLogin,
   logoutUser,
+  changeFirstPassword
 };

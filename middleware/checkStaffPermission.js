@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const Employee = require("../models/Employee");
+const Employee = require("../models/Staff");
 const Account = require("../models/Account");
 
 const checkStaffPermission = (requiredPermission, options = {}) => {

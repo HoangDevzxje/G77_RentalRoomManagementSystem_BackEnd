@@ -7,7 +7,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
 /**
  * @swagger
  * tags:
- *   - name: Landlord Employees Management
+ *   - name: Landlord Staffs Management
  *     description: Quản lý nhân viên (employee) của chủ trọ
  */
 
@@ -15,12 +15,16 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/staffs/create:
  *   post:
- *     summary: Tạo nhân viên mới
+ *     summary: Tạo tài khoản nhân viên (Staff)
  *     description: |
- *       Chủ trọ tạo tài khoản nhân viên (staff).  
- *       Hệ thống sẽ tự động tạo tài khoản, gửi **email chứa email + mật khẩu tạm** cho nhân viên.  
- *       Nhân viên có thể quản lý **nhiều tòa nhà** và được cấp **quyền cụ thể**.
- *     tags: [Landlord Employees Management]
+ *       Chủ trọ (landlord) tạo tài khoản cho nhân viên quản lý tòa nhà.  
+ *       Hệ thống sẽ **tự động sinh mật khẩu tạm ngẫu nhiên**, gửi email chứa:
+ *       - Email đăng nhập
+ *       - Mật khẩu tạm
+ *       - Link đổi mật khẩu bắt buộc lần đầu (có hiệu lực 24h)
+ *       
+ *       Nhân viên phải đổi mật khẩu ngay lần đăng nhập đầu tiên.
+ *     tags: [Landlord Staffs Management]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -32,48 +36,45 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *             required:
  *               - email
  *               - fullName
- *               - assignedBuildings
  *             properties:
  *               email:
  *                 type: string
  *                 format: email
- *                 example: staff@example.com
- *                 description: Email đăng nhập của nhân viên
- *               password:
- *                 type: string
- *                 example: staff123
- *               confirmPassword:
- *                 type: string
- *                 example: staff123
+ *                 example: nvdong0902@gmail.com
+ *                 description: Email dùng để đăng nhập (phải chưa tồn tại trong hệ thống)
  *               fullName:
  *                 type: string
- *                 example: Nguyễn Văn A
+ *                 example: Nguyễn Văn An
+ *                 description: Họ tên nhân viên
  *               phoneNumber:
  *                 type: string
  *                 example: "0901234567"
+ *                 description: Số điện thoại (tùy chọn)
  *               dob:
  *                 type: string
  *                 format: date
- *                 example: "1995-03-15"
+ *                 example: "2003-02-09"
+ *                 description: Ngày sinh (định dạng YYYY-MM-DD)
  *               gender:
  *                 type: string
  *                 enum: [Nam, Nữ, Khác]
  *                 example: Nam
  *               address:
  *                 type: string
- *                 example: "An cảnh Lê lợi"
+ *                 example: "123 Đường Lê Lợi, Quận 1, TP.HCM"
  *               assignedBuildings:
  *                 type: array
  *                 items:
  *                   type: string
- *                 example: ["60d5ec49f1b2c123456789ab", "60d5ec49f1b2c123456789ac"]
- *                 description: Danh sách ID tòa nhà được giao quản lý
+ *                   format: objectid
+ *                 example: ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"]
+ *                 description: Danh sách ID tòa nhà mà nhân viên được phân công quản lý (phải thuộc landlord)
  *               permissions:
  *                 type: array
  *                 items:
  *                   type: string
- *                 example: ["room:create", "payment:collect", "report:view"]
- *                 description: Danh sách mã quyền (lấy từ `/staff/permissions`)
+ *                 example: ["room:create", "room:view", "room:edit", "room:delete"]
+ *                 description: Danh sách mã quyền chi tiết (lấy từ API `/staff/permissions`)
  *     responses:
  *       201:
  *         description: Tạo nhân viên thành công
@@ -90,8 +91,10 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   properties:
  *                     email:
  *                       type: string
+ *                       example: nguyen.van.staff@rentalroom.com
  *                     fullName:
  *                       type: string
+ *                       example: Nguyễn Văn An
  *                     assignedBuildings:
  *                       type: array
  *                       items:
@@ -101,11 +104,94 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                       items:
  *                         type: string
  *       400:
- *         description: Email đã tồn tại / Quyền không hợp lệ / Tòa nhà không thuộc landlord
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             examples:
+ *               email_exists:
+ *                 summary: Email đã được sử dụng
+ *                 value: { "message": "Email đã tồn tại!" }
+ *               invalid_permission:
+ *                 summary: Quyền không tồn tại
+ *                 value: { "message": "Một số quyền không tồn tại" }
  *       403:
- *         description: Không có quyền (subscription hết hạn)
+ *         description: Không có quyền truy cập
+ *         content:
+ *           application/json:
+ *             example: { "message": "Một số tòa nhà không thuộc quyền quản lý của bạn!" }
  *       500:
- *         description: Lỗi server
+ *         description: Lỗi máy chủ
+ *         content:
+ *           application/json:
+ *             example: { "message": "Lỗi server" }
+ */
+
+/**
+ * @swagger
+ * /landlords/staffs/{staffId}/resend-first-password:
+ *   post:
+ *     summary: Gửi lại link đổi mật khẩu lần đầu cho nhân viên
+ *     description: |
+ *       Dành cho chủ trọ (landlord) khi nhân viên **quên hoặc link đổi mật khẩu lần đầu đã hết hạn**.
+ *       
+ *       - Chỉ hoạt động với nhân viên **chưa đổi mật khẩu lần đầu** (`mustChangePassword = true`)
+ *       - Tạo token mới (24h), gửi lại email chứa link đổi mật khẩu
+ *       - Token cũ sẽ bị ghi đè → không dùng được nữa
+ *     tags: [Landlord Staffs Management]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: objectid
+ *         description: ID của nhân viên (lấy từ danh sách nhân viên)
+ *         example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       200:
+ *         description: Gửi lại link thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã gửi lại link đổi mật khẩu thành công!"
+ *             examples:
+ *               success:
+ *                 value:
+ *                   message: "Đã gửi lại link đổi mật khẩu thành công!"
+ *       
+ *       400:
+ *         description: Nhân viên đã đổi mật khẩu rồi
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Nhân viên đã đổi mật khẩu rồi!"
+ *       
+ *       404:
+ *         description: Không tìm thấy nhân viên hoặc tài khoản
+ *         content:
+ *           application/json:
+ *             examples:
+ *               not_found_employee:
+ *                 summary: Không tìm thấy nhân viên
+ *                 value:
+ *                   message: "Không tìm thấy nhân viên!"
+ *               not_found_account:
+ *                 summary: Tài khoản không tồn tại
+ *                 value:
+ *                   message: "Tài khoản không tồn tại!"
+ *       
+ *       500:
+ *         description: Lỗi máy chủ
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Lỗi server"
  */
 
 /**
@@ -114,7 +200,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *   get:
  *     summary: Lấy danh sách nhân viên
  *     description: Lấy toàn bộ nhân viên đang hoạt động của chủ trọ
- *     tags: [Landlord Employees Management]
+ *     tags: [Landlord Staffs Management]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -171,7 +257,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *   get:
  *     summary: Lấy danh sách quyền có thể cấp
  *     description: Trả về tất cả quyền có sẵn trong hệ thống (dùng để hiển thị bảng chọn quyền khi tạo nhân viên)
- *     tags: [Landlord Employees Management]
+ *     tags: [Landlord Staffs Management]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -213,7 +299,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       - `isActive: true` → Kích hoạt (mở khóa tài khoản)  
  *       - `isActive: false` → Khóa tài khoản (không đăng nhập được)  
  *       Khi khóa staff → tự động khóa luôn `Account.isActivated`
- *     tags: [Landlord Employees Management]
+ *     tags: [Landlord Staffs Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -268,7 +354,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *   patch:
  *     summary: Cập nhật thông tin cá nhân nhân viên
  *     description: Chủ trọ cập nhật họ tên, số điện thoại, ngày sinh, giới tính, địa chỉ của nhân viên
- *     tags: [Landlord Employees Management]
+ *     tags: [Landlord Staffs Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -318,7 +404,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *     description: |
  *       Chủ trọ thay đổi quyền (permissions) và danh sách tòa nhà nhân viên được quản lý.  
  *       **Không thể giao tòa nhà của landlord khác!**
- *     tags: [Landlord Employees Management]
+ *     tags: [Landlord Staffs Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -375,6 +461,12 @@ router.post(
     checkAuthorize(["landlord"]),
     checkSubscription,
     staffController.createStaff
+);
+router.post(
+    "/:staffId/resend-first-password",
+    checkAuthorize(["landlord"]),
+    checkSubscription,
+    staffController.resendFirstPasswordLink
 );
 router.patch(
     "/:staffId/status",

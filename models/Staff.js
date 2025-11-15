@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const employeeSchema = new mongoose.Schema(
+const staffSchema = new mongoose.Schema(
     {
         accountId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -21,6 +21,6 @@ const employeeSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-employeeSchema.index({ landlordId: 1, isDeleted: 1 });
+staffSchema.index({ landlordId: 1, isDeleted: 1 });
 
-module.exports = mongoose.model("Employee", employeeSchema);
+module.exports = mongoose.model("Staff", staffSchema);

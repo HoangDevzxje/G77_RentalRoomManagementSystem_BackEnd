@@ -1,15 +1,15 @@
 const bcrypt = require('bcryptjs');
 const Account = require('../../models/Account');
 const UserInformation = require('../../models/UserInformation');
-const Employee = require('../../models/Employee');
+const Employee = require('../../models/Staff');
 const Building = require('../../models/Building');
 const Permission = require('../../models/Permission');
 const validateUtils = require("../../utils/validateInput");
+const sendStaffWelcomeEmail = require("../../utils/sendStaffWelcomeEmail");
+const crypto = require("crypto");
 const createStaff = async (req, res) => {
     const {
         email,
-        password,
-        confirmPassword,
         fullName,
         phoneNumber,
         dob,
@@ -27,28 +27,26 @@ const createStaff = async (req, res) => {
             return res.status(400).json({ message: checkEmail });
         }
 
-        if (password !== confirmPassword) {
-            return res.status(400).json({ message: "Mật khẩu không khớp!" });
-        }
-
-        const errMsg = validateUtils.validatePassword(password);
-        if (errMsg !== null) {
-            return res.status(400).json({ message: errMsg });
-        }
-
         const existingAcc = await Account.findOne({ email });
         if (existingAcc) {
             return res.status(400).json({ message: "Email đã tồn tại!" });
         }
 
+        const tempPassword = crypto
+            .randomBytes(10)
+            .toString("hex")
+            .slice(0, 12);
+
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
+        const hashedPassword = await bcrypt.hash(tempPassword, salt);
+
         const userInfo = new UserInformation({
             fullName,
+            email,
             phoneNumber,
             dob: dob ? new Date(dob) : null,
             gender,
-            address
+            address,
         });
         await userInfo.save();
 
@@ -56,8 +54,9 @@ const createStaff = async (req, res) => {
             email,
             password: hashedPassword,
             userInfo: userInfo._id,
-            role: 'staff',
-            isActivated: true
+            role: "staff",
+            isActivated: false,
+            mustChangePassword: true,
         });
         await account.save();
 
@@ -67,13 +66,17 @@ const createStaff = async (req, res) => {
                 landlordId
             });
             if (count !== assignedBuildings.length) {
-                return res.status(403).json({ message: 'Một số tòa nhà không thuộc quyền quản lý' });
+                await UserInformation.deleteOne({ _id: userInfo._id });
+                await Account.deleteOne({ _id: account._id });
+                return res.status(403).json({ message: "Một số tòa nhà không thuộc quyền quản lý của bạn!" });
             }
         }
 
         if (permissions?.length > 0) {
             const validPerms = await Permission.find({ code: { $in: permissions } });
             if (validPerms.length !== permissions.length) {
+                await UserInformation.deleteOne({ _id: userInfo._id });
+                await Account.deleteOne({ _id: account._id });
                 return res.status(400).json({ message: 'Một số quyền không tồn tại' });
             }
         }
@@ -87,6 +90,24 @@ const createStaff = async (req, res) => {
         });
         await employee.save();
 
+        const resetToken = account.createPasswordResetToken();
+        await account.save({ validateBeforeSave: false });
+
+        try {
+            await sendStaffWelcomeEmail({
+                to: email,
+                fullName,
+                tempPassword,
+                loginUrl: `${process.env.CLIENT_URL}/auth/login`,
+                changePasswordUrl: `${process.env.CLIENT_URL}/auth/change-password-first?token=${resetToken}`, // token có hạn 24h
+            });
+            console.log("resetToken", resetToken);
+        } catch (emailError) {
+            await UserInformation.deleteOne({ _id: userInfo._id });
+            await Account.deleteOne({ _id: account._id });
+            await Employee.deleteOne({ _id: employee._id });
+            console.error("Gửi email thất bại (nhưng vẫn tạo được nhân viên):", emailError);
+        }
         return res.status(201).json({
             message: 'Tạo nhân viên thành công. Thông tin đăng nhập đã được gửi qua email.',
             staff: {
@@ -257,11 +278,56 @@ const updateStaffPermissions = async (req, res) => {
         return res.status(500).json({ message: 'Lỗi server' });
     }
 };
+
+const resendFirstPasswordLink = async (req, res) => {
+    const { staffId } = req.params;
+    const landlordId = req.user._id;
+
+    try {
+        const employee = await Employee.findOne({ _id: staffId, landlordId });
+        if (!employee) {
+            return res.status(404).json({ message: "Không tìm thấy nhân viên!" });
+        }
+
+        const account = await Account.findById(employee.accountId);
+        if (!account || account.role !== "staff") {
+            return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+        }
+        if (account.mustChangePassword === false) {
+            return res.status(400).json({ message: "Nhân viên đã đổi mật khẩu rồi!" });
+        }
+        const tempPassword = crypto
+            .randomBytes(10)
+            .toString("hex")
+            .slice(0, 12);
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(tempPassword, salt);
+        account.password = hashedPassword;
+        const resetToken = account.createPasswordResetToken();
+        await account.save({ validateBeforeSave: false });
+
+        const userInfo = await UserInformation.findById(account.userInfo);
+
+        await sendStaffWelcomeEmail({
+            to: account.email,
+            fullName: userInfo.fullName,
+            tempPassword: hashedPassword,
+            changePasswordUrl: `${process.env.CLIENT_URL}/auth/change-password-first?token=${resetToken}`,
+        });
+
+        return res.json({ message: "Đã gửi lại link đổi mật khẩu thành công!" });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Lỗi server" });
+    }
+};
 module.exports = {
     createStaff,
     getStaffList,
     getPermissions,
     updateStaffStatus,
     updateStaffInfo,
-    updateStaffPermissions
+    updateStaffPermissions,
+    resendFirstPasswordLink
 };

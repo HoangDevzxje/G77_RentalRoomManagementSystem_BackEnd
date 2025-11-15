@@ -444,6 +444,74 @@ router.post("/change-password", checkAuthorize(["user", "landlord"]), authContro
 //  *               $ref: '#/components/schemas/Error'
 //  */
 // router.post("/facebook-auth", authController.facebookLogin);
-
+/**
+ * @swagger
+ * /auth/change-password-first:
+ *   post:
+ *     summary: Đổi mật khẩu lần đầu (dành cho nhân viên được tạo bởi landlord)
+ *     description: |
+ *       API dùng để nhân viên (staff) đổi mật khẩu lần đầu tiên sau khi nhận email từ landlord.
+ *       
+ *       - Token được gửi qua email (có hiệu lực **24 giờ**)
+ *       - Sau khi đổi thành công → tài khoản được kích hoạt và có thể đăng nhập bình thường
+ *       - Frontend nên tự động redirect người dùng đến trang này nếu `mustChangePassword = true`
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - newPassword
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Token được gửi trong email (dạng chuỗi dài, không mã hóa)
+ *                 example: "a3f8b9e2c7d1f5g6h7j8k9l0m1n2p3q4r5s6t7u8v9w0x1y2z3"
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *                 description: Mật khẩu mới (phải đáp ứng chính sách mật khẩu của hệ thống)
+ *                 example: "Mậtkhau@123"
+ *     responses:
+ *       200:
+ *         description: Đổi mật khẩu thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đổi mật khẩu thành công! Bạn có thể đăng nhập ngay."
+ *             examples:
+ *               success:
+ *                 value:
+ *                   message: "Đổi mật khẩu thành công! Bạn có thể đăng nhập ngay."
+ *       
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc token hết hạn
+ *         content:
+ *           application/json:
+ *             examples:
+ *               invalid_token:
+ *                 summary: Token không hợp lệ hoặc đã hết hạn
+ *                 value:
+ *                   message: "Token không hợp lệ hoặc đã hết hạn!"
+ *               weak_password:
+ *                 summary: Mật khẩu không đủ mạnh
+ *                 value:
+ *                   message: "Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt!"
+ *       
+ *       500:
+ *         description: Lỗi máy chủ
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Lỗi server"
+ */
+router.post("/change-password-first", authController.changeFirstPassword);
 router.post("/logout", authController.logoutUser);
 module.exports = router;
