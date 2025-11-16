@@ -67,7 +67,7 @@ exports.createFromContact = async (req, res) => {
       _id: contactId,
       landlordId,
       isDeleted: { $ne: true },
-    }).lean();
+    });
 
     if (!contact) {
       return res
@@ -75,10 +75,16 @@ exports.createFromContact = async (req, res) => {
         .json({ message: "Không tìm thấy yêu cầu liên hệ" });
     }
 
-    // Nếu đã có hợp đồng từ contact này rồi thì trả luôn
-    const existed = await Contract.findOne({ contactId: contact._id }).lean();
-    if (existed) return res.json(existed);
-
+    // Nếu contact đã có contractId -> load contract đó và trả luôn
+    if (contact.contractId) {
+      const existed = await Contract.findById(contact.contractId).lean();
+      if (existed) {
+        return res.json({
+          alreadyCreated: true,
+          contract: existed,
+        });
+      }
+    }
     // Lấy template
     const template = await ContractTemplate.findOne({
       buildingId: contact.buildingId,
@@ -160,6 +166,8 @@ exports.createFromContact = async (req, res) => {
 
       status: "draft",
     });
+    contact.contractId = doc._id;
+    await contact.save();
 
     res.json(doc);
   } catch (e) {
@@ -181,8 +189,9 @@ exports.updateData = async (req, res) => {
     }
 
     if (doc.status !== "draft") {
-      // nếu muốn chặt chẽ thì mở comment dưới:
-      // return res.status(400).json({ message: "Chỉ sửa hợp đồng khi đang ở trạng thái nháp" });
+      return res
+        .status(400)
+        .json({ message: "Chỉ sửa hợp đồng khi đang ở trạng thái nháp" });
     }
 
     if (A) {
