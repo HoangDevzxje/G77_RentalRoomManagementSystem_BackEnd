@@ -353,14 +353,7 @@ exports.getDetail = async (req, res) => {
           select: "fullName phoneNumber address dob",
         },
       })
-      .populate({
-        path: "roommateIds",
-        select: "email userInfo",
-        populate: {
-          path: "userInfo",
-          select: "fullName phoneNumber address dob",
-        },
-      })
+
       .lean();
 
     if (!contract) {
@@ -540,4 +533,3 @@ exports.rejectExtension = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
-
