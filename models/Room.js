@@ -19,7 +19,18 @@ const roomSchema = new mongoose.Schema(
     price: { type: Number, required: true },
 
     maxTenants: { type: Number, default: 1 },
-
+    currentContractId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Contract",
+      default: null,
+      index: true,
+    },
+    currentTenantIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Account",
+      },
+    ],
     status: {
       type: String,
       enum: ["available", "rented"],
