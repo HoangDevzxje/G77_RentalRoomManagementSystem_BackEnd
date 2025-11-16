@@ -230,6 +230,7 @@ exports.updateMyData = async (req, res) => {
 
 // POST /tenants/contracts/:id/sign
 // body: { signatureUrl }
+
 exports.signByTenant = async (req, res) => {
   try {
     const tenantId = req.user?._id;
@@ -245,20 +246,16 @@ exports.signByTenant = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    if (!["sent_to_tenant", "signed_by_landlord"].includes(contract.status)) {
+    // Tenant CHỈ ký được khi hợp đồng đang ở trạng thái 'sent_to_tenant'
+    if (contract.status !== "sent_to_tenant") {
       return res.status(400).json({
-        message: `Không thể ký ở trạng thái hiện tại: ${contract.status}`,
+        message: `Không thể ký hợp đồng ở trạng thái hiện tại: ${contract.status}`,
       });
     }
 
     contract.tenantSignatureUrl = signatureUrl;
-
-    if (contract.landlordSignatureUrl) {
-      contract.status = "completed";
-      contract.completedAt = new Date();
-    } else {
-      contract.status = "signed_by_tenant";
-    }
+    contract.status = "completed";
+    contract.completedAt = new Date();
 
     await contract.save();
     res.json({

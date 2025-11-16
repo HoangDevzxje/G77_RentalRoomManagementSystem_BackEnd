@@ -13,79 +13,95 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts:
  *   get:
- *     summary: Danh sách hợp đồng của landlord
- *     description: |
- *       Lấy danh sách toàn bộ hợp đồng mà landlord đã tạo hoặc đang quản lý.
- *       Trả về thông tin cơ bản gồm tòa nhà, phòng, người thuê và trạng thái.
+ *     summary: Lấy danh sách hợp đồng của chủ trọ
+ *     description:
+ *       Trả về danh sách hợp đồng mà user hiện tại là landlord (landlordId).
+ *       Hỗ trợ phân trang, lọc theo trạng thái và tìm kiếm theo số hợp đồng (contract.no).
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - name: status
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [draft, sent_to_tenant, signed_by_tenant, signed_by_landlord, completed]
+ *         description: Lọc theo trạng thái hợp đồng
+ *       - name: search
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Từ khóa tìm kiếm (hiện tại áp dụng cho số hợp đồng - contract.no)
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Trang hiện tại (bắt đầu từ 1)
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Số bản ghi mỗi trang
  *     responses:
  *       200:
  *         description: Danh sách hợp đồng của landlord
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   _id:
- *                     type: string
- *                     example: 6742baf3f8899c00123abcd1
- *                   status:
- *                     type: string
- *                     example: sent_to_tenant
- *                   buildingId:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
  *                     type: object
  *                     properties:
- *                       _id:
- *                         type: string
- *                         example: 673ffb17c0d011b27e33ee22
- *                       name:
- *                         type: string
- *                         example: "Tòa nhà Trường Sơn 25"
- *                   roomId:
- *                     type: object
- *                     properties:
- *                       _id:
- *                         type: string
- *                         example: 673ffb2ac0d011b27e33ee45
- *                       name:
- *                         type: string
- *                         example: "Phòng 302"
- *                   tenantId:
- *                     type: object
- *                     properties:
- *                       _id:
- *                         type: string
- *                         example: 673aa901c0d011b27e11aabb
- *                       name:
- *                         type: string
- *                         example: "Nguyễn Văn A"
- *                       email:
- *                         type: string
- *                         example: "nguyenvana@example.com"
- *                   updatedAt:
- *                     type: string
- *                     format: date-time
- *                     example: "2025-11-11T10:30:00Z"
- *                   createdAt:
- *                     type: string
- *                     format: date-time
- *                     example: "2025-11-01T08:20:00Z"
+ *                       _id: { type: string }
+ *                       status: { type: string }
+ *                       buildingId:
+ *                         type: object
+ *                         properties:
+ *                           name: { type: string }
+ *                       roomId:
+ *                         type: object
+ *                         properties:
+ *                           roomNumber: { type: string }
+ *                       tenantId:
+ *                         type: object
+ *                         properties:
+ *                           email: { type: string }
+ *                           userInfo:
+ *                             type: object
+ *                             properties:
+ *                               fullName: { type: string }
+ *                               phoneNumber: { type: string }
+ *                       contract:
+ *                         type: object
+ *                         properties:
+ *                           no: { type: string }
+ *                           startDate: { type: string, format: date }
+ *                           endDate: { type: string, format: date }
+ *                 total:
+ *                   type: integer
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 totalPages:
+ *                   type: integer
  *       400:
- *         description: Lỗi hệ thống hoặc tham số không hợp lệ
+ *         description: Lỗi truy vấn
  */
 
 /**
  * @swagger
  * /landlords/contracts/from-contact:
  *   post:
- *     summary: Tạo hợp đồng draft từ Contact (yêu cầu tạo hợp đồng)
- *     description: |
- *       Tạo một hợp đồng nháp (draft) dựa trên `Contact` (yêu cầu tạo hợp đồng của tenant) và ContractTemplate của tòa.
- *       Endpoint này chỉ dành cho landlord hoặc staff của landlord.
+ *     summary: Tạo hợp đồng draft từ Contact (yêu cầu thuê phòng)
+ *     description:
+ *       Tạo một Contract ở trạng thái `draft` từ một yêu cầu liên hệ (Contact).
+ *       Nếu yêu cầu này đã có hợp đồng (contact.contractId != null) thì trả về luôn hợp đồng đó.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -103,42 +119,31 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                 example: 67201df5c1234ab987654321
  *     responses:
  *       200:
- *         description: Trả về document Contract (draft) vừa tạo
+ *         description: Trả về contract (draft) vừa tạo hoặc đã tồn tại
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 _id:
- *                   type: string
- *                 contactId:
- *                   type: string
- *                 landlordId:
- *                   type: string
- *                 tenantId:
- *                   type: string
- *                 templateId:
- *                   type: string
- *                 status:
- *                   type: string
- *                   example: draft
+ *                 alreadyCreated:
+ *                   type: boolean
+ *                   description: true nếu hợp đồng từ contact này đã tồn tại
+ *                 contract:
+ *                   $ref: '#/components/schemas/Contract'
  *       400:
- *         description: Thiếu dữ liệu hoặc lỗi yêu cầu
+ *         description: Thiếu contactId hoặc dữ liệu không hợp lệ
  *       404:
- *         description: Contact hoặc template không tìm thấy
+ *         description: Không tìm thấy Contact phù hợp
  */
 
 /**
  * @swagger
  * /landlords/contracts/{id}:
  *   put:
- *     summary: Cập nhật dữ liệu hợp đồng (chỉ khi trạng thái là draft)
+ *     summary: Cập nhật nội dung hợp đồng (chỉ khi đang ở trạng thái draft)
  *     description:
- *       - Cập nhật thông tin hợp đồng
- *       - Cập nhật snapshot điều khoản (terms)
- *       - Cập nhật nội quy (regulations)
- *       - Cập nhật thông tin bên A
- *       - Các trường không gửi sẽ giữ nguyên
+ *       Chủ trọ cập nhật thông tin bên A, block "contract", danh sách điều khoản (terms) và nội quy (regulations).
+ *       Chỉ cho phép khi hợp đồng đang ở trạng thái `draft`. Không cho sửa tenantId, roomId, buildingId,...
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -157,16 +162,19 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *             properties:
  *               A:
  *                 type: object
- *                 description: Thông tin bên A (chủ trọ)
+ *                 description: Thông tin bên A (chủ trọ), theo personSchema
  *                 properties:
  *                   name: { type: string }
  *                   dob: { type: string, format: date }
- *                   phone: { type: string }
+ *                   cccd: { type: string }
+ *                   cccdIssuedDate: { type: string, format: date }
+ *                   cccdIssuedPlace: { type: string }
  *                   permanentAddress: { type: string }
+ *                   phone: { type: string }
  *                   email: { type: string }
- *
  *               contract:
  *                 type: object
+ *                 description: Thông tin chung của hợp đồng
  *                 properties:
  *                   no: { type: string }
  *                   price: { type: number }
@@ -175,35 +183,38 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   startDate: { type: string, format: date }
  *                   endDate: { type: string, format: date }
  *                   signPlace: { type: string }
- *
+ *                   paymentCycleMonths:
+ *                     type: integer
+ *                     description: Số tháng mỗi kỳ thanh toán (ví dụ 1 = tháng / lần)
+ *                     example: 1
  *               terms:
  *                 type: array
- *                 description: Danh sách snapshot điều khoản (ghi đè hoàn toàn)
+ *                 description: Danh sách điều khoản snapshot trên hợp đồng
  *                 items:
  *                   type: object
- *                   required: [name, description]
  *                   properties:
  *                     name: { type: string }
  *                     description: { type: string }
- *                     order: { type: number }
- *
+ *                     order: { type: integer }
  *               regulations:
  *                 type: array
- *                 description: Danh sách snapshot nội quy (ghi đè hoàn toàn)
+ *                 description: Danh sách nội quy snapshot trên hợp đồng
  *                 items:
  *                   type: object
- *                   required: [title, description]
  *                   properties:
  *                     title: { type: string }
  *                     description: { type: string }
  *                     effectiveFrom: { type: string, format: date }
- *                     order: { type: number }
- *
+ *                     order: { type: integer }
  *     responses:
  *       200:
- *         description: Cập nhật thành công
+ *         description: Cập nhật thành công, trả về contract sau khi cập nhật
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Contract'
  *       400:
- *         description: Dữ liệu không hợp lệ
+ *         description: Dữ liệu không hợp lệ hoặc không ở trạng thái draft
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
@@ -212,20 +223,20 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts/{id}/sign-landlord:
  *   post:
- *     summary: Lưu chữ ký của chủ trọ và đánh dấu đã ký bởi chủ trọ
- *     description: |
- *       Lưu `signatureUrl` (URL ảnh/chữ ký) cho hợp đồng và chuyển trạng thái sang `signed_by_landlord`.
- *       Trước khi ký sẽ validate các trường `required` theo template; nếu thiếu sẽ trả về 422 với chi tiết missing fields.
+ *     summary: Chủ trọ ký hợp đồng (bên A)
+ *     description:
+ *       Lưu chữ ký của chủ trọ (landlord).
+ *       Chỉ cho phép ký khi hợp đồng đang ở trạng thái `draft`.
+ *       Sau khi ký, trạng thái chuyển thành `signed_by_landlord`.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
+ *       - name: id
+ *         in: path
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của contract cần ký
  *     requestBody:
  *       required: true
  *       content:
@@ -237,74 +248,54 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *             properties:
  *               signatureUrl:
  *                 type: string
- *                 example: https://cdn.example.com/signatures/landlord-xx.png
+ *                 example: https://cdn.example.com/sign/landlord-123.png
  *     responses:
  *       200:
- *         description: Đã lưu chữ ký và cập nhật trạng thái
+ *         description: Ký thành công
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message:
- *                   type: string
- *                 status:
- *                   type: string
- *                   example: signed_by_landlord
+ *                 message: { type: string }
+ *                 status: { type: string }
  *       400:
- *         description: Thiếu signatureUrl hoặc lỗi yêu cầu
+ *         description: Thiếu chữ ký hoặc không ở trạng thái draft
  *       404:
- *         description: Contract không tìm thấy
- *       422:
- *         description: Thiếu dữ liệu bắt buộc theo template (trả về danh sách field thiếu)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 code:
- *                   type: string
- *                   example: VALIDATION_REQUIRED_MISSING
- *                 missing:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       key:
- *                         type: string
- *                       pdfField:
- *                         type: string
- *                       type:
- *                         type: string
+ *         description: Không tìm thấy hợp đồng
  */
 
 /**
  * @swagger
  * /landlords/contracts/{id}/send-to-tenant:
  *   post:
- *     summary: Gửi hợp đồng nội bộ tới tenant (change status -> sent_to_tenant)
- *     description: |
- *       Gửi hợp đồng cho tenant sau khi chủ trọ đã ký. Kiểm tra validate required lần cuối trước khi gửi.
- *       Chỉ cho phép khi status đã ở `ready_for_sign` hoặc `signed_by_landlord`.
+ *     summary: Gửi hợp đồng đã ký (bên A) cho người thuê xem/ký
+ *     description:
+ *       Chỉ cho phép khi hợp đồng đang ở trạng thái `signed_by_landlord`.
+ *       Sau khi gửi, trạng thái chuyển sang `sent_to_tenant`.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
+ *       - name: id
+ *         in: path
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của contract cần gửi
  *     responses:
  *       200:
- *         description: Đã gửi hợp đồng trong hệ thống
+ *         description: Đã gửi hợp đồng cho tenant
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 status: { type: string }
  *       400:
- *         description: Trạng thái hiện tại không cho phép gửi hoặc lỗi yêu cầu
+ *         description: Hợp đồng chưa được landlord ký hoặc trạng thái không phù hợp
  *       404:
- *         description: Contract không tìm thấy
- *       422:
- *         description: Thiếu dữ liệu bắt buộc theo template
+ *         description: Không tìm thấy hợp đồng
  */
 
 /**
@@ -383,19 +374,16 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       404:
  *         description: Contract không tìm thấy
  */
+
 /**
  * @swagger
  * /landlords/contracts/{id}/confirm-move-in:
  *   post:
- *     summary: Xác nhận người thuê đã vào ở (update room status)
- *     description: |
- *       Sau khi hợp đồng ở trạng thái "completed", landlord xác nhận tenant vào ở.
- *
- *       Endpoint sẽ:
- *       - Kiểm tra số người ở = 1 (Bên B) + số roommates trong hợp đồng, không vượt quá room.maxTenants.
- *       - Cập nhật trạng thái phòng (status = rented) và gán tenant chính vào currentTenantIds.
- *
- *       Lưu ý: roommates trong hợp đồng chỉ là thông tin khai báo, không tự động gán Account vào phòng.
+ *     summary: Xác nhận người thuê đã vào ở (sau khi hợp đồng completed)
+ *     description:
+ *       Chỉ cho phép khi hợp đồng ở trạng thái `completed`.
+ *       Endpoint sẽ kiểm tra số người ở (tenant chính + roommates) không vượt quá `room.maxTenants`,
+ *       sau đó cập nhật Room (status = rented, currentTenantIds, currentContractId).
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -419,10 +407,11 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   type: array
  *                   items: { type: string }
  *       400:
- *         description: Không thể xác nhận khi contract chưa hoàn tất hoặc vượt quá giới hạn
+ *         description: Hợp đồng chưa completed hoặc số lượng người ở vượt quá giới hạn
  *       404:
- *         description: Contract hoặc Room không tìm thấy
+ *         description: Không tìm thấy hợp đồng hoặc phòng
  */
+
 /**
  * @swagger
  * /landlords/contracts/{id}/approve-extension:

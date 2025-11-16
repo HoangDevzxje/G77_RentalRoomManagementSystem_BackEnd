@@ -15,7 +15,7 @@ const contractController = require("../../controllers/User/ContractController");
  * /contracts:
  *   get:
  *     summary: Lấy danh sách hợp đồng của người thuê
- *     description: Trả về danh sách hợp đồng mà người thuê là bên B (tenantId)
+ *     description: Trả về danh sách hợp đồng mà user hiện tại là tenantId (bên B).
  *     tags: [Resident Contracts]
  *     security:
  *       - bearerAuth: []
@@ -179,7 +179,10 @@ const contractController = require("../../controllers/User/ContractController");
  * /contracts/{id}/sign:
  *   post:
  *     summary: Người thuê ký hợp đồng
- *     description: Cập nhật chữ ký của người thuê. Nếu landlord đã ký thì chuyển sang completed.
+ *     description:
+ *       Người thuê ký vào hợp đồng.
+ *       Chỉ cho phép khi hợp đồng ở trạng thái `sent_to_tenant`.
+ *       Sau khi ký, trạng thái chuyển thành `completed`.
  *     tags: [Resident Contracts]
  *     security:
  *       - bearerAuth: []
@@ -194,7 +197,8 @@ const contractController = require("../../controllers/User/ContractController");
  *         application/json:
  *           schema:
  *             type: object
- *             required: [signatureUrl]
+ *             required:
+ *               - signatureUrl
  *             properties:
  *               signatureUrl:
  *                 type: string
@@ -210,7 +214,7 @@ const contractController = require("../../controllers/User/ContractController");
  *                 message: { type: string }
  *                 status: { type: string }
  *       400:
- *         description: Thiếu chữ ký hoặc trạng thái không hợp lệ
+ *         description: Thiếu chữ ký hoặc trạng thái không hợp lệ (không phải sent_to_tenant)
  *       404:
  *         description: Không tìm thấy hợp đồng
  */

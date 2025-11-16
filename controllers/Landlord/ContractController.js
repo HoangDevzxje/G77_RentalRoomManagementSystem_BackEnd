@@ -234,9 +234,10 @@ exports.sendToTenant = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    if (!["draft", "signed_by_landlord"].includes(contract.status)) {
+    //Chỉ gửi được sau khi landlord đã ký
+    if (contract.status !== "signed_by_landlord") {
       return res.status(400).json({
-        message: `Không thể gửi ở trạng thái hiện tại: ${contract.status}`,
+        message: `Chỉ được gửi hợp đồng khi chủ trọ đã ký. Trạng thái hiện tại: ${contract.status}`,
       });
     }
 
@@ -270,24 +271,17 @@ exports.signByLandlord = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    if (
-      !["draft", "sent_to_tenant", "signed_by_tenant"].includes(contract.status)
-    ) {
+    //Chỉ được ký khi còn là draft
+    if (contract.status !== "draft") {
       return res.status(400).json({
-        message: `Không thể ký ở trạng thái hiện tại: ${contract.status}`,
+        message: `Chỉ có thể ký hợp đồng khi đang ở trạng thái 'draft'. Hiện tại: ${contract.status}`,
       });
     }
 
     contract.landlordSignatureUrl = signatureUrl;
-
-    if (contract.tenantSignatureUrl) {
-      contract.status = "completed";
-      contract.completedAt = new Date();
-    } else {
-      contract.status = "signed_by_landlord";
-    }
-
+    contract.status = "signed_by_landlord"; // landlord ký xong, CHƯA gửi tenant
     await contract.save();
+
     res.json({
       message: "Ký hợp đồng (bên A) thành công",
       status: contract.status,
@@ -397,12 +391,31 @@ exports.getDetail = async (req, res) => {
 exports.listMine = async (req, res) => {
   try {
     const landlordId = req.user?._id;
-    const { status, page = 1, limit = 20 } = req.query;
+    const {
+      status,
+      search, // từ khóa search
+      page = 1,
+      limit = 20,
+    } = req.query;
 
     const filter = { landlordId };
-    if (status) filter.status = status;
 
-    const skip = (Number(page) - 1) * Number(limit);
+    // Filter theo trạng thái
+    if (status) {
+      filter.status = status;
+    }
+
+    // Search đơn giản theo số hợp đồng (contract.no)
+    if (search) {
+      const keyword = String(search).trim();
+      if (keyword) {
+        filter["contract.no"] = { $regex: keyword, $options: "i" };
+      }
+    }
+
+    const pageNumber = Number(page) || 1;
+    const pageSize = Number(limit) || 20;
+    const skip = (pageNumber - 1) * pageSize;
 
     const [items, total] = await Promise.all([
       Contract.find(filter)
@@ -418,12 +431,18 @@ exports.listMine = async (req, res) => {
         })
         .sort({ updatedAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
+        .limit(pageSize)
         .lean(),
       Contract.countDocuments(filter),
     ]);
 
-    res.json({ items, total, page: Number(page), limit: Number(limit) });
+    res.json({
+      items,
+      total,
+      page: pageNumber,
+      limit: pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
