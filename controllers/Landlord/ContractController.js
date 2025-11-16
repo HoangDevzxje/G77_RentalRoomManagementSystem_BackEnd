@@ -147,6 +147,7 @@ exports.createFromContact = async (req, res) => {
       price: room?.price || undefined,
     };
 
+    // Sau khi create Contract xong:
     const doc = await Contract.create({
       landlordId,
       tenantId: contact.tenantId,
@@ -154,22 +155,21 @@ exports.createFromContact = async (req, res) => {
       roomId: contact.roomId,
       contactId: contact._id,
       templateId: template?._id,
-
-      // snapshot điều khoản & nội quy
       terms: termSnapshots,
       regulations: regulationSnapshots,
-
-      // prefill thông tin hai bên
       A,
       B,
       contract: contractInfo,
-
       status: "draft",
     });
+
     contact.contractId = doc._id;
     await contact.save();
 
-    res.json(doc);
+    res.json({
+      alreadyCreated: false,
+      contract: doc,
+    });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
