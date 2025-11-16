@@ -370,6 +370,7 @@ const login = async (req, res) => {
       status: true,
       message: "Đăng nhập thành công",
       accessToken,
+      id: user._id,
       role: user.role,
     });
   } catch (error) {

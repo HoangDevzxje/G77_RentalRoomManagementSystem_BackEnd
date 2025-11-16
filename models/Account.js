@@ -30,7 +30,7 @@ accountSchema.methods.createPasswordResetToken = function () {
         .update(resetToken)
         .digest('hex');
 
-    this.passwordResetExpires = Date.now() + 30 * 1000; // 24 giờ
+    this.passwordResetExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 giờ
 
     return resetToken;
 };
