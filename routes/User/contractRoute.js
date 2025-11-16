@@ -314,6 +314,141 @@ const contractController = require("../../controllers/User/ContractController");
  *       404:
  *         description: Không tìm thấy tài khoản phù hợp
  */
+
+/**
+ * @swagger
+ * /contracts/{id}/request-extend:
+ *   post:
+ *     summary: Người thuê gửi yêu cầu gia hạn hợp đồng
+ *     description: |
+ *       Tenant (người thuê) gửi yêu cầu gia hạn hợp đồng thêm X tháng.
+ *       Yêu cầu sẽ được lưu ở trường `renewalRequest` trong Contract với trạng thái `pending`
+ *       và chờ chủ trọ (landlord) phê duyệt.
+ *     tags: [Resident Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của hợp đồng
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - months
+ *             properties:
+ *               months:
+ *                 type: integer
+ *                 example: 6
+ *                 description: Số tháng muốn gia hạn thêm so với ngày kết thúc hiện tại
+ *               note:
+ *                 type: string
+ *                 example: Em muốn ở thêm 6 tháng vì vẫn còn đi học tại đây.
+ *                 description: Ghi chú thêm của người thuê
+ *     responses:
+ *       200:
+ *         description: Gửi yêu cầu gia hạn thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Gửi yêu cầu gia hạn thành công
+ *                 renewalRequest:
+ *                   type: object
+ *                   properties:
+ *                     months:
+ *                       type: integer
+ *                     requestedEndDate:
+ *                       type: string
+ *                       format: date-time
+ *                     note:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: pending
+ *                     requestedAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc đã có yêu cầu pending / hợp đồng hết hạn quá lâu
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+/**
+ * @swagger
+ * /contracts/upcoming-expire:
+ *   get:
+ *     summary: Hợp đồng sắp hết hạn của người thuê
+ *     description: |
+ *       Trả về danh sách hợp đồng của tenant đang đăng nhập, có ngày kết thúc trong vòng N ngày tới (mặc định 30 ngày).
+ *       Chỉ lấy hợp đồng ở trạng thái `completed`.
+ *     tags: [Resident Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: days
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           example: 30
+ *         description: Số ngày tới để kiểm tra hợp đồng sắp hết hạn (>= 1)
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *     responses:
+ *       200:
+ *         description: Danh sách hợp đồng sắp hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id: { type: string }
+ *                       status: { type: string }
+ *                       buildingId:
+ *                         type: object
+ *                         properties:
+ *                           name: { type: string }
+ *                           address: { type: string }
+ *                       roomId:
+ *                         type: object
+ *                         properties:
+ *                           roomNumber: { type: string }
+ *                       contract:
+ *                         type: object
+ *                         properties:
+ *                           no: { type: string }
+ *                           startDate: { type: string, format: date-time }
+ *                           endDate: { type: string, format: date-time }
+ *                 total: { type: integer }
+ *                 page: { type: integer }
+ *                 limit: { type: integer }
+ *                 days: { type: integer }
+ *       400:
+ *         description: Lỗi truy vấn
+ */
+
 router.get(
   "/accounts/search-by-email",
   checkAuthorize("resident"),
@@ -343,4 +478,16 @@ router.post(
   checkAuthorize("resident"),
   contractController.signByTenant
 );
+
+router.post(
+  "/:id/request-extend",
+  checkAuthorize("resident"),
+  contractController.requestExtend
+);
+router.get(
+  "/upcoming-expire",
+  checkAuthorize("resident"),
+  contractController.listUpcomingExpire
+);
+
 module.exports = router;

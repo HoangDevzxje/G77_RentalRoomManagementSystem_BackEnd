@@ -14,7 +14,6 @@ const personSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// Hợp đồng hiện tại
 const bikeSchema = new mongoose.Schema(
   {
     bikeNumber: { type: String, required: true }, // Biển số xe / mã xe
@@ -39,6 +38,64 @@ const regulationSnapshotSchema = new mongoose.Schema(
     description: { type: String, required: true }, // nội dung chi tiết
     effectiveFrom: { type: Date }, // nếu muốn lưu luôn mốc hiệu lực
     order: { type: Number }, // thứ tự
+  },
+  { _id: false }
+);
+
+// Lịch sử gia hạn
+const extensionSchema = new mongoose.Schema(
+  {
+    oldEndDate: { type: Date, required: true },
+    newEndDate: { type: Date, required: true },
+    note: { type: String },
+    extendedAt: { type: Date, default: Date.now },
+    extendedById: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+    },
+    extendedByRole: {
+      type: String,
+      enum: ["landlord", "resident", "system"],
+      default: "landlord",
+    },
+  },
+  { _id: false }
+);
+
+// Yêu cầu gia hạn hiện tại
+const renewalRequestSchema = new mongoose.Schema(
+  {
+    months: { type: Number, required: true }, // muốn gia hạn thêm bao nhiêu tháng
+    requestedEndDate: { type: Date, required: true }, // ngày kết thúc mới dự kiến
+    note: { type: String },
+
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "cancelled"],
+      default: "pending",
+    },
+
+    requestedAt: { type: Date, default: Date.now },
+    requestedById: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+    },
+    requestedByRole: {
+      type: String,
+      enum: ["resident"],
+      default: "resident",
+    },
+
+    processedAt: { type: Date },
+    processedById: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+    },
+    processedByRole: {
+      type: String,
+      enum: ["landlord", "system"],
+    },
+    rejectedReason: { type: String },
   },
   { _id: false }
 );
@@ -86,11 +143,11 @@ const contractSchema = new mongoose.Schema(
     B: personSchema, // Bên B – người thuê chính
 
     roommates: {
-      type: [personSchema],
+      type: [personSchema], // chỉ lưu info, không link account
       default: [],
     },
 
-    // Danh sách xe của người thuê (và roommate nếu muốn gom chung)
+    // Danh sách xe
     bikes: {
       type: [bikeSchema],
       default: [],
@@ -108,11 +165,11 @@ const contractSchema = new mongoose.Schema(
       paymentCycleMonths: {
         type: Number,
         default: 1, // 1 tháng / lần
-        min: 1, // tối thiểu 1 tháng
+        min: 1,
       },
     },
 
-    // Term/Regulation áp dụng
+    // Term/Regulation snapshot
     terms: {
       type: [termSnapshotSchema],
       default: [],
@@ -123,6 +180,15 @@ const contractSchema = new mongoose.Schema(
       default: [],
     },
 
+    // Lịch sử gia hạn
+    extensions: {
+      type: [extensionSchema],
+      default: [],
+    },
+
+    // Yêu cầu gia hạn hiện tại (tối đa 1)
+    renewalRequest: renewalRequestSchema,
+
     // Chữ ký
     landlordSignatureUrl: { type: String },
     tenantSignatureUrl: { type: String },
@@ -131,16 +197,29 @@ const contractSchema = new mongoose.Schema(
       type: String,
       enum: [
         "draft",
-        "sent_to_tenant", // đã gửi cho người thuê để xem / điền / ký
-        "signed_by_tenant", // người thuê đã ký
-        "signed_by_landlord", // chủ trọ đã ký
-        "completed", // hai bên đã ký xong
+        "sent_to_tenant",
+        "signed_by_tenant",
+        "signed_by_landlord",
+        "completed",
+        "cancelled",
       ],
       default: "draft",
       index: true,
     },
     sentToTenantAt: { type: Date },
     completedAt: { type: Date },
+
+    // Thông tin hủy hợp đồng (nếu dùng cancel)
+    cancelReason: { type: String },
+    canceledAt: { type: Date },
+    canceledById: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+    },
+    canceledByRole: {
+      type: String,
+      enum: ["landlord", "resident", "system"],
+    },
   },
   { timestamps: true }
 );

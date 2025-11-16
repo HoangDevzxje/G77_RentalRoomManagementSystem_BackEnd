@@ -390,7 +390,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *     summary: Xác nhận người thuê đã vào ở (update room status)
  *     description: |
  *       Sau khi hợp đồng ở trạng thái "completed", landlord xác nhận tenant vào ở.
- *       
+ *
  *       Endpoint sẽ:
  *       - Kiểm tra số người ở = 1 (Bên B) + số roommates trong hợp đồng, không vượt quá room.maxTenants.
  *       - Cập nhật trạng thái phòng (status = rented) và gán tenant chính vào currentTenantIds.
@@ -422,6 +422,114 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         description: Không thể xác nhận khi contract chưa hoàn tất hoặc vượt quá giới hạn
  *       404:
  *         description: Contract hoặc Room không tìm thấy
+ */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/approve-extension:
+ *   post:
+ *     summary: Chủ trọ phê duyệt yêu cầu gia hạn hợp đồng
+ *     description: |
+ *       Landlord duyệt yêu cầu gia hạn từ tenant.
+ *       Hệ thống sẽ:
+ *       - Ghi lại lịch sử gia hạn trong `extensions[]`
+ *       - Cập nhật `contract.endDate` bằng `renewalRequest.requestedEndDate`
+ *       - Cập nhật `renewalRequest.status = "approved"`
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của hợp đồng
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 example: Đồng ý gia hạn thêm 6 tháng với giá thuê cũ.
+ *                 description: Ghi chú nội bộ hoặc lý do phê duyệt (sẽ lưu trong extension)
+ *     responses:
+ *       200:
+ *         description: Phê duyệt gia hạn thành công, trả về contract đã cập nhật
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã duyệt gia hạn hợp đồng
+ *                 contract:
+ *                   $ref: '#/components/schemas/Contract'
+ *       400:
+ *         description: Không có yêu cầu gia hạn pending hoặc trạng thái hợp đồng không cho phép
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/reject-extension:
+ *   post:
+ *     summary: Chủ trọ từ chối yêu cầu gia hạn hợp đồng
+ *     description: |
+ *       Landlord từ chối yêu cầu gia hạn từ tenant.
+ *       Hệ thống sẽ:
+ *       - Cập nhật `renewalRequest.status = "rejected"`
+ *       - Lưu lý do từ chối (nếu có) vào `renewalRequest.rejectedReason`
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của hợp đồng
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: Phòng đã có kế hoạch sửa chữa, không thể gia hạn thêm.
+ *                 description: Lý do từ chối gia hạn (hiển thị cho tenant)
+ *     responses:
+ *       200:
+ *         description: Từ chối yêu cầu gia hạn thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã từ chối yêu cầu gia hạn
+ *                 renewalRequest:
+ *                   type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       example: rejected
+ *                     rejectedReason:
+ *                       type: string
+ *                     processedAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Không có yêu cầu gia hạn pending
+ *       404:
+ *         description: Không tìm thấy hợp đồng
  */
 
 router.post(
@@ -465,6 +573,18 @@ router.post(
   checkAuthorize("landlord", "staff"),
 
   contractController.confirmMoveIn
+);
+
+router.post(
+  "/:id/approve-extension",
+  checkAuthorize("landlord", "staff"),
+  contractController.approveExtension
+);
+
+router.post(
+  "/:id/reject-extension",
+  checkAuthorize("landlord", "staff"),
+  contractController.rejectExtension
 );
 
 module.exports = router;

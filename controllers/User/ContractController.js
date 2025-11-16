@@ -317,3 +317,130 @@ exports.searchAccountByEmail = async (req, res) => {
     return res.status(400).json({ message: e.message });
   }
 };
+// POST /tenants/contracts/:id/request-extend
+// body: { months, note }
+exports.requestExtend = async (req, res) => {
+  try {
+    const tenantId = req.user?._id;
+    const { id } = req.params;
+    const { months, note } = req.body || {};
+
+    if (!months || Number(months) <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Số tháng gia hạn phải lớn hơn 0" });
+    }
+
+    const contract = await Contract.findOne({ _id: id, tenantId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    if (contract.status !== "completed") {
+      return res.status(400).json({
+        message:
+          "Chỉ có thể yêu cầu gia hạn khi hợp đồng đang ở trạng thái đã hoàn tất",
+      });
+    }
+
+    if (!contract.contract?.endDate) {
+      return res.status(400).json({
+        message: "Hợp đồng chưa có ngày kết thúc để gia hạn",
+      });
+    }
+
+    // Không cho gửi khi đã có request pending
+    if (
+      contract.renewalRequest &&
+      contract.renewalRequest.status === "pending"
+    ) {
+      return res.status(400).json({
+        message: "Bạn đã gửi yêu cầu gia hạn, vui lòng chờ chủ trọ xử lý",
+      });
+    }
+
+    const oldEndDate = contract.contract.endDate;
+    const now = new Date();
+
+    // Optional: cho phép gửi trước khi hết hạn + trong 7 ngày sau khi hết hạn
+    const GRACE_DAYS = 7;
+    const graceLimit = new Date(
+      oldEndDate.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    if (now > graceLimit) {
+      return res.status(400).json({
+        message:
+          "Hợp đồng đã hết hạn quá lâu, vui lòng liên hệ chủ trọ để làm hợp đồng mới.",
+      });
+    }
+
+    // Tính ngày kết thúc mới (endDate + months)
+    const requestedEndDate = new Date(oldEndDate);
+    requestedEndDate.setMonth(requestedEndDate.getMonth() + Number(months));
+
+    contract.renewalRequest = {
+      months: Number(months),
+      requestedEndDate,
+      note: note || "",
+      status: "pending",
+      requestedAt: now,
+      requestedById: tenantId,
+      requestedByRole: "resident",
+    };
+
+    await contract.save();
+
+    res.json({
+      message: "Gửi yêu cầu gia hạn thành công",
+      renewalRequest: contract.renewalRequest,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+// GET /tenants/contracts/upcoming-expire?days=30
+exports.listUpcomingExpire = async (req, res) => {
+  try {
+    const tenantId = req.user?._id;
+    const { days = 30, page = 1, limit = 20 } = req.query;
+
+    const numDays = Math.max(Number(days) || 30, 1); // ít nhất 1 ngày
+
+    const now = new Date();
+    const future = new Date();
+    future.setDate(future.getDate() + numDays);
+
+    const filter = {
+      tenantId,
+      status: "completed",
+      "contract.endDate": { $gte: now, $lte: future },
+    };
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [items, total] = await Promise.all([
+      Contract.find(filter)
+        .select(
+          "_id status buildingId roomId contract.no contract.startDate contract.endDate"
+        )
+        .populate("buildingId", "name address")
+        .populate("roomId", "roomNumber")
+        .sort({ "contract.endDate": 1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      Contract.countDocuments(filter),
+    ]);
+
+    res.json({
+      items,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      days: numDays,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};

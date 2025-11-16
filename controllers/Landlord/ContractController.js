@@ -336,8 +336,6 @@ exports.confirmMoveIn = async (req, res) => {
   }
 };
 
-
-
 // GET /landlords/contracts/:id
 exports.getDetail = async (req, res) => {
   try {
@@ -428,3 +426,118 @@ exports.listMine = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
+
+// POST /landlords/contracts/:id/approve-extension
+// body: { note } (optional)
+exports.approveExtension = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { id } = req.params;
+    const { note } = req.body || {};
+
+    const contract = await Contract.findOne({ _id: id, landlordId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    if (contract.status !== "completed") {
+      return res.status(400).json({
+        message:
+          "Chỉ gia hạn hợp đồng khi đang ở trạng thái đã hoàn tất (completed)",
+      });
+    }
+
+    const rr = contract.renewalRequest;
+    if (!rr || rr.status !== "pending") {
+      return res.status(400).json({
+        message: "Không có yêu cầu gia hạn nào đang chờ xử lý",
+      });
+    }
+
+    if (!contract.contract?.endDate) {
+      return res.status(400).json({
+        message: "Hợp đồng chưa có ngày kết thúc để gia hạn",
+      });
+    }
+
+    const oldEndDate = contract.contract.endDate;
+    const newEnd = rr.requestedEndDate;
+
+    if (!newEnd || newEnd <= oldEndDate) {
+      return res.status(400).json({
+        message:
+          "Ngày kết thúc mới không hợp lệ (phải lớn hơn ngày kết thúc hiện tại)",
+      });
+    }
+
+    const now = new Date();
+
+    // lưu vào lịch sử gia hạn
+    contract.extensions.push({
+      oldEndDate,
+      newEndDate: newEnd,
+      note: note || rr.note || "",
+      extendedAt: now,
+      extendedById: landlordId,
+      extendedByRole: "landlord",
+    });
+
+    // cập nhật endDate hiện tại
+    contract.contract.endDate = newEnd;
+
+    // cập nhật trạng thái request
+    contract.renewalRequest.status = "approved";
+    contract.renewalRequest.processedAt = now;
+    contract.renewalRequest.processedById = landlordId;
+    contract.renewalRequest.processedByRole = "landlord";
+
+    await contract.save();
+
+    res.json({
+      message: "Đã duyệt gia hạn hợp đồng",
+      contract,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// POST /landlords/contracts/:id/reject-extension
+// body: { reason }
+exports.rejectExtension = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const contract = await Contract.findOne({ _id: id, landlordId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    const rr = contract.renewalRequest;
+    if (!rr || rr.status !== "pending") {
+      return res.status(400).json({
+        message: "Không có yêu cầu gia hạn nào đang chờ xử lý",
+      });
+    }
+
+    const now = new Date();
+
+    contract.renewalRequest.status = "rejected";
+    contract.renewalRequest.rejectedReason = reason || "";
+    contract.renewalRequest.processedAt = now;
+    contract.renewalRequest.processedById = landlordId;
+    contract.renewalRequest.processedByRole = "landlord";
+
+    await contract.save();
+
+    res.json({
+      message: "Đã từ chối yêu cầu gia hạn",
+      renewalRequest: contract.renewalRequest,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
