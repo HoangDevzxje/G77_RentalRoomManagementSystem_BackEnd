@@ -350,6 +350,43 @@ const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
+ * /landlords/staffs/{accountId}/permissions:
+ *   get:
+ *     summary: Lấy danh sách quyền của nhân viên theo accountId
+ *     description: Trả về danh sách quyền dưới dạng mảng các chuỗi (permission codes).
+ *     tags: [Landlord Employees Management]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: accountId
+ *         description: ID của tài khoản nhân viên
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lấy danh sách quyền thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: string
+ *             example:
+ *               - "post:view"
+ *               - "resident:view"
+ *               - "..."
+ *       403:   
+ *         description: Không có quyền truy cập
+ *       404:
+ *         description: Không tìm thấy nhân viên
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
  * /landlords/staffs/{staffId}/info:
  *   patch:
  *     summary: Cập nhật thông tin cá nhân nhân viên
@@ -487,6 +524,14 @@ router.patch(
     checkSubscription,
     staffController.updateStaffPermissions
 );
+
+router.get(
+    "/:accountId/permissions",
+    checkAuthorize(["landlord", "staff"]),
+    checkSubscription,
+    staffController.getPermissionsByAccountId
+);
+
 router.get(
     "/list",
     checkAuthorize(["landlord"]),

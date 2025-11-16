@@ -127,7 +127,7 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/", checkAuthorize(["admin", "landlord", "resident"]), userController.getMyProfile);
+router.get("/", checkAuthorize(["admin", "landlord", "resident", "staff"]), userController.getMyProfile);
 
 /**
  * @swagger
@@ -200,6 +200,6 @@ router.get("/", checkAuthorize(["admin", "landlord", "resident"]), userControlle
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.put("/", checkAuthorize(["admin", "landlord", "resident"]), userController.editMyProfile);
+router.put("/", checkAuthorize(["admin", "landlord", "resident", "staff"]), userController.editMyProfile);
 
 module.exports = router;

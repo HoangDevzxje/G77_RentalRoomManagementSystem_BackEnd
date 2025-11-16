@@ -134,14 +134,13 @@ const getStaffList = async (req, res) => {
         })
             .populate({
                 path: "accountId",
-                select: "email userInfo",
+                select: "email userInfo isActivated",
                 populate: {
                     path: "userInfo",
                     model: "UserInformation",
-                    select: "fullName phoneNumber",
                 },
             })
-            .populate('assignedBuildings', 'name')
+            .populate('assignedBuildings')
             .select('permissions isActive createdAt');
 
         return res.json(employees);
@@ -191,6 +190,23 @@ const updateStaffStatus = async (req, res) => {
         return res.status(500).json({ message: 'Lỗi server' });
     }
 };
+
+const getPermissionsByAccountId = async (req, res) => {
+    const { accountId } = req.params;
+
+    try {
+        const staff = await Employee.findOne({ accountId });
+        if (!staff) {
+            return res.status(404).json({ message: "Không tìm thấy nhân viên" });
+        }
+
+        return res.json(staff.permissions);
+    }catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: 'Lỗi server' });
+    } 
+}
+
 const updateStaffInfo = async (req, res) => {
     const { staffId } = req.params;
     const landlordId = req.user._id;
@@ -326,6 +342,7 @@ module.exports = {
     createStaff,
     getStaffList,
     getPermissions,
+    getPermissionsByAccountId,
     updateStaffStatus,
     updateStaffInfo,
     updateStaffPermissions,
