@@ -97,14 +97,6 @@ exports.getMyContract = async (req, res) => {
           select: "fullName phoneNumber address dob",
         },
       })
-      .populate({
-        path: "roommateIds",
-        select: "email userInfo",
-        populate: {
-          path: "userInfo",
-          select: "fullName phoneNumber address dob",
-        },
-      })
       .lean();
 
     if (!doc)
