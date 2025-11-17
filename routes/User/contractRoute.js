@@ -470,7 +470,11 @@ router.get(
   checkAuthorize("resident"),
   contractController.searchAccountByEmail
 );
-
+router.get(
+  "/upcoming-expire",
+  checkAuthorize("resident"),
+  contractController.listUpcomingExpire
+);
 // GET /contracts
 router.get("/", checkAuthorize("resident"), contractController.listMyContracts);
 
@@ -499,11 +503,6 @@ router.post(
   "/:id/request-extend",
   checkAuthorize("resident"),
   contractController.requestExtend
-);
-router.get(
-  "/upcoming-expire",
-  checkAuthorize("resident"),
-  contractController.listUpcomingExpire
 );
 
 module.exports = router;
