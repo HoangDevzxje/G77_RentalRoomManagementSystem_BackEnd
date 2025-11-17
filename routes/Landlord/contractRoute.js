@@ -98,10 +98,16 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts/from-contact:
  *   post:
- *     summary: Tạo hợp đồng draft từ Contact (yêu cầu thuê phòng)
- *     description:
- *       Tạo một Contract ở trạng thái `draft` từ một yêu cầu liên hệ (Contact).
- *       Nếu yêu cầu này đã có hợp đồng (contact.contractId != null) thì trả về luôn hợp đồng đó.
+ *     summary: Tạo hợp đồng nháp từ yêu cầu liên hệ (Contact)
+ *     description: |
+ *       Tạo một hợp đồng **draft** từ 1 yêu cầu liên hệ (Contact):
+ *       - Nếu Contact đã có contractId trỏ tới hợp đồng **chưa bị xóa** → trả về hợp đồng đó (`alreadyCreated = true`).
+ *       - Nếu phòng đã có 1 hợp đồng đang xử lý (draft/sent_to_tenant/signed_by_tenant/signed_by_landlord) → trả về lỗi 400, kèm thông tin hợp đồng xung đột.
+ *       - Nếu chưa có, hệ thống sẽ:
+ *         - Lấy ContractTemplate (nếu có) → snapshot terms & regulations vào hợp đồng
+ *         - Tự prefill thông tin bên A/B và giá phòng
+ *         - Tạo Contract ở trạng thái `draft`
+ *         - Gán `contact.contractId = contract._id`
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -116,10 +122,10 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *             properties:
  *               contactId:
  *                 type: string
- *                 example: 67201df5c1234ab987654321
+ *                 example: "67201df5c1234ab987654321"
  *     responses:
  *       200:
- *         description: Trả về contract (draft) vừa tạo hoặc đã tồn tại
+ *         description: Tạo mới hoặc trả về hợp đồng đã tồn tại từ Contact này
  *         content:
  *           application/json:
  *             schema:
@@ -127,13 +133,49 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *               properties:
  *                 alreadyCreated:
  *                   type: boolean
- *                   description: true nếu hợp đồng từ contact này đã tồn tại
+ *                   description: |
+ *                     - `true`: Contact này đã có hợp đồng (chưa bị xóa), trả về contract cũ.
+ *                     - `false`: Vừa tạo hợp đồng mới từ Contact này.
+ *                   example: false
  *                 contract:
  *                   $ref: '#/components/schemas/Contract'
  *       400:
- *         description: Thiếu contactId hoặc dữ liệu không hợp lệ
+ *         description: Lỗi dữ liệu hoặc phòng đã có hợp đồng đang xử lý
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               oneOf:
+ *                 - description: Thiếu contactId hoặc lỗi validate khác
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Thiếu contactId"
+ *                 - description: Phòng đã có hợp đồng đang xử lý
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Phòng này hiện đã có một hợp đồng đang xử lý. Vui lòng hoàn tất hoặc hủy hợp đồng đó trước khi tạo hợp đồng mới."
+ *                     conflictContractId:
+ *                       type: string
+ *                       example: "6915aa921f76ddc90308da5f"
+ *                     conflictStatus:
+ *                       type: string
+ *                       example: "sent_to_tenant"
+ *                     conflictContractNo:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "HĐ-2025-001"
  *       404:
  *         description: Không tìm thấy Contact phù hợp
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy yêu cầu liên hệ"
  */
 
 /**
@@ -520,6 +562,39 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
+/**
+ * @swagger
+ * /landlords/contracts/{id}:
+ *   delete:
+ *     summary: Xóa hợp đồng (soft delete) – chỉ cho phép khi đang là bản nháp
+ *     description: Đánh dấu isDeleted = true, deletedAt = now. Nếu hợp đồng được tạo từ 1 Contact thì xóa luôn liên kết contact.contractId.
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Xóa hợp đồng nháp thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Đã xóa hợp đồng nháp
+ *                 id:
+ *                   type: string
+ *       400:
+ *         description: Hợp đồng không ở trạng thái nháp hoặc lỗi dữ liệu
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
 
 router.post(
   "/from-contact",
@@ -574,6 +649,12 @@ router.post(
   "/:id/reject-extension",
   checkAuthorize("landlord", "staff"),
   contractController.rejectExtension
+);
+
+router.delete(
+  "/contracts/:id",
+  checkAuthorize("landlord"),
+  contractController.deleteContract
 );
 
 module.exports = router;

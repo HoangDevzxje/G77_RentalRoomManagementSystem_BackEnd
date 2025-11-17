@@ -63,6 +63,7 @@ exports.createFromContact = async (req, res) => {
       return res.status(400).json({ message: "Thiếu contactId" });
     }
 
+    // Không dùng .lean() ở đây để còn contact.save()
     const contact = await Contact.findOne({
       _id: contactId,
       landlordId,
@@ -75,24 +76,58 @@ exports.createFromContact = async (req, res) => {
         .json({ message: "Không tìm thấy yêu cầu liên hệ" });
     }
 
-    // Nếu contact đã có contractId -> load contract đó và trả luôn
+    //Nếu contact đã có contractId -> load contract đó và trả luôn (và chưa bị xóa)
     if (contact.contractId) {
-      const existed = await Contract.findById(contact.contractId).lean();
+      const existed = await Contract.findOne({
+        _id: contact.contractId,
+        isDeleted: false, // chỉ tính hợp đồng chưa bị soft delete
+      }).lean();
+
       if (existed) {
         return res.json({
           alreadyCreated: true,
           contract: existed,
         });
       }
+
+      // Nếu contractId trỏ đến HĐ đã bị xoá soft -> clear để tạo mới
+      contact.contractId = null;
+      await contact.save();
     }
-    // Lấy template
+
+    // Check phòng đã có hợp đồng đang xử lý chưa
+    const conflict = await Contract.findOne({
+      roomId: contact.roomId,
+      isDeleted: false,
+      status: {
+        $in: [
+          "draft",
+          "sent_to_tenant",
+          "signed_by_tenant",
+          "signed_by_landlord",
+        ],
+      },
+    })
+      .select("_id status contract.no tenantId")
+      .lean();
+
+    if (conflict) {
+      return res.status(400).json({
+        message:
+          "Phòng này hiện đã có một hợp đồng đang xử lý. Vui lòng hoàn tất hoặc hủy hợp đồng đó trước khi tạo hợp đồng mới.",
+        conflictContractId: conflict._id,
+        conflictStatus: conflict.status,
+        conflictContractNo: conflict?.contract?.no || null,
+      });
+    }
+
+    //Lấy template (nếu không có template cũng cho tạo, chỉ là không có terms/regulations default)
     const template = await ContractTemplate.findOne({
       buildingId: contact.buildingId,
       ownerId: landlordId,
       status: "active",
     }).lean();
 
-    // Chuẩn bị snapshot điều khoản & nội quy từ template
     const termSnapshots = [];
     const regulationSnapshots = [];
 
@@ -104,14 +139,13 @@ exports.createFromContact = async (req, res) => {
         .sort({ createdAt: 1 })
         .lean();
 
-      for (let i = 0; i < terms.length; i++) {
-        const t = terms[i];
+      terms.forEach((t, idx) => {
         termSnapshots.push({
           name: t.name,
           description: t.description,
-          order: i + 1,
+          order: idx + 1,
         });
-      }
+      });
     }
 
     if (template?.defaultRegulationIds?.length) {
@@ -122,32 +156,43 @@ exports.createFromContact = async (req, res) => {
         .sort({ createdAt: 1 })
         .lean();
 
-      for (let i = 0; i < regs.length; i++) {
-        const r = regs[i];
+      regs.forEach((r, idx) => {
         regulationSnapshots.push({
           title: r.title,
           description: r.description,
           effectiveFrom: r.effectiveFrom,
-          order: i + 1,
+          order: idx + 1,
         });
-      }
+      });
     }
 
-    // Lấy info landlord & tenant & room để prefill
+    //Lấy info landlord & tenant & room để prefill
     const [landlordAcc, tenantAcc, room] = await Promise.all([
       Account.findById(landlordId).populate("userInfo").lean(),
       Account.findById(contact.tenantId).populate("userInfo").lean(),
       Room.findById(contact.roomId).lean(),
     ]);
 
-    const A = mapAccountToPerson(landlordAcc);
+    if (!landlordAcc) {
+      return res
+        .status(400)
+        .json({ message: "Không tìm thấy tài khoản chủ trọ" });
+    }
+
+    if (!tenantAcc) {
+      return res
+        .status(400)
+        .json({ message: "Không tìm thấy tài khoản người thuê" });
+    }
+
+    const A = mapAccountToPerson(landlordAcc); // đảm bảo có name
     const B = mapAccountToPerson(tenantAcc);
 
     const contractInfo = {
       price: room?.price || undefined,
     };
 
-    // Sau khi create Contract xong:
+    //Tạo contract
     const doc = await Contract.create({
       landlordId,
       tenantId: contact.tenantId,
@@ -163,6 +208,7 @@ exports.createFromContact = async (req, res) => {
       status: "draft",
     });
 
+    //Gán contractId lại cho contact
     contact.contractId = doc._id;
     await contact.save();
 
@@ -172,6 +218,50 @@ exports.createFromContact = async (req, res) => {
     });
   } catch (e) {
     res.status(400).json({ message: e.message });
+  }
+};
+
+// DELETE /landlords/contracts/:id
+exports.deleteContract = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { id } = req.params;
+
+    const contract = await Contract.findOne({
+      _id: id,
+      landlordId,
+      isDeleted: false,
+    });
+
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    // Chỉ cho xóa khi là draft
+    if (contract.status !== "draft") {
+      return res.status(400).json({
+        message: "Chỉ được xóa hợp đồng ở trạng thái nháp (draft)",
+      });
+    }
+
+    contract.isDeleted = true;
+    contract.deletedAt = new Date();
+    await contract.save();
+
+    // Nếu hợp đồng này được tạo từ 1 Contact → clear contractId
+    if (contract.contactId) {
+      await Contact.updateOne(
+        { _id: contract.contactId, contractId: contract._id },
+        { $unset: { contractId: "" } }
+      );
+    }
+
+    return res.json({
+      message: "Đã xóa hợp đồng nháp",
+      id: contract._id,
+    });
+  } catch (e) {
+    return res.status(400).json({ message: e.message });
   }
 };
 

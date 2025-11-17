@@ -220,6 +220,8 @@ const contractSchema = new mongoose.Schema(
       type: String,
       enum: ["landlord", "resident", "system"],
     },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
