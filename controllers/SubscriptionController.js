@@ -83,8 +83,8 @@ const buyPackage = async (req, res) => {
 
         if (activeSub && !activeSub.isTrial) {
             const daysLeft = Math.ceil((activeSub.endDate - new Date()) / 86400000);
-            if (daysLeft > 7) {
-                return sendError(res, 400, `Còn ${daysLeft} ngày. Vui lòng đợi hết hạn hoặc gia hạn.`);
+            if (daysLeft > 0) {
+                return sendError(res, 400, `Còn ${daysLeft} ngày. Vui lòng đợi hết hạn hoặc hủy gói hiện tại.`);
             }
         }
 
@@ -145,6 +145,7 @@ const renewPackage = async (req, res) => {
         if (pkg.type === 'trial') {
             return sendError(res, 400, 'Không thể gia hạn gói dùng thử.');
         }
+        if (!pkg.isActive) return sendError(res, 400, 'Gói đã bị ngừng kinh doanh.');
 
         const daysLeft = Math.ceil((currentSub.endDate - new Date()) / 86400000);
         if (daysLeft > 30) {
@@ -333,7 +334,7 @@ const getStatusPackage = async (req, res) => {
                 action: hasUsedTrial ? 'buy_package' : 'start_trial',
             });
         }
-
+        console.log(activeSub);
         const daysLeft = Math.ceil((activeSub.endDate - new Date()) / 86400000);
         const action = activeSub.isTrial && daysLeft <= 3 ? 'upgrade_warning' : null;
 
