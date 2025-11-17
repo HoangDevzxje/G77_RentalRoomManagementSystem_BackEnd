@@ -24,6 +24,45 @@ const sortObject = (obj) => {
     });
     return sorted;
 };
+function generateVnpUrl(orderId, amount, orderType, req) {
+    const ipAddr =
+        req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+        req.ip ||
+        '127.0.0.1';
+
+    const createDate = moment().format('YYYYMMDDHHmmss');
+    const expireDate = moment().add(15, 'minutes').format('YYYYMMDDHHmmss');
+
+    const vnp_Params = {
+        vnp_Version: '2.1.0',
+        vnp_Command: 'pay',
+        vnp_TmnCode: VNP_TMNCODE,
+        vnp_Locale: 'vn',
+        vnp_CurrCode: 'VND',
+        vnp_TxnRef: `${orderType.toUpperCase()}_${createDate}_${uuidv4().slice(0, 8)}`,
+        vnp_OrderInfo: orderId,
+        vnp_OrderType: orderType,
+        vnp_Amount: amount * 100,
+        vnp_ReturnUrl: VNP_RETURNURL,
+        vnp_IpAddr: ipAddr,
+        vnp_CreateDate: createDate,
+        vnp_ExpireDate: expireDate,
+    };
+
+    const sorted = sortObject(vnp_Params);
+    const signData = qs.stringify(sorted, { encode: false });
+    const signed = crypto
+        .createHmac('sha512', VNP_HASHSECRET)
+        .update(signData)
+        .digest('hex');
+
+    sorted.vnp_SecureHash = signed;
+
+    return {
+        url: `${VNP_URL}?${qs.stringify(sorted, { encode: false })}`,
+        expireAt: moment(expireDate, 'YYYYMMDDHHmmss').toDate()
+    };
+}
 
 const startTrial = async (req, res) => {
     try {
@@ -79,13 +118,51 @@ const buyPackage = async (req, res) => {
             landlordId,
             status: 'active',
             endDate: { $gt: new Date() },
-        });
+        }).populate('packageId');
 
         if (activeSub && !activeSub.isTrial) {
             const daysLeft = Math.ceil((activeSub.endDate - new Date()) / 86400000);
             if (daysLeft > 0) {
-                return sendError(res, 400, `Còn ${daysLeft} ngày. Vui lòng đợi hết hạn hoặc hủy gói hiện tại.`);
+                return sendError(
+                    res,
+                    400,
+                    `Còn ${daysLeft} ngày. Vui lòng đợi hết hạn hoặc hủy gói hiện tại.`
+                );
             }
+        }
+        const pendingBuy = await Subscription.findOne({
+            landlordId,
+            status: 'pending_payment',
+            isRenewal: false,
+            packageId: packageId,
+        });
+
+        if (pendingBuy) {
+            const now = new Date();
+            if (!pendingBuy.vnp_ExpireDate || now > pendingBuy.vnp_ExpireDate) {
+                const { url, expireAt } = generateVnpUrl(
+                    pendingBuy._id.toString(),
+                    pkg.price,
+                    'subscription',
+                    req
+                );
+
+                pendingBuy.paymentUrl = url;
+                pendingBuy.vnp_ExpireDate = expireAt;
+                await pendingBuy.save();
+
+                return sendSuccess(res, {
+                    paymentUrl: url,
+                    subscriptionId: pendingBuy._id,
+                    message: 'URL cũ đã hết hạn – đã tạo URL thanh toán mới.',
+                });
+            }
+
+            return sendSuccess(res, {
+                paymentUrl: pendingBuy.paymentUrl,
+                subscriptionId: pendingBuy._id,
+                message: 'Bạn có yêu cầu mua gói chưa thanh toán, vui lòng thanh toán trước.',
+            });
         }
 
         const sub = new Subscription({
@@ -99,33 +176,27 @@ const buyPackage = async (req, res) => {
         });
         await sub.save();
 
-        const ipAddr = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || '127.0.0.1';
-        const vnp_Params = {
-            vnp_Version: '2.1.0',
-            vnp_Command: 'pay',
-            vnp_TmnCode: VNP_TMNCODE,
-            vnp_Locale: 'vn',
-            vnp_CurrCode: 'VND',
-            vnp_TxnRef: `BUY_${moment().format('YYYYMMDDHHmmss')}_${uuidv4().slice(0, 8)}`,
-            vnp_OrderInfo: sub._id.toString(),
-            vnp_OrderType: 'subscription',
-            vnp_Amount: pkg.price * 100,
-            vnp_ReturnUrl: VNP_RETURNURL,
-            vnp_IpAddr: ipAddr,
-            vnp_CreateDate: moment().format('YYYYMMDDHHmmss'),
-        };
+        const { url, expireAt } = generateVnpUrl(
+            sub._id.toString(),
+            pkg.price,
+            'subscription',
+            req
+        );
 
-        const sorted = sortObject(vnp_Params);
-        const signData = qs.stringify(sorted, { encode: false });
-        const signed = crypto.createHmac('sha512', VNP_HASHSECRET).update(signData).digest('hex');
-        sorted.vnp_SecureHash = signed;
+        sub.paymentUrl = url;
+        sub.vnp_ExpireDate = expireAt;
+        await sub.save();
 
-        const paymentUrl = `${VNP_URL}?${qs.stringify(sorted, { encode: false })}`;
-        return sendSuccess(res, { paymentUrl, subscriptionId: sub._id });
+        return sendSuccess(res, {
+            paymentUrl: url,
+            subscriptionId: sub._id,
+        });
+
     } catch (err) {
         return sendError(res, 500, err.message);
     }
 };
+
 
 const renewPackage = async (req, res) => {
     try {
@@ -137,14 +208,10 @@ const renewPackage = async (req, res) => {
             endDate: { $gt: new Date() },
         }).populate('packageId');
 
-        if (!currentSub) {
-            return sendError(res, 400, 'Không có gói nào đang active để gia hạn.');
-        }
+        if (!currentSub) return sendError(res, 400, 'Không có gói nào đang active.');
 
         const pkg = currentSub.packageId;
-        if (pkg.type === 'trial') {
-            return sendError(res, 400, 'Không thể gia hạn gói dùng thử.');
-        }
+        if (pkg.type === 'trial') return sendError(res, 400, 'Không thể gia hạn gói trial.');
         if (!pkg.isActive) return sendError(res, 400, 'Gói đã bị ngừng kinh doanh.');
 
         const daysLeft = Math.ceil((currentSub.endDate - new Date()) / 86400000);
@@ -156,21 +223,41 @@ const renewPackage = async (req, res) => {
             landlordId,
             status: 'pending_payment',
             isRenewal: true,
+            packageId: pkg._id,
             renewedFrom: currentSub._id,
         });
 
         if (pendingRenew) {
+            const now = new Date();
+
+            if (!pendingRenew.vnp_ExpireDate || now > pendingRenew.vnp_ExpireDate) {
+                const { url, expireAt } = generateVnpUrl(
+                    pendingRenew._id.toString(),
+                    pkg.price,
+                    'renew_subscription',
+                    req
+                );
+
+                pendingRenew.paymentUrl = url;
+                pendingRenew.vnp_ExpireDate = expireAt;
+                await pendingRenew.save();
+
+                return sendSuccess(res, {
+                    paymentUrl: url,
+                    subscriptionId: pendingRenew._id,
+                    message: 'URL cũ đã hết hạn – đã tạo URL thanh toán mới.',
+                });
+            }
+
             return sendSuccess(res, {
-                paymentUrl: pendingRenew.paymentUrl || 'URL đã hết hạn, vui lòng tạo lại.',
+                paymentUrl: pendingRenew.paymentUrl,
                 subscriptionId: pendingRenew._id,
-                message: 'Yêu cầu gia hạn đã tồn tại. Vui lòng thanh toán để kích hoạt.',
+                message: 'Yêu cầu gia hạn đã tồn tại.',
             });
         }
 
-        const newStartDate = new Date(currentSub.endDate);
-        newStartDate.setDate(newStartDate.getDate() + 1);
-        const newEndDate = new Date(newStartDate);
-        newEndDate.setDate(newEndDate.getDate() + pkg.durationDays);
+        const newStartDate = moment(currentSub.endDate).add(1, 'day').toDate();
+        const newEndDate = moment(newStartDate).add(pkg.durationDays, 'day').toDate();
 
         const newSub = new Subscription({
             landlordId,
@@ -188,42 +275,29 @@ const renewPackage = async (req, res) => {
         currentSub.renewedTo = newSub._id;
         await currentSub.save();
 
-        const ipAddr = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || '127.0.0.1';
-        const vnp_Params = {
-            vnp_Version: '2.1.0',
-            vnp_Command: 'pay',
-            vnp_TmnCode: VNP_TMNCODE,
-            vnp_Locale: 'vn',
-            vnp_CurrCode: 'VND',
-            vnp_TxnRef: `RENEW_${moment().format('YYYYMMDDHHmmss')}_${uuidv4().slice(0, 8)}`,
-            vnp_OrderInfo: newSub._id.toString(),
-            vnp_OrderType: 'renew_subscription',
-            vnp_Amount: pkg.price * 100,
-            vnp_ReturnUrl: VNP_RETURNURL,
-            vnp_IpAddr: ipAddr,
-            vnp_CreateDate: moment().format('YYYYMMDDHHmmss'),
-        };
+        const { url, expireAt } = generateVnpUrl(
+            newSub._id.toString(),
+            pkg.price,
+            'renew_subscription',
+            req
+        );
 
-        const sorted = sortObject(vnp_Params);
-        const signData = qs.stringify(sorted, { encode: false });
-        const signed = crypto.createHmac('sha512', VNP_HASHSECRET).update(signData).digest('hex');
-        sorted.vnp_SecureHash = signed;
-
-        const paymentUrl = `${VNP_URL}?${qs.stringify(sorted, { encode: false })}`;
-
-        newSub.paymentUrl = paymentUrl;
+        newSub.paymentUrl = url;
+        newSub.vnp_ExpireDate = expireAt;
         await newSub.save();
 
         return sendSuccess(res, {
-            paymentUrl,
+            paymentUrl: url,
             subscriptionId: newSub._id,
             oldSubscriptionId: currentSub._id,
             message: 'Đã tạo yêu cầu gia hạn.',
         });
+
     } catch (err) {
         return sendError(res, 500, err.message);
     }
 };
+
 
 const paymentCallback = async (req, res) => {
     try {
@@ -237,12 +311,10 @@ const paymentCallback = async (req, res) => {
         }
 
         const sub = await Subscription.findById(orderId).populate('packageId');
-        if (!sub) {
-            return sendError(res, 404, 'Không tìm thấy với ID: ' + orderId);
-        }
+        if (!sub) return sendError(res, 404, 'Không tìm thấy Subscription ID: ' + orderId);
 
-        if (sub.status === 'active') {
-            return sendSuccess(res, { subscription: sub }, 'Dịch vụ đã được xử lý trước đó.');
+        if (sub.status === 'active' || sub.status === 'upcoming') {
+            return sendSuccess(res, { subscription: sub }, 'Giao dịch đã xử lý trước đó');
         }
 
         const { vnp_SecureHash, vnp_SecureHashType, ...paramsForSign } = vnp_Params;
@@ -251,63 +323,65 @@ const paymentCallback = async (req, res) => {
         const calculatedHash = crypto.createHmac('sha512', VNP_HASHSECRET).update(signData).digest('hex');
 
         if (secureHash !== calculatedHash) {
-            sub.status = 'expired';
+            sub.status = 'pending_payment';
             await sub.save();
-            console.warn('Chữ ký không hợp lệ:', { orderId, txnRef });
-            return sendError(res, 400, 'Chữ ký bảo mật không hợp lệ');
+            return sendError(res, 400, 'Sai chữ ký bảo mật');
         }
 
-        if (vnp_Params.vnp_ResponseCode === '00') {
-
-            if (!sub.endDate) {
-                const endDate = new Date(sub.startDate);
-                endDate.setDate(endDate.getDate() + sub.packageId.durationDays);
-                sub.endDate = endDate;
-            }
-
-            sub.status = 'active';
-            sub.paymentId = vnp_Params.vnp_TransactionNo;
-            sub.paymentMethod = 'vnpay';
+        if (vnp_Params.vnp_ResponseCode !== '00') {
+            sub.status = 'pending_payment';
             await sub.save();
-
-            console.log(`Thanh toán thành công: ${orderId} | TxnRef: ${txnRef}`);
-
-            const isRenew = txnRef.startsWith('RENEW_') || (sub.isRenewal === true);
-            if (isRenew && sub.renewedFrom) {
-                const oldSub = await Subscription.findById(sub.renewedFrom);
-                if (oldSub && oldSub.status === 'active') {
-                    oldSub.status = 'expired';
-                    await oldSub.save();
-                }
-            }
-
-            const cancelledCount = await Subscription.updateMany(
-                {
-                    landlordId: sub.landlordId,
-                    status: 'pending_payment',
-                    isRenewal: true,
-                    _id: { $ne: sub._id }
-                },
-                { status: 'cancelled' }
-            );
-
-            if (cancelledCount.modifiedCount > 0) {
-                console.log(`Đã hủy ${cancelledCount.modifiedCount} yêu cầu gia hạn trùng lặp`);
-            }
-
-            const action = isRenew ? 'Gia hạn' : 'Kích hoạt gói mới';
-            return sendSuccess(res, {
-                subscription: sub,
-                action,
-                cancelledPendingCount: cancelledCount.modifiedCount
-            }, `${action} thành công!`);
-
-        } else {
-            sub.status = 'expired';
-            await sub.save();
-            console.warn(`Thanh toán thất bại: ${orderId} | Mã lỗi: ${vnp_Params.vnp_ResponseCode}`);
             return sendError(res, 400, `Thanh toán thất bại (Mã: ${vnp_Params.vnp_ResponseCode})`);
         }
+
+        const now = new Date();
+
+        if (!sub.endDate) {
+            const end = new Date(sub.startDate);
+            end.setDate(end.getDate() + sub.packageId.durationDays);
+            sub.endDate = end;
+        }
+
+        const isRenew = sub.isRenewal === true || txnRef.startsWith("RENEW_");
+
+        if (isRenew) {
+            if (sub.startDate > now) {
+                sub.status = "upcoming";
+            } else {
+                sub.status = "active";
+            }
+        } else {
+            sub.status = "active";
+
+            if (sub.packageId.type === "paid") {
+                await Subscription.updateMany(
+                    {
+                        landlordId: sub.landlordId,
+                        status: "active",
+                        isTrial: true
+                    },
+                    { status: "expired" }
+                );
+            }
+        }
+
+        sub.paymentId = vnp_Params.vnp_TransactionNo;
+        sub.paymentMethod = 'vnpay';
+        await sub.save();
+
+        await Subscription.updateMany(
+            {
+                landlordId: sub.landlordId,
+                status: 'pending_payment',
+                isRenewal: true,
+                _id: { $ne: sub._id }
+            },
+            { status: 'cancelled' }
+        );
+
+        const action = isRenew ? 'Gia hạn gói' : 'Kích hoạt gói mới';
+
+        return sendSuccess(res, { subscription: sub, action }, `${action} thành công!`);
 
     } catch (err) {
         console.error('Lỗi trong paymentCallback:', err);
@@ -334,7 +408,6 @@ const getStatusPackage = async (req, res) => {
                 action: hasUsedTrial ? 'buy_package' : 'start_trial',
             });
         }
-        console.log(activeSub);
         const daysLeft = Math.ceil((activeSub.endDate - new Date()) / 86400000);
         const action = activeSub.isTrial && daysLeft <= 3 ? 'upgrade_warning' : null;
 

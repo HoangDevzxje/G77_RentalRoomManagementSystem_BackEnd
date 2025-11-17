@@ -7,13 +7,13 @@ const subscriptionSchema = new mongoose.Schema({
     endDate: { type: Date },
     status: {
         type: String,
-        enum: ['pending_payment', 'active', 'expired', 'cancelled'],
+        enum: ['pending_payment', 'upcoming', 'active', 'expired', 'cancelled'],
         default: 'pending_payment'
     },
     paymentId: { type: String },
     amount: { type: Number, required: true },
     paymentMethod: { type: String, enum: ['vnpay', 'momo', 'free'], default: 'vnpay' },
-
+    vnp_ExpireDate: { type: Date },
     isTrial: { type: Boolean, default: false }, // đánh dấu gói dùng thử
     isRenewal: { type: Boolean, default: false },     // đánh dấu là gia hạn
     renewedFrom: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },

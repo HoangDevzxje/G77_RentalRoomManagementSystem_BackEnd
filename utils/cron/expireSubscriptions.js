@@ -4,7 +4,9 @@ const Subscription = require('../../models/Subscription');
 let isRunning = false;
 
 /**
- * Cron job: Tự động chuyển subscription 'active' → 'expired' khi hết hạn
+ * Cron job tự động:
+ * 1. Chuyển 'active' → 'expired' khi hết hạn
+ * 2. Chuyển 'upcoming' → 'active' khi đến ngày bắt đầu
  * Chạy mỗi ngày lúc 0h00
  */
 const startExpirationJob = () => {
@@ -15,30 +17,36 @@ const startExpirationJob = () => {
         }
 
         isRunning = true;
-        console.log('Cron: Bắt đầu kiểm tra subscription hết hạn...');
+        console.log('Cron: Bắt đầu xử lý subscription...');
 
         try {
             const now = new Date();
 
-            const result = await Subscription.updateMany(
+            const expired = await Subscription.updateMany(
                 {
                     status: 'active',
                     endDate: { $lt: now }
                 },
-                {
-                    $set: { status: 'expired' }
-                }
+                { $set: { status: 'expired' } }
             );
 
-            console.log(`Cron: Đã cập nhật ${result.modifiedCount} subscription thành 'expired'`);
+            const activated = await Subscription.updateMany(
+                {
+                    status: 'upcoming',
+                    startDate: { $lte: now }
+                },
+                { $set: { status: 'active' } }
+            );
+
+            console.log(`Cron: Expired = ${expired.modifiedCount}, Activated upcoming = ${activated.modifiedCount}`);
         } catch (err) {
-            console.error('Cron: Lỗi khi cập nhật trạng thái hết hạn:', err);
+            console.error('Cron: Lỗi khi xử lý subscription:', err);
         } finally {
             isRunning = false;
         }
     });
 
-    console.log('Cron: Job kiểm tra hết hạn đã được lên lịch (0h hàng ngày)');
+    console.log('Cron: Job kiểm tra hết hạn & kích hoạt gói đã được lên lịch (0h hàng ngày)');
 };
 
 module.exports = { startExpirationJob };
