@@ -7,7 +7,7 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
         try {
             const user = req.user;
 
-            if (user.role === "landlord") {
+            if (user.role === "landlord" || user.role === "resident") {
                 return next();
             }
 

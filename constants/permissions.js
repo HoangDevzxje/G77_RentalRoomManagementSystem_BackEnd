@@ -85,6 +85,11 @@ const PERMISSIONS = {
     REVENUE_EXPENDITURE_CREATE: "revenue-expenditure:create",
     REVENUE_EXPENDITURE_EDIT: "revenue-expenditure:edit",
     REVENUE_EXPENDITURE_DELETE: "revenue-expenditure:delete",
+    //revenue-expenditure
+    NOTIFICATION_VIEW: "notification:view",
+    NOTIFICATION_CREATE: "notification:create",
+    NOTIFICATION_EDIT: "notification:edit",
+    NOTIFICATION_DELETE: "notification:delete",
 
     // === HÓA ĐƠN ===
     INVOICE_VIEW: "invoice:view",
