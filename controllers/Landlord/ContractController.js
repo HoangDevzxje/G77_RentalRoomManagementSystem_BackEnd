@@ -278,10 +278,11 @@ exports.updateData = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    if (doc.status !== "draft") {
-      return res
-        .status(400)
-        .json({ message: "Chỉ sửa hợp đồng khi đang ở trạng thái nháp" });
+    if (doc.status !== "draft" || doc.landlordSignatureUrl) {
+      return res.status(400).json({
+        message:
+          "Chỉ được chỉnh sửa hợp đồng khi đang ở trạng thái 'draft' và chưa ký",
+      });
     }
 
     if (A) {
@@ -324,10 +325,9 @@ exports.sendToTenant = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    //Chỉ gửi được sau khi landlord đã ký
-    if (contract.status !== "signed_by_landlord") {
+    if (!["draft", "signed_by_landlord"].includes(contract.status)) {
       return res.status(400).json({
-        message: `Chỉ được gửi hợp đồng khi chủ trọ đã ký. Trạng thái hiện tại: ${contract.status}`,
+        message: `Chỉ được gửi hợp đồng khi đang ở trạng thái 'draft' hoặc 'signed_by_landlord'. Hiện tại: ${contract.status}`,
       });
     }
 
@@ -361,15 +361,30 @@ exports.signByLandlord = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    //Chỉ được ký khi còn là draft
-    if (contract.status !== "draft") {
+    //Chỉ được ký khi
+    if (
+      !["draft", "sent_to_tenant", "signed_by_tenant"].includes(contract.status)
+    ) {
       return res.status(400).json({
-        message: `Chỉ có thể ký hợp đồng khi đang ở trạng thái 'draft'. Hiện tại: ${contract.status}`,
+        message: `Không thể ký ở trạng thái hiện tại: ${contract.status}`,
       });
     }
-
     contract.landlordSignatureUrl = signatureUrl;
-    contract.status = "signed_by_landlord"; // landlord ký xong, CHƯA gửi tenant
+    if (contract.tenantSignatureUrl) {
+      // Tenant đã ký trước đó → đây là chữ ký thứ 2 → completed
+      contract.status = "completed";
+      contract.completedAt = new Date();
+    } else {
+      // Landlord ký trước → set trạng thái phù hợp:
+      if (contract.status === "draft") {
+        // Ký xong nhưng chưa gửi → đánh dấu đã ký
+        contract.status = "signed_by_landlord";
+      } else {
+        // Đang sent_to_tenant → landlord ký nhưng tenant chưa ký
+        contract.status = "signed_by_landlord";
+      }
+    }
+
     await contract.save();
 
     res.json({

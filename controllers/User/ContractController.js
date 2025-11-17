@@ -238,16 +238,21 @@ exports.signByTenant = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    // Tenant CHỈ ký được khi hợp đồng đang ở trạng thái 'sent_to_tenant'
-    if (contract.status !== "sent_to_tenant") {
+    if (!["sent_to_tenant", "signed_by_landlord"].includes(contract.status)) {
       return res.status(400).json({
         message: `Không thể ký hợp đồng ở trạng thái hiện tại: ${contract.status}`,
       });
     }
 
     contract.tenantSignatureUrl = signatureUrl;
-    contract.status = "completed";
-    contract.completedAt = new Date();
+    if (contract.landlordSignatureUrl) {
+      // Landlord đã ký trước → ký xong là completed
+      contract.status = "completed";
+      contract.completedAt = new Date();
+    } else {
+      // Tenant ký trước → chờ landlord
+      contract.status = "signed_by_tenant";
+    }
 
     await contract.save();
     res.json({

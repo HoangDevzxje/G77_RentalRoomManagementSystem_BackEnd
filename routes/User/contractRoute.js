@@ -178,11 +178,20 @@ const contractController = require("../../controllers/User/ContractController");
  * @swagger
  * /contracts/{id}/sign:
  *   post:
- *     summary: Người thuê ký hợp đồng
- *     description:
- *       Người thuê ký vào hợp đồng.
- *       Chỉ cho phép khi hợp đồng ở trạng thái `sent_to_tenant`.
- *       Sau khi ký, trạng thái chuyển thành `completed`.
+ *     summary: Tenant ký hợp đồng (bên B)
+ *     description: |
+ *       Người thuê (tenant) ký hợp đồng.
+ *
+ *       **Rule trạng thái:**
+ *       - Cho phép ký khi:
+ *         - `sent_to_tenant`     → Landlord chưa ký, tenant ký trước
+ *         - `signed_by_landlord` → Landlord đã ký trước, tenant ký để hoàn tất
+ *
+ *       **Kết quả:**
+ *       - Nếu landlord chưa ký:
+ *         - Trạng thái sau khi ký: `signed_by_tenant`
+ *       - Nếu landlord đã ký:
+ *         - Trạng thái sau khi ký: `completed`
  *     tags: [Resident Contracts]
  *     security:
  *       - bearerAuth: []
@@ -190,7 +199,8 @@ const contractController = require("../../controllers/User/ContractController");
  *       - name: id
  *         in: path
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
  *     requestBody:
  *       required: true
  *       content:
@@ -205,20 +215,22 @@ const contractController = require("../../controllers/User/ContractController");
  *                 example: https://cdn.example.com/sign/tenant-123.png
  *     responses:
  *       200:
- *         description: Ký thành công
+ *         description: Tenant ký hợp đồng thành công
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message: { type: string }
- *                 status: { type: string }
+ *                 message:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                   enum: [draft, sent_to_tenant, signed_by_tenant, signed_by_landlord, completed]
  *       400:
- *         description: Thiếu chữ ký hoặc trạng thái không hợp lệ (không phải sent_to_tenant)
+ *         description: Thiếu chữ ký hoặc trạng thái không hợp lệ để ký
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
-
 /**
  * @swagger
  * /contracts/{id}:

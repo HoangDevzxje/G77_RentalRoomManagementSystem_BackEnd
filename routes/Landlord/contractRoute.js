@@ -265,11 +265,21 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts/{id}/sign-landlord:
  *   post:
- *     summary: Chủ trọ ký hợp đồng (bên A)
- *     description:
- *       Lưu chữ ký của chủ trọ (landlord).
- *       Chỉ cho phép ký khi hợp đồng đang ở trạng thái `draft`.
- *       Sau khi ký, trạng thái chuyển thành `signed_by_landlord`.
+ *     summary: Landlord ký hợp đồng (bên A)
+ *     description: |
+ *       Landlord ký hợp đồng từ phía chủ trọ.
+ *
+ *       **Rule trạng thái:**
+ *       - Cho phép ký khi:
+ *         - `draft`             → Landlord ký trước, chưa gửi tenant
+ *         - `sent_to_tenant`    → Đã gửi tenant, landlord ký trước tenant
+ *         - `signed_by_tenant`  → Tenant đã ký, landlord ký để hoàn tất
+ *
+ *       **Kết quả:**
+ *       - Nếu tenant chưa ký:
+ *         - Trạng thái sau khi ký: `signed_by_landlord`
+ *       - Nếu tenant đã ký trước đó:
+ *         - Trạng thái sau khi ký: `completed`
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -293,28 +303,35 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                 example: https://cdn.example.com/sign/landlord-123.png
  *     responses:
  *       200:
- *         description: Ký thành công
+ *         description: Đã lưu chữ ký của landlord và cập nhật trạng thái hợp đồng
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message: { type: string }
- *                 status: { type: string }
+ *                 message:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                   enum: [draft, sent_to_tenant, signed_by_tenant, signed_by_landlord, completed]
  *       400:
- *         description: Thiếu chữ ký hoặc không ở trạng thái draft
+ *         description: Thiếu chữ ký hoặc trạng thái hiện tại không hợp lệ để ký
  *       404:
- *         description: Không tìm thấy hợp đồng
+ *         description: Contract không tìm thấy
  */
-
 /**
  * @swagger
  * /landlords/contracts/{id}/send-to-tenant:
  *   post:
- *     summary: Gửi hợp đồng đã ký (bên A) cho người thuê xem/ký
- *     description:
- *       Chỉ cho phép khi hợp đồng đang ở trạng thái `signed_by_landlord`.
- *       Sau khi gửi, trạng thái chuyển sang `sent_to_tenant`.
+ *     summary: Gửi hợp đồng cho người thuê (tenant)
+ *     description: |
+ *       Gửi hợp đồng sang cho tenant xem & ký.
+ *
+ *       **Rule trạng thái:**
+ *       - Cho phép gửi khi:
+ *         - `draft` (chưa bên nào ký)
+ *         - `signed_by_landlord` (landlord đã ký trước)
+ *       - Sau khi gọi API này, trạng thái sẽ chuyển thành `sent_to_tenant`.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -326,20 +343,22 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *           type: string
  *     responses:
  *       200:
- *         description: Đã gửi hợp đồng cho tenant
+ *         description: Đã gửi hợp đồng cho người thuê
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message: { type: string }
- *                 status: { type: string }
+ *                 message:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                   enum: [draft, sent_to_tenant, signed_by_tenant, signed_by_landlord, completed]
  *       400:
- *         description: Hợp đồng chưa được landlord ký hoặc trạng thái không phù hợp
+ *         description: Không đúng trạng thái để gửi hoặc lỗi dữ liệu
  *       404:
- *         description: Không tìm thấy hợp đồng
+ *         description: Không tìm thấy contract
  */
-
 /**
  * @swagger
  * /landlords/contracts/{id}:
