@@ -685,7 +685,8 @@ exports.listMine = async (req, res) => {
     const landlordId = req.user?._id;
     const {
       status,
-      search, // từ khóa search
+      search, 
+      moveIn, // 'confirmed' | 'not_confirmed'
       page = 1,
       limit = 20,
     } = req.query;
@@ -697,7 +698,14 @@ exports.listMine = async (req, res) => {
       filter.status = status;
     }
 
-    // Search đơn giản theo số hợp đồng (contract.no)
+    // Filter theo đã xác nhận vào ở hay chưa
+    if (moveIn === "confirmed") {
+      filter.moveInConfirmedAt = { $ne: null }; // đã confirm
+    } else if (moveIn === "not_confirmed") {
+      filter.moveInConfirmedAt = null; // chưa confirm
+    }
+
+    // Search theo số hợp đồng
     if (search) {
       const keyword = String(search).trim();
       if (keyword) {
@@ -712,7 +720,21 @@ exports.listMine = async (req, res) => {
     const [items, total] = await Promise.all([
       Contract.find(filter)
         .select(
-          "_id status createdAt updatedAt buildingId roomId tenantId contract.no contract.startDate contract.endDate"
+          [
+            "_id",
+            "status",
+            "moveInConfirmedAt", // 👈 THÊM Ở ĐÂY
+            "sentToTenantAt",
+            "completedAt",
+            "buildingId",
+            "roomId",
+            "tenantId",
+            "contract.no",
+            "contract.startDate",
+            "contract.endDate",
+            "createdAt",
+            "updatedAt",
+          ].join(" ")
         )
         .populate("buildingId", "name")
         .populate("roomId", "roomNumber")

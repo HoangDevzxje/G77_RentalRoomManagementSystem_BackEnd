@@ -14,9 +14,10 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * /landlords/contracts:
  *   get:
  *     summary: Lấy danh sách hợp đồng của chủ trọ
- *     description:
+ *     description: |
  *       Trả về danh sách hợp đồng mà user hiện tại là landlord (landlordId).
- *       Hỗ trợ phân trang, lọc theo trạng thái và tìm kiếm theo số hợp đồng (contract.no).
+ *       Hỗ trợ phân trang, lọc theo trạng thái, lọc theo tình trạng xác nhận vào ở
+ *       và tìm kiếm theo số hợp đồng (contract.no).
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -25,8 +26,17 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         in: query
  *         schema:
  *           type: string
- *           enum: [draft, sent_to_tenant, signed_by_tenant, signed_by_landlord, completed]
+ *           enum: [draft, sent_to_tenant, signed_by_tenant, signed_by_landlord, completed, voided, terminated]
  *         description: Lọc theo trạng thái hợp đồng
+ *       - name: moveIn
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [confirmed, not_confirmed]
+ *         description: |
+ *           Lọc theo việc đã xác nhận người thuê vào ở hay chưa:
+ *           - confirmed: chỉ hợp đồng đã được confirm move-in
+ *           - not_confirmed: hợp đồng chưa confirm move-in
  *       - name: search
  *         in: query
  *         schema:
@@ -57,31 +67,70 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   items:
  *                     type: object
  *                     properties:
- *                       _id: { type: string }
- *                       status: { type: string }
+ *                       _id:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                         enum:
+ *                           - draft
+ *                           - sent_to_tenant
+ *                           - signed_by_tenant
+ *                           - signed_by_landlord
+ *                           - completed
+ *                           - voided
+ *                           - terminated
+ *                       moveInConfirmedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         nullable: true
+ *                         description: Thời điểm landlord xác nhận người thuê vào ở (nếu có)
+ *                       sentToTenantAt:
+ *                         type: string
+ *                         format: date-time
+ *                         nullable: true
+ *                       completedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         nullable: true
  *                       buildingId:
  *                         type: object
  *                         properties:
- *                           name: { type: string }
+ *                           _id:
+ *                             type: string
+ *                           name:
+ *                             type: string
  *                       roomId:
  *                         type: object
  *                         properties:
- *                           roomNumber: { type: string }
+ *                           _id:
+ *                             type: string
+ *                           roomNumber:
+ *                             type: string
  *                       tenantId:
  *                         type: object
  *                         properties:
- *                           email: { type: string }
+ *                           _id:
+ *                             type: string
+ *                           email:
+ *                             type: string
  *                           userInfo:
  *                             type: object
  *                             properties:
- *                               fullName: { type: string }
- *                               phoneNumber: { type: string }
+ *                               fullName:
+ *                                 type: string
+ *                               phoneNumber:
+ *                                 type: string
  *                       contract:
  *                         type: object
  *                         properties:
- *                           no: { type: string }
- *                           startDate: { type: string, format: date }
- *                           endDate: { type: string, format: date }
+ *                           no:
+ *                             type: string
+ *                           startDate:
+ *                             type: string
+ *                             format: date
+ *                           endDate:
+ *                             type: string
+ *                             format: date
  *                 total:
  *                   type: integer
  *                 page:
