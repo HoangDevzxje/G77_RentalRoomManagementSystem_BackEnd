@@ -311,7 +311,7 @@ exports.searchAccountByEmail = async (req, res) => {
     return res.status(400).json({ message: e.message });
   }
 };
-// POST /tenants/contracts/:id/request-extend
+// PATCH /tenants/contracts/:id/request-extend
 // body: { months, note }
 exports.requestExtend = async (req, res) => {
   try {
@@ -319,7 +319,7 @@ exports.requestExtend = async (req, res) => {
     const { id } = req.params;
     const { months, note } = req.body || {};
 
-    if (!months || Number(months) <= 0) {
+    if (!months || months <= 0) {
       return res
         .status(400)
         .json({ message: "Số tháng gia hạn phải lớn hơn 0" });
@@ -333,7 +333,7 @@ exports.requestExtend = async (req, res) => {
     if (contract.status !== "completed") {
       return res.status(400).json({
         message:
-          "Chỉ có thể yêu cầu gia hạn khi hợp đồng đang ở trạng thái đã hoàn tất",
+          "Chỉ được gửi yêu cầu gia hạn khi hợp đồng đang ở trạng thái completed",
       });
     }
 
@@ -343,34 +343,36 @@ exports.requestExtend = async (req, res) => {
       });
     }
 
-    // Không cho gửi khi đã có request pending
+    // Đã có yêu cầu pending rồi thì không cho tạo thêm
     if (
       contract.renewalRequest &&
       contract.renewalRequest.status === "pending"
     ) {
       return res.status(400).json({
-        message: "Bạn đã gửi yêu cầu gia hạn, vui lòng chờ chủ trọ xử lý",
+        message: "Bạn đang có một yêu cầu gia hạn đang chờ xử lý",
       });
     }
 
-    const oldEndDate = contract.contract.endDate;
     const now = new Date();
+    const endDate = new Date(contract.contract.endDate);
 
-    // Optional: cho phép gửi trước khi hết hạn + trong 7 ngày sau khi hết hạn
-    const GRACE_DAYS = 7;
-    const graceLimit = new Date(
-      oldEndDate.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000
-    );
-
-    if (now > graceLimit) {
+    // Ví dụ rule: chỉ cho gửi yêu cầu trong vòng 60 ngày trước khi hết hợp đồng
+    const diffMs = endDate - now;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (diffDays > 60) {
       return res.status(400).json({
         message:
-          "Hợp đồng đã hết hạn quá lâu, vui lòng liên hệ chủ trọ để làm hợp đồng mới.",
+          "Chưa đến thời gian gửi yêu cầu gia hạn (chỉ gửi khi còn tối đa 60 ngày trước khi hết hợp đồng)",
+      });
+    }
+    if (diffDays < 0) {
+      return res.status(400).json({
+        message: "Hợp đồng đã hết hạn, không thể gửi yêu cầu gia hạn",
       });
     }
 
-    // Tính ngày kết thúc mới (endDate + months)
-    const requestedEndDate = new Date(oldEndDate);
+    // Tính requestedEndDate = endDate + months
+    const requestedEndDate = new Date(endDate);
     requestedEndDate.setMonth(requestedEndDate.getMonth() + Number(months));
 
     contract.renewalRequest = {
@@ -386,13 +388,14 @@ exports.requestExtend = async (req, res) => {
     await contract.save();
 
     res.json({
-      message: "Gửi yêu cầu gia hạn thành công",
+      message: "Đã gửi yêu cầu gia hạn hợp đồng",
       renewalRequest: contract.renewalRequest,
     });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
 };
+
 // GET /tenants/contracts/upcoming-expire?days=30
 exports.listUpcomingExpire = async (req, res) => {
   try {

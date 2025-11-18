@@ -83,7 +83,11 @@ exports.createFromContact = async (req, res) => {
         isDeleted: false, // chỉ tính hợp đồng chưa bị soft delete
       }).lean();
 
-      if (existed) {
+      if (
+        existed &&
+        existed.status !== "voided" &&
+        existed.status !== "terminated"
+      ) {
         return res.json({
           alreadyCreated: true,
           contract: existed,
@@ -434,6 +438,8 @@ exports.confirmMoveIn = async (req, res) => {
     room.currentContractId = contract._id;
     await room.save();
 
+    contract.moveInConfirmedAt = new Date();
+    await contract.save();
     res.json({
       message: "Đã xác nhận người thuê vào ở",
       roomStatus: room.status,
@@ -487,6 +493,187 @@ exports.getDetail = async (req, res) => {
     }));
 
     res.json(contract);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+// POST /landlords/contracts/:id/void
+exports.voidContract = async (req, res) => {
+  try {
+    const landlordId = req.user._id;
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const contract = await Contract.findOne({ _id: id, landlordId });
+
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    if (
+      !["draft", "signed_by_landlord", "sent_to_tenant"].includes(
+        contract.status
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "Chỉ có thể hủy hợp đồng do nhập sai khi đang ở trạng thái draft / signed_by_landlord / sent_to_tenant và chưa có chữ ký người thuê",
+      });
+    }
+
+    if (contract.tenantSignatureUrl) {
+      return res.status(400).json({
+        message: "Không thể hủy hợp đồng vì người thuê đã ký",
+      });
+    }
+
+    contract.status = "voided";
+    contract.voidedAt = new Date();
+    if (reason) contract.voidReason = reason;
+
+    // Nếu lỡ room đang trỏ về hợp đồng này thì clear (phòng trả về available)
+    const room = await Room.findById(contract.roomId);
+    if (room && String(room.currentContractId) === String(contract._id)) {
+      room.currentContractId = null;
+      room.currentTenantIds = [];
+      room.status = "available";
+      await room.save();
+    }
+
+    await contract.save();
+
+    res.json({
+      message: "Đã hủy hợp đồng (void) thành công",
+      status: contract.status,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// POST /landlords/contracts/:id/clone
+// Tạo hợp đồng mới (draft) từ hợp đồng cũ
+exports.cloneContract = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { id } = req.params;
+
+    const old = await Contract.findOne({ _id: id, landlordId }).lean();
+    if (!old) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    const ALLOWED_CLONE_STATUSES = ["completed", "voided"];
+
+    if (!ALLOWED_CLONE_STATUSES.includes(old.status)) {
+      return res.status(400).json({
+        message: `Chỉ được clone hợp đồng ở trạng thái: ${ALLOWED_CLONE_STATUSES.join(
+          ", "
+        )}. Hiện tại: ${old.status}`,
+      });
+    }
+
+    // Tạo contract mới: copy các thông tin cần thiết
+    const newContract = await Contract.create({
+      landlordId: old.landlordId,
+      tenantId: old.tenantId,
+      buildingId: old.buildingId,
+      roomId: old.roomId,
+      templateId: old.templateId,
+
+      A: old.A,
+      B: old.B,
+      roommates: old.roommates || [],
+      bikes: old.bikes || [],
+
+      contract: {
+        price: old.contract?.price,
+        deposit: old.contract?.deposit,
+        signPlace: old.contract?.signPlace,
+        paymentCycleMonths: old.contract?.paymentCycleMonths || 1,
+        // startDate / endDate / no / signDate => landlord tự chỉnh lại
+      },
+
+      terms: old.terms || [],
+      regulations: old.regulations || [],
+
+      status: "draft",
+    });
+
+    res.json({
+      message: "Đã tạo hợp đồng mới từ hợp đồng cũ",
+      contractId: newContract._id,
+      contract: newContract,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// POST /landlords/contracts/:id/terminate
+// body: { reason?, terminatedAt? }
+exports.terminateContract = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { id } = req.params;
+    const { reason, terminatedAt } = req.body || {};
+
+    const contract = await Contract.findOne({ _id: id, landlordId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    // Chỉ cho terminate khi hợp đồng đã hoàn tất
+    if (contract.status !== "completed") {
+      return res.status(400).json({
+        message: `Chỉ được chấm dứt hợp đồng khi đang ở trạng thái 'completed'. Hiện tại: ${contract.status}`,
+      });
+    }
+
+    // Nếu chưa confirm move-in thì nên dùng void, không dùng terminate
+    if (!contract.moveInConfirmedAt) {
+      return res.status(400).json({
+        message:
+          "Hợp đồng này chưa xác nhận người thuê vào ở. Nếu nhập sai, hãy dùng chức năng 'vô hiệu hợp đồng' (void) thay vì terminate.",
+      });
+    }
+
+    if (["voided", "terminated"].includes(contract.status)) {
+      return res.status(400).json({
+        message: `Hợp đồng đang ở trạng thái ${contract.status}, không thể chấm dứt thêm`,
+      });
+    }
+
+    // Lấy phòng
+    const room = await Room.findById(contract.roomId);
+    if (!room) {
+      return res.status(404).json({ message: "Không tìm thấy phòng" });
+    }
+
+    // Cập nhật hợp đồng
+    contract.status = "terminated";
+    contract.terminatedReason =
+      reason || "Chấm dứt hợp đồng trước hạn theo thoả thuận";
+    contract.terminatedAt = terminatedAt ? new Date(terminatedAt) : new Date();
+
+    await contract.save();
+
+    // Nếu phòng đang gắn với hợp đồng này thì giải phóng phòng
+    if (
+      room.currentContractId &&
+      String(room.currentContractId) === String(contract._id)
+    ) {
+      room.status = "available";
+      room.currentTenantIds = [];
+      room.currentContractId = null;
+      await room.save();
+    }
+
+    res.json({
+      message: "Đã chấm dứt hợp đồng thành công",
+      status: contract.status,
+      terminatedAt: contract.terminatedAt,
+    });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
@@ -554,7 +741,6 @@ exports.listMine = async (req, res) => {
 };
 
 // POST /landlords/contracts/:id/approve-extension
-// body: { note } (optional)
 exports.approveExtension = async (req, res) => {
   try {
     const landlordId = req.user?._id;
@@ -598,7 +784,7 @@ exports.approveExtension = async (req, res) => {
 
     const now = new Date();
 
-    // lưu vào lịch sử gia hạn
+    // Lưu vào lịch sử gia hạn
     contract.extensions.push({
       oldEndDate,
       newEndDate: newEnd,
@@ -608,10 +794,10 @@ exports.approveExtension = async (req, res) => {
       extendedByRole: "landlord",
     });
 
-    // cập nhật endDate hiện tại
+    // Cập nhật endDate hiện tại
     contract.contract.endDate = newEnd;
 
-    // cập nhật trạng thái request
+    // Cập nhật trạng thái request
     contract.renewalRequest.status = "approved";
     contract.renewalRequest.processedAt = now;
     contract.renewalRequest.processedById = landlordId;
@@ -619,17 +805,16 @@ exports.approveExtension = async (req, res) => {
 
     await contract.save();
 
-    res.json({
+    return res.json({
       message: "Đã duyệt gia hạn hợp đồng",
       contract,
     });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    return res.status(400).json({ message: e.message });
   }
 };
 
 // POST /landlords/contracts/:id/reject-extension
-// body: { reason }
 exports.rejectExtension = async (req, res) => {
   try {
     const landlordId = req.user?._id;
@@ -658,11 +843,58 @@ exports.rejectExtension = async (req, res) => {
 
     await contract.save();
 
-    res.json({
+    return res.json({
       message: "Đã từ chối yêu cầu gia hạn",
       renewalRequest: contract.renewalRequest,
     });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    return res.status(400).json({ message: e.message });
+  }
+};
+
+// GET /landlords/contracts/renewal-requests?status=pending|approved|rejected&buildingId=...
+exports.listRenewalRequests = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { status = "pending", buildingId, page = 1, limit = 20 } = req.query;
+
+    const filter = {
+      landlordId,
+      "renewalRequest.status": status,
+    };
+
+    if (buildingId) {
+      filter.buildingId = buildingId;
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [items, total] = await Promise.all([
+      Contract.find(filter)
+        .select(
+          "_id buildingId roomId tenantId contract.endDate renewalRequest"
+        )
+        .populate("buildingId", "name")
+        .populate("roomId", "roomNumber")
+        .populate({
+          path: "tenantId",
+          select: "email userInfo",
+          populate: { path: "userInfo", select: "fullName phoneNumber" },
+        })
+        .sort({ "renewalRequest.requestedAt": -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      Contract.countDocuments(filter),
+    ]);
+
+    return res.json({
+      items,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  } catch (e) {
+    return res.status(400).json({ message: e.message });
   }
 };

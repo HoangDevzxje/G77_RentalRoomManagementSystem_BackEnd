@@ -336,10 +336,9 @@ const contractController = require("../../controllers/User/ContractController");
  * /contracts/{id}/request-extend:
  *   post:
  *     summary: Người thuê gửi yêu cầu gia hạn hợp đồng
- *     description: |
- *       Tenant (người thuê) gửi yêu cầu gia hạn hợp đồng thêm X tháng.
- *       Yêu cầu sẽ được lưu ở trường `renewalRequest` trong Contract với trạng thái `pending`
- *       và chờ chủ trọ (landlord) phê duyệt.
+ *     description:
+ *       Cho phép người thuê gửi yêu cầu gia hạn khi hợp đồng đang ở trạng thái `completed`
+ *       và còn trong khoảng thời gian cho phép (ví dụ ≤ 60 ngày trước ngày hết hạn).
  *     tags: [Resident Contracts]
  *     security:
  *       - bearerAuth: []
@@ -361,12 +360,12 @@ const contractController = require("../../controllers/User/ContractController");
  *             properties:
  *               months:
  *                 type: integer
+ *                 minimum: 1
  *                 example: 6
- *                 description: Số tháng muốn gia hạn thêm so với ngày kết thúc hiện tại
+ *                 description: Số tháng muốn gia hạn thêm
  *               note:
  *                 type: string
- *                 example: Em muốn ở thêm 6 tháng vì vẫn còn đi học tại đây.
- *                 description: Ghi chú thêm của người thuê
+ *                 example: "Em muốn gia hạn thêm 6 tháng vì vẫn tiếp tục học ở đây."
  *     responses:
  *       200:
  *         description: Gửi yêu cầu gia hạn thành công
@@ -377,28 +376,23 @@ const contractController = require("../../controllers/User/ContractController");
  *               properties:
  *                 message:
  *                   type: string
- *                   example: Gửi yêu cầu gia hạn thành công
+ *                   example: Đã gửi yêu cầu gia hạn hợp đồng
  *                 renewalRequest:
  *                   type: object
  *                   properties:
- *                     months:
- *                       type: integer
- *                     requestedEndDate:
- *                       type: string
- *                       format: date-time
- *                     note:
- *                       type: string
+ *                     months: { type: integer, example: 6 }
+ *                     requestedEndDate: { type: string, format: date-time }
+ *                     note: { type: string }
  *                     status:
  *                       type: string
  *                       example: pending
- *                     requestedAt:
- *                       type: string
- *                       format: date-time
+ *                     requestedAt: { type: string, format: date-time }
  *       400:
- *         description: Dữ liệu không hợp lệ hoặc đã có yêu cầu pending / hợp đồng hết hạn quá lâu
+ *         description: Dữ liệu không hợp lệ hoặc không đủ điều kiện gửi yêu cầu
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
+
 /**
  * @swagger
  * /contracts/upcoming-expire:

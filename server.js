@@ -13,6 +13,7 @@ const swaggerUi = require("swagger-ui-express");
 
 const DB = require("./configs/db");
 const { startExpirationJob } = require("./utils/cron/expireSubscriptions");
+const { registerAutoEndContractsCron } = require("./jobs/autoEndContracts");
 
 // Khởi tạo app + server
 const app = express();
@@ -36,7 +37,8 @@ io.use((socket, next) => {
     header: (key) => {
       if (key === "Authorization") {
         // Ưu tiên token từ auth hoặc header
-        const token = socket.handshake.auth.token || socket.handshake.headers.authorization;
+        const token =
+          socket.handshake.auth.token || socket.handshake.headers.authorization;
         return token ? `Bearer ${token}` : null;
       }
       return null;
@@ -144,6 +146,7 @@ DB.connectDB()
       console.log(`Server + Socket.IO running at http://localhost:${port}`);
       console.log(`Swagger: http://localhost:${port}/api-docs`);
     });
+    registerAutoEndContractsCron();
     startExpirationJob();
     // Graceful shutdown
     process.on("SIGTERM", shutDown);

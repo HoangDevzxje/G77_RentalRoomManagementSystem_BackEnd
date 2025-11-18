@@ -477,13 +477,13 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts/{id}/approve-extension:
  *   post:
- *     summary: Chủ trọ phê duyệt yêu cầu gia hạn hợp đồng
- *     description: |
- *       Landlord duyệt yêu cầu gia hạn từ tenant.
+ *     summary: Duyệt yêu cầu gia hạn hợp đồng
+ *     description:
+ *       Landlord duyệt yêu cầu gia hạn đang ở trạng thái `pending`.
  *       Hệ thống sẽ:
- *       - Ghi lại lịch sử gia hạn trong `extensions[]`
- *       - Cập nhật `contract.endDate` bằng `renewalRequest.requestedEndDate`
- *       - Cập nhật `renewalRequest.status = "approved"`
+ *       - Lưu lại lịch sử gia hạn vào `extensions`
+ *       - Cập nhật `contract.endDate` = `renewalRequest.requestedEndDate`
+ *       - Cập nhật `renewalRequest.status = approved`
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -493,7 +493,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của hợp đồng
+ *         description: ID hợp đồng cần duyệt gia hạn
  *     requestBody:
  *       required: false
  *       content:
@@ -503,11 +503,10 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *             properties:
  *               note:
  *                 type: string
- *                 example: Đồng ý gia hạn thêm 6 tháng với giá thuê cũ.
- *                 description: Ghi chú nội bộ hoặc lý do phê duyệt (sẽ lưu trong extension)
+ *                 example: "Đã gia hạn theo đề nghị của bạn thêm 6 tháng."
  *     responses:
  *       200:
- *         description: Phê duyệt gia hạn thành công, trả về contract đã cập nhật
+ *         description: Duyệt gia hạn thành công
  *         content:
  *           application/json:
  *             schema:
@@ -517,22 +516,22 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   type: string
  *                   example: Đã duyệt gia hạn hợp đồng
  *                 contract:
- *                   $ref: '#/components/schemas/Contract'
+ *                   type: object
+ *                   description: Document hợp đồng sau khi cập nhật
  *       400:
- *         description: Không có yêu cầu gia hạn pending hoặc trạng thái hợp đồng không cho phép
+ *         description: Không có yêu cầu gia hạn pending hoặc trạng thái hợp đồng không hợp lệ
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
+
 /**
  * @swagger
  * /landlords/contracts/{id}/reject-extension:
  *   post:
- *     summary: Chủ trọ từ chối yêu cầu gia hạn hợp đồng
- *     description: |
- *       Landlord từ chối yêu cầu gia hạn từ tenant.
- *       Hệ thống sẽ:
- *       - Cập nhật `renewalRequest.status = "rejected"`
- *       - Lưu lý do từ chối (nếu có) vào `renewalRequest.rejectedReason`
+ *     summary: Từ chối yêu cầu gia hạn hợp đồng
+ *     description:
+ *       Landlord từ chối yêu cầu gia hạn đang ở trạng thái `pending`.
+ *       Hệ thống sẽ cập nhật `renewalRequest.status = rejected` và lưu lý do từ chối.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -542,7 +541,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của hợp đồng
+ *         description: ID hợp đồng cần từ chối gia hạn
  *     requestBody:
  *       required: false
  *       content:
@@ -552,8 +551,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *             properties:
  *               reason:
  *                 type: string
- *                 example: Phòng đã có kế hoạch sửa chữa, không thể gia hạn thêm.
- *                 description: Lý do từ chối gia hạn (hiển thị cho tenant)
+ *                 example: "Phòng đã có kế hoạch sửa chữa, không thể gia hạn thêm."
  *     responses:
  *       200:
  *         description: Từ chối yêu cầu gia hạn thành công
@@ -573,14 +571,12 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                       example: rejected
  *                     rejectedReason:
  *                       type: string
- *                     processedAt:
- *                       type: string
- *                       format: date-time
  *       400:
  *         description: Không có yêu cầu gia hạn pending
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
+
 /**
  * @swagger
  * /landlords/contracts/{id}:
@@ -614,12 +610,265 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/void:
+ *   post:
+ *     summary: Hủy hợp đồng vì nhập sai / không sử dụng nữa (void)
+ *     description: Chỉ cho phép khi hợp đồng đang ở trạng thái draft, signed_by_landlord hoặc sent_to_tenant và chưa có chữ ký của người thuê.
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của hợp đồng cần hủy
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Nhap sai gia phong, tao hop dong moi"
+ *     responses:
+ *       200:
+ *         description: Hủy hợp đồng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 status: { type: string }
+ *       400:
+ *         description: Không thỏa điều kiện để hủy
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/void:
+ *   post:
+ *     summary: Vô hiệu hợp đồng đã hoàn tất do nhập sai / không sử dụng
+ *     description: Chỉ cho phép landlord thực hiện khi hợp đồng ở trạng thái `completed`, `sent_to_tenant` và chưa xác nhận vào ở (chưa có moveInConfirmedAt).
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Nhập sai tiền thuê và ngày bắt đầu, cần làm lại hợp đồng mới"
+ *     responses:
+ *       200:
+ *         description: Vô hiệu hợp đồng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 status: { type: string }
+ *                 voidedAt: { type: string, format: date-time }
+ *       400:
+ *         description: Trạng thái không hợp lệ hoặc đã confirm move-in
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+
+/**
+ * @swagger
+ * /landlords/contracts/{id}/clone:
+ *   post:
+ *     summary: Tạo hợp đồng mới (draft) từ hợp đồng cũ
+ *     description: Clone hợp đồng ở trạng thái `completed` hoặc `voided` sang một hợp đồng mới ở trạng thái `draft` để sửa lại thông tin và ký lại.
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Tạo hợp đồng mới thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 contractId: { type: string }
+ *                 contract:
+ *                   $ref: '#/components/schemas/Contract'
+ *       400:
+ *         description: Không cho phép clone với trạng thái hiện tại
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/terminate:
+ *   post:
+ *     summary: Chấm dứt hợp đồng trước hạn (terminated)
+ *     description:
+ *       Chỉ cho phép khi hợp đồng đã ở trạng thái `completed` và đã xác nhận người thuê vào ở (moveInConfirmedAt != null).
+ *       Sau khi chấm dứt, phòng sẽ được trả về trạng thái "available" nếu đang gắn với hợp đồng này.
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Người thuê chuyển đi sớm, hai bên thoả thuận chấm dứt hợp đồng trước hạn."
+ *               terminatedAt:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2025-12-01T00:00:00.000Z"
+ *     responses:
+ *       200:
+ *         description: Chấm dứt hợp đồng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 status: { type: string }
+ *                 terminatedAt: { type: string, format: date-time }
+ *       400:
+ *         description: Trạng thái không hợp lệ để chấm dứt hoặc chưa confirm move-in
+ *       404:
+ *         description: Không tìm thấy hợp đồng hoặc phòng
+ */
+/**
+ * @swagger
+ * /landlords/contracts/renewal-requests:
+ *   get:
+ *     summary: Lấy danh sách hợp đồng có yêu cầu gia hạn
+ *     description:
+ *       Trả về danh sách các hợp đồng mà tenant đã gửi yêu cầu gia hạn (renewalRequest),
+ *       có thể lọc theo trạng thái và tòa nhà.
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: status
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [pending, approved, rejected, cancelled]
+ *           default: pending
+ *         description: Lọc theo trạng thái yêu cầu gia hạn
+ *       - name: buildingId
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Lọc theo tòa nhà
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *     responses:
+ *       200:
+ *         description: Danh sách yêu cầu gia hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id: { type: string, description: "ID hợp đồng" }
+ *                       buildingId:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           name: { type: string }
+ *                       roomId:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           roomNumber: { type: string }
+ *                       tenantId:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           email: { type: string }
+ *                           userInfo:
+ *                             type: object
+ *                             properties:
+ *                               fullName: { type: string }
+ *                               phoneNumber: { type: string }
+ *                       contract:
+ *                         type: object
+ *                         properties:
+ *                           endDate: { type: string, format: date-time }
+ *                       renewalRequest:
+ *                         type: object
+ *                         properties:
+ *                           months: { type: integer }
+ *                           requestedEndDate: { type: string, format: date-time }
+ *                           note: { type: string }
+ *                           status: { type: string }
+ *                           requestedAt: { type: string, format: date-time }
+ *                 total: { type: integer }
+ *                 page: { type: integer }
+ *                 limit: { type: integer }
+ *       400:
+ *         description: Lỗi truy vấn
+ */
 
 router.post(
   "/from-contact",
   checkAuthorize("landlord", "staff"),
 
   contractController.createFromContact
+);
+router.get(
+  "/renewal-requests",
+  checkAuthorize("landlord", "staff"),
+  contractController.listRenewalRequests
 );
 router.put(
   "/:id",
@@ -672,8 +921,23 @@ router.post(
 
 router.delete(
   "/contracts/:id",
-  checkAuthorize("landlord"),
+  checkAuthorize("landlord", "staff"),
   contractController.deleteContract
 );
 
+router.post(
+  "/:id/void",
+  checkAuthorize("landlord", "staff"),
+  contractController.voidContract
+);
+router.post(
+  "/:id/clone",
+  checkAuthorize("landlord", "staff"),
+  contractController.cloneContract
+);
+router.post(
+  "/:id/terminate",
+  checkAuthorize("landlord", "staff"),
+  contractController.terminateContract
+);
 module.exports = router;

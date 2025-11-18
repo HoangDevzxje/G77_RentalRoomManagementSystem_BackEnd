@@ -201,7 +201,8 @@ const contractSchema = new mongoose.Schema(
         "signed_by_tenant",
         "signed_by_landlord",
         "completed",
-        "cancelled",
+        "voided", // Hợp đồng bị vô hiệu (nhập sai / không sử dụng)
+        "terminated", // Hợp đồng kết thúc sớm
       ],
       default: "draft",
       index: true,
@@ -209,17 +210,19 @@ const contractSchema = new mongoose.Schema(
     sentToTenantAt: { type: Date },
     completedAt: { type: Date },
 
-    // Thông tin hủy hợp đồng (nếu dùng cancel)
-    cancelReason: { type: String },
-    canceledAt: { type: Date },
-    canceledById: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Account",
-    },
-    canceledByRole: {
+    // Đánh dấu đã confirm move in (để không cho void nữa)
+    moveInConfirmedAt: { type: Date },
+
+    // Lưu thông tin huỷ / chấm dứt
+    voidReason: { type: String },
+    voidedAt: { type: Date },
+    terminationType: {
       type: String,
-      enum: ["landlord", "resident", "system"],
+      enum: ["normal_expiry", "early_termination", null],
+      default: null,
     },
+    terminatedAt: { type: Date },
+    terminationNote: { type: String },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },
