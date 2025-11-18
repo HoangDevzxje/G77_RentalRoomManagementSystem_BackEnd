@@ -102,10 +102,6 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *             example:
  *               message: "Lỗi lấy thông tin phòng"
  */
-router.get(
-  "/resident/rooms/my-room",
-  checkAuthorize("resident"),
-  roomCtrl.getMyRoomDetail
-);
+router.get("/my-room", checkAuthorize("resident"), roomCtrl.getMyRoomDetail);
 
 module.exports = router;

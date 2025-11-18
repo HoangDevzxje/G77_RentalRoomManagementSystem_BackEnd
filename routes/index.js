@@ -1,7 +1,7 @@
 const authRoutes = require("./authRoute");
 const buildingRoutes = require("./Landlord/buildingRoutes");
 const floorRoutes = require("./Landlord/floorsRoutes");
-const roomRoutes = require("./Landlord/roomsRoutes");
+const roomLandlordRoutes = require("./Landlord/roomsRoutes");
 const packageRoutes = require("././Admin/packageRoutes");
 const subscriptionRoutes = require("./subscriptionRoutes");
 const furnitureRoutes = require("./Landlord/furnitureRoutes");
@@ -25,13 +25,15 @@ const revenueExpenditureRoute = require("./Landlord/revenueExpenditure");
 const contractLandlord = require("././Landlord/contractRoute");
 const notificationRoute = require("././Landlord/notificationRoute");
 const contractRoute = require("././User/contractRoute");
+const roomRoute = require("././User/roomRoute");
 
 const routes = (app) => {
   app.use("/auth", authRoutes);
   app.use("/subscriptions", subscriptionRoutes);
   app.use("/admin/packages", packageRoutes);
   app.use("/admin/accounts", accountAdmin);
-  app.use("/landlords/rooms", roomRoutes);
+
+  app.use("/landlords/rooms", roomLandlordRoutes);
   app.use("/landlords/terms", termRoute);
   app.use("/landlords/floors", floorRoutes);
   app.use("/landlords/regulations", regulationRoutes);
@@ -48,12 +50,14 @@ const routes = (app) => {
   app.use("/landlords/staffs", staffRoute);
   app.use("/landlords/revenue-expenditure", revenueExpenditureRoute);
   app.use("/landlords/notifications", notificationRoute);
+
   app.use("/posts", postUser);
   app.use("/bookings", bookingRoute);
   app.use("/contacts", contactRoute);
   app.use("/contracts", contractRoute);
   app.use("/profiles", userRoutes);
   app.use("/maintenance", maintenanceRoutesUser);
+  app.use("/rooms", roomRoute);
 };
 
 module.exports = routes;
