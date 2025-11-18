@@ -1,6 +1,5 @@
 const cron = require("node-cron");
 const Contract = require("../models/Contract");
-const Contract = require("../models/Contract");
 const Room = require("../models/Room");
 
 async function endContractOnTimeInternal(contractId, options = {}) {

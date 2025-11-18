@@ -478,12 +478,14 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * /landlords/contracts/{id}/approve-extension:
  *   post:
  *     summary: Duyệt yêu cầu gia hạn hợp đồng
- *     description:
+ *     description: |
  *       Landlord duyệt yêu cầu gia hạn đang ở trạng thái `pending`.
+ *
  *       Hệ thống sẽ:
  *       - Lưu lại lịch sử gia hạn vào `extensions`
  *       - Cập nhật `contract.endDate` = `renewalRequest.requestedEndDate`
  *       - Cập nhật `renewalRequest.status = approved`
+ *
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []

@@ -147,3 +147,115 @@ exports.comment = async (req, res) => {
     return res.status(500).json({ message: "Lỗi thêm ghi chú" });
   }
 };
+exports.listMyRoomRequests = async (req, res) => {
+  try {
+    if (req.user?.role !== "resident") {
+      return res
+        .status(403)
+        .json({ message: "Chỉ resident mới được dùng API này" });
+    }
+
+    const tenantId = req.user._id;
+
+    // Tìm phòng mà tenant hiện đang ở
+    const room = await Room.findOne({
+      currentTenantIds: tenantId,
+      status: "rented",
+      isDeleted: false,
+      active: true,
+    })
+      .populate({ path: "buildingId", select: "_id name address" })
+      .lean();
+
+    if (!room) {
+      return res.status(404).json({
+        message: "Bạn chưa được gán vào phòng nào hoặc phòng chưa active",
+      });
+    }
+
+    // Lọc theo query đơn giản: status, priority, page, limit
+    let {
+      status,
+      priority,
+      page = 1,
+      limit = 10,
+      sort = "-createdAt",
+    } = req.query;
+
+    page = Number.isFinite(Number(page)) ? Number(page) : 1;
+    limit = Number.isFinite(Number(limit)) ? Number(limit) : 10;
+    limit = Math.min(Math.max(limit, 1), 100);
+
+    const filter = { roomId: room._id };
+    if (status) filter.status = status;
+    if (priority) filter.priority = priority;
+
+    const skip = (page - 1) * limit;
+
+    const baseQuery = MaintenanceRequest.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .select(
+        [
+          "_id",
+          "buildingId",
+          "roomId",
+          "furnitureId",
+          "reporterAccountId",
+          "assigneeAccountId",
+          "title",
+          "status",
+          "priority",
+          "affectedQuantity",
+          "scheduledAt",
+          "estimatedCost",
+          "actualCost",
+          "resolvedAt",
+          "createdAt",
+          "updatedAt",
+        ].join(" ")
+      )
+      .populate({ path: "furnitureId", select: "_id name" })
+      .populate({
+        path: "assigneeAccountId",
+        select: "email role userInfo",
+        populate: { path: "userInfo", select: "fullName phoneNumber" },
+      })
+      .lean();
+
+    const [data, total] = await Promise.all([
+      baseQuery.exec(),
+      MaintenanceRequest.countDocuments(filter),
+    ]);
+
+    // Bổ sung display tên người xử lý cho tiện
+    for (const r of data) {
+      const ass = r.assigneeAccountId;
+      r.assigneeName = ass?.userInfo?.fullName || ass?.email || null;
+    }
+
+    return res.json({
+      room: {
+        id: room._id,
+        roomNumber: room.roomNumber,
+        floorId: room.floorId,
+        building: room.buildingId,
+        area: room.area,
+        price: room.price,
+        status: room.status,
+      },
+      data,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      sort,
+    });
+  } catch (e) {
+    console.error(e);
+    return res
+      .status(500)
+      .json({ message: "Lỗi lấy danh sách yêu cầu của phòng" });
+  }
+};
