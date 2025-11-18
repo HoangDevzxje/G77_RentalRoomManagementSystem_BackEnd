@@ -1,6 +1,7 @@
 const Room = require("../../models/Room");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Furniture = require("../../models/Furniture");
+const Account = require("../../models/Account");
 
 exports.getMyRoomDetail = async (req, res) => {
   try {
@@ -12,14 +13,27 @@ exports.getMyRoomDetail = async (req, res) => {
 
     const tenantId = req.user._id;
 
-    // Tìm phòng chứa tenant hiện tại
     const room = await Room.findOne({
       currentTenantIds: tenantId,
       status: "rented",
       isDeleted: false,
       active: true,
     })
-      .populate({ path: "buildingId", select: "_id name address" })
+      .populate({ path: "buildingId", select: "name address contact" })
+      .populate({ path: "floorId", select: "name floorNumber" })
+      .populate({
+        path: "currentTenantIds",
+        select: "_id username userInfo first_name last_name",
+        populate: {
+          path: "userInfo",
+          model: "UserInformation",
+          select: "fullName phoneNumber address",
+        },
+      })
+      .populate({
+        path: "currentContractId",
+        select: "contract roommates",
+      })
       .lean();
 
     if (!room) {
@@ -28,45 +42,74 @@ exports.getMyRoomDetail = async (req, res) => {
       });
     }
 
-    // Lấy đồ nội thất trong phòng
-    const roomFurnitures = await RoomFurniture.find({
-      roomId: room._id,
-    })
-      .populate({
-        path: "furnitureId",
-        select: "_id name description price status",
-      })
+    const roomFurnitures = await RoomFurniture.find({ roomId: room._id })
+      .populate({ path: "furnitureId", select: "name" })
       .lean();
 
     const furnitures = roomFurnitures.map((rf) => ({
-      id: rf._id, // id của RoomFurniture 
-      furnitureId: rf.furnitureId?._id,
-      name: rf.furnitureId?.name,
-      description: rf.furnitureId?.description,
-      price: rf.furnitureId?.price,
-      status: rf.furnitureId?.status, 
-
-      quantity: rf.quantity,
-      damageCount: rf.damageCount,
-      condition: rf.condition, 
-      notes: rf.notes || null,
+      name: rf.furnitureId?.name || rf.name || "Unknown",
+      quantity: rf.quantity ?? 0,
+      condition: rf.condition ?? null,
     }));
 
+    const accountTenants =
+      Array.isArray(room.currentTenantIds) && room.currentTenantIds.length > 0
+        ? room.currentTenantIds.map((t) => ({
+            id: t._id,
+            username: t.username || null,
+            fullName:
+              t.userInfo?.fullName ||
+              `${t.first_name || ""} ${t.last_name || ""}`.trim() ||
+              null,
+            phoneNumber: t.userInfo?.phoneNumber || null,
+          }))
+        : [];
+
+    const contractRoommates =
+      room.currentContractId && Array.isArray(room.currentContractId.roommates)
+        ? room.currentContractId.roommates.map((p) => ({
+            name: p.name || null,
+            cccd: p.cccd || null,
+            phone: p.phone || null,
+            dob: p.dob || null,
+          }))
+        : [];
+
+    const respRoom = {
+      roomNumber: room.roomNumber || null,
+      images: Array.isArray(room.images) ? room.images : [],
+      building: room.buildingId
+        ? {
+            name: room.buildingId.name,
+            address: room.buildingId.address,
+            contact: room.buildingId.contact || null,
+          }
+        : null,
+      floor: room.floorId
+        ? room.floorId.name || room.floorId.floorNumber
+        : null,
+      price: room.price ?? null,
+      currentContract: room.currentContractId
+        ? {
+            id: room.currentContractId._id,
+            no: room.currentContractId.contract?.no || null,
+            price: room.currentContractId.contract?.price ?? null,
+            startDate: room.currentContractId.contract?.startDate ?? null,
+            endDate: room.currentContractId.contract?.endDate ?? null,
+          }
+        : null,
+      tenants: accountTenants,
+      contractRoommates,
+      eStart: room.eStart ?? 0,
+      wStart: room.wStart ?? 0,
+    };
+
     return res.json({
-      room: {
-        id: room._id,
-        roomNumber: room.roomNumber,
-        floorId: room.floorId,
-        building: room.buildingId,
-        area: room.area,
-        price: room.price,
-        status: room.status,
-        currentTenantIds: room.currentTenantIds,
-      },
+      room: respRoom,
       furnitures,
     });
   } catch (error) {
-    console.error(error);
+    console.error("getMyRoomDetail error:", error);
     return res.status(500).json({ message: "Lỗi lấy thông tin phòng" });
   }
 };
