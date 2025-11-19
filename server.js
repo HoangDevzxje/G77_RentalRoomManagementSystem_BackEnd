@@ -32,11 +32,9 @@ const io = new Server(server, {
 
 // Middleware xác thực Socket.IO (bắt buộc có JWT)
 io.use((socket, next) => {
-  // Tạo fake req/res để reuse middleware checkAuthorize
   const req = {
     header: (key) => {
       if (key === "Authorization") {
-        // Ưu tiên token từ auth hoặc header
         const token =
           socket.handshake.auth.token || socket.handshake.headers.authorization;
         return token ? `Bearer ${token}` : null;
@@ -55,7 +53,6 @@ io.use((socket, next) => {
     }),
   };
 
-  // Gọi chính middleware checkAuthorize của bạn (không cần role nào ở đây)
   checkAuthorize()(req, res, (err) => {
     if (err) return next(err);
     socket.user = req.user;
@@ -79,7 +76,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// Gắn io vào app để controller có thể dùng (rất tiện)
 app.set("io", io);
 
 // ==================== END SOCKET.IO ====================
@@ -111,7 +107,7 @@ const swaggerOptions = {
   apis: ["./routes/**/*.js"],
 };
 
-// Cấu hình CORS trước tiên
+// Cấu hình CORS
 app.use(
   cors({
     origin: true,
