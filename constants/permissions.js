@@ -90,20 +90,21 @@ const PERMISSIONS = {
     NOTIFICATION_CREATE: "notification:create",
     NOTIFICATION_EDIT: "notification:edit",
     NOTIFICATION_DELETE: "notification:delete",
-    //revenue-expenditure
+    //rating
     RATING_VIEW: "rating:view",
     RATING_CREATE: "rating:create",
     RATING_EDIT: "rating:edit",
     RATING_DELETE: "rating:delete",
+    //resident
+    RESIDENT_VIEW: "resident:view",
+    RESIDENT_CREATE: "resident:create",
+    RESIDENT_EDIT: "resident:edit",
+    RESIDENT_DELETE: "resident:delete",
 
     // === HÓA ĐƠN ===
     INVOICE_VIEW: "invoice:view",
     INVOICE_CREATE: "invoice:create",
     INVOICE_EDIT: "invoice:edit",
-
-    // === CƯ DÂN ===
-    RESIDENT_VIEW: "resident:view",
-    RESIDENT_EDIT: "resident:edit",
 
     // === ĐIỀU KHOẢN (TERM) ===
     TERM_CREATE: "term:create",
