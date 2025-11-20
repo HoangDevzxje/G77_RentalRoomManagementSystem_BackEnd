@@ -858,15 +858,20 @@ async function streamContractPdf(contract, res) {
     });
   }
 
-  // ===== CHỮ KÝ =====
+  // ======= CHỮ KÝ =======
   pdf.moveDown(2);
 
   const pageWidth = pdf.page.width;
   const margins = pdf.page.margins;
 
   const columnWidth = (pageWidth - margins.left - margins.right) / 2;
+
   const leftX = margins.left;
   const rightX = margins.left + columnWidth;
+
+  // Tên & chữ ký từ contract
+  const AName = A?.name || "";
+  const BName = B?.name || "";
 
   const landlordSigUrl = contract.landlordSignatureUrl;
   const tenantSigUrl = contract.tenantSignatureUrl;
@@ -874,7 +879,7 @@ async function streamContractPdf(contract, res) {
   const landlordSigBuf = await loadImageBuffer(landlordSigUrl);
   const tenantSigBuf = await loadImageBuffer(tenantSigUrl);
 
-  // ---- Tiêu đề ký ----
+  // ===== Tiêu đề =====
   try {
     pdf.font(FONT_BOLD);
   } catch {}
@@ -891,7 +896,7 @@ async function streamContractPdf(contract, res) {
 
   pdf.moveDown(1);
 
-  // ---- Chú thích ----
+  // ===== Hướng dẫn ký =====
   try {
     pdf.font(FONT_REGULAR);
   } catch {}
@@ -908,30 +913,42 @@ async function streamContractPdf(contract, res) {
 
   pdf.moveDown(1.5);
 
-  // ---- Ảnh chữ ký ----
-  const sigWidth = 120; // chỉnh cho đẹp
+  // ===== Ảnh chữ ký =====
+  const sigWidth = 120;
   const sigHeight = 70;
 
-  const currentY = pdf.y;
+  const sigY = pdf.y;
 
   if (landlordSigBuf) {
-    pdf.image(
-      landlordSigBuf,
-      leftX + columnWidth / 2 - sigWidth / 2,
-      currentY,
-      {
-        fit: [sigWidth, sigHeight],
-      }
-    );
-  }
-
-  if (tenantSigBuf) {
-    pdf.image(tenantSigBuf, rightX + columnWidth / 2 - sigWidth / 2, currentY, {
+    pdf.image(landlordSigBuf, leftX + columnWidth / 2 - sigWidth / 2, sigY, {
       fit: [sigWidth, sigHeight],
     });
   }
 
-  pdf.moveDown(6);
+  if (tenantSigBuf) {
+    pdf.image(tenantSigBuf, rightX + columnWidth / 2 - sigWidth / 2, sigY, {
+      fit: [sigWidth, sigHeight],
+    });
+  }
+
+  // ===== Tên người ký =====
+  pdf.moveDown(5);
+
+  try {
+    pdf.font(FONT_BOLD);
+  } catch {}
+  pdf
+    .fontSize(12)
+    .text(AName, leftX, pdf.y, {
+      width: columnWidth,
+      align: "center",
+    })
+    .text(BName, rightX, pdf.y - 16, {
+      width: columnWidth,
+      align: "center",
+    });
+
+  pdf.moveDown(4);
   pdf.end();
 }
 
