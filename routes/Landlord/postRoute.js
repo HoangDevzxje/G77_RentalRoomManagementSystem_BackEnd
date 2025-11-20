@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const postController = require("../../controllers/Landlord/PostController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const { uploadMultiple, uploadTextOnly } = require("../../configs/cloudinary");
+const { uploadMultiple } = require("../../configs/cloudinary");
 const checkSubscription = require("../../middleware/checkSubscription");
 const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
