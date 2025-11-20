@@ -88,6 +88,7 @@ exports.getMyRoomDetail = async (req, res) => {
       floor: room.floorId
         ? room.floorId.name || room.floorId.floorNumber
         : null,
+      area: room.area ?? null,
       price: room.price ?? null,
       currentContract: room.currentContractId
         ? {
