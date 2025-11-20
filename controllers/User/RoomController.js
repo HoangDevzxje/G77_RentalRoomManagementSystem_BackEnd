@@ -76,6 +76,8 @@ exports.getMyRoomDetail = async (req, res) => {
         : [];
 
     const respRoom = {
+      id: room._id,
+      _id: room._id,
       roomNumber: room.roomNumber || null,
       images: Array.isArray(room.images) ? room.images : [],
       building: room.buildingId
@@ -97,12 +99,18 @@ exports.getMyRoomDetail = async (req, res) => {
             price: room.currentContractId.contract?.price ?? null,
             startDate: room.currentContractId.contract?.startDate ?? null,
             endDate: room.currentContractId.contract?.endDate ?? null,
+            roommates: room.currentContractId.contract?.roommates ?? null,
           }
         : null,
       tenants: accountTenants,
       contractRoommates,
       eStart: room.eStart ?? 0,
       wStart: room.wStart ?? 0,
+      currentCount: Array.isArray(room.currentTenantIds)
+        ? room.currentTenantIds.length
+        : 0,
+      maxTenants: room.maxTenants ?? null,
+      status: room.status ?? null,
     };
 
     return res.json({
