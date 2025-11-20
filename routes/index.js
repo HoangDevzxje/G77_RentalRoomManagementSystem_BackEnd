@@ -11,6 +11,7 @@ const buildingServiceRoutes = require("./Landlord/buildingServiceRoutes");
 const postLandlord = require("././Landlord/postRoute");
 const postUser = require("././User/postRoute");
 const accountAdmin = require("././Admin/accountRoute");
+const dashboardRoute = require("././Admin/dashboardRoute");
 const scheduleRoute = require("././Landlord/scheduleRoute");
 const bookingRoute = require("././User/bookingRoute");
 const bookingLandlord = require("././Landlord/bookingRoute");
@@ -35,7 +36,7 @@ const routes = (app) => {
   app.use("/subscriptions", subscriptionRoutes);
   app.use("/admin/packages", packageRoutes);
   app.use("/admin/accounts", accountAdmin);
-
+  app.use("/admin/dashboard", dashboardRoute);
   app.use("/landlords/rooms", roomLandlordRoutes);
   app.use("/landlords/terms", termRoute);
   app.use("/landlords/floors", floorRoutes);
