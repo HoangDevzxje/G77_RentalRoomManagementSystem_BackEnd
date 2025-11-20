@@ -909,7 +909,44 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *       400:
  *         description: Lỗi truy vấn
  */
-
+/**
+ * @swagger
+ * /landlords/contracts/{id}/download:
+ *   get:
+ *     summary: Tải PDF hợp đồng đã hoàn tất
+ *     description: |
+ *       Landlord tải file PDF hợp đồng với đầy đủ thông tin:
+ *       - Thông tin Bên A, B (snapshot trong contract.A, contract.B)
+ *       - Roommates, phương tiện (bikes)
+ *       - Thông tin phòng, giá thuê, cọc, thời hạn, chu kỳ thanh toán
+ *       - Điều khoản (terms snapshot) và Nội quy (regulations snapshot)
+ *
+ *       Chỉ cho phép khi trạng thái hợp đồng là `completed`.
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID hợp đồng cần tải
+ *     responses:
+ *       200:
+ *         description: File PDF hợp đồng
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Hợp đồng chưa completed hoặc yêu cầu không hợp lệ
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ *       500:
+ *         description: Lỗi server khi tạo PDF
+ */
 router.post(
   "/from-contact",
   checkAuthorize("landlord", "staff"),
@@ -971,7 +1008,7 @@ router.post(
 );
 
 router.delete(
-  "/contracts/:id",
+  "/:id",
   checkAuthorize("landlord", "staff"),
   contractController.deleteContract
 );
@@ -990,5 +1027,10 @@ router.post(
   "/:id/terminate",
   checkAuthorize("landlord", "staff"),
   contractController.terminateContract
+);
+router.get(
+  "/:id/download",
+  checkAuthorize("landlord", "staff"),
+  contractController.downloadContractPdf
 );
 module.exports = router;

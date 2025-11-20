@@ -459,6 +459,42 @@ const contractController = require("../../controllers/User/ContractController");
  *         description: Lỗi truy vấn
  */
 
+/**
+ * @swagger
+ * /contracts/{id}/download:
+ *   get:
+ *     summary: Tải PDF hợp đồng của cư dân
+ *     description: |
+ *       Cư dân (resident) tải file PDF hợp đồng của chính mình.
+ *
+ *       Điều kiện:
+ *       - Hợp đồng có `tenantId` = tài khoản hiện tại
+ *       - Trạng thái hợp đồng là `completed`
+ *     tags: [Resident - Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID hợp đồng cần tải
+ *     responses:
+ *       200:
+ *         description: File PDF hợp đồng
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Hợp đồng chưa completed hoặc request không hợp lệ
+ *       404:
+ *         description: Không tìm thấy hợp đồng tương ứng với cư dân hiện tại
+ *       500:
+ *         description: Lỗi server khi xuất PDF
+ */
 router.get(
   "/accounts/search-by-email",
   checkAuthorize("resident"),
@@ -497,6 +533,11 @@ router.post(
   "/:id/request-extend",
   checkAuthorize("resident"),
   contractController.requestExtend
+);
+router.get(
+  "/:id/download",
+  checkAuthorize("resident"),
+  contractController.residentDownloadMyContractPdf
 );
 
 module.exports = router;

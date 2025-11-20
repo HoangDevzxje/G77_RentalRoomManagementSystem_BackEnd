@@ -4,7 +4,15 @@ const Room = require("../../models/Room");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Furniture = require("../../models/Furniture");
 const UserInformation = require("../../models/UserInformation");
+const PDFDocument = require("pdfkit");
+const contentDisposition = require("content-disposition");
+const he = require("he");
+const Building = require("../../models/Building");
 
+const FONT_REGULAR =
+  process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
+const FONT_BOLD =
+  process.env.CONTRACT_FONT_BOLD_PATH || "public/fonts/NotoSans-Bold.ttf";
 // Helper: map Account + UserInformation -> personSchema
 function mapAccountToPerson(acc) {
   if (!acc) return undefined;
@@ -439,5 +447,529 @@ exports.listUpcomingExpire = async (req, res) => {
     });
   } catch (e) {
     res.status(400).json({ message: e.message });
+  }
+};
+
+// ============ Helpers chung ============
+
+function sanitizeFileName(name) {
+  return String(name || "contract.pdf")
+    .replace(/[\r\n]/g, " ")
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function formatDate(d) {
+  if (!d) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = d.getFullYear();
+  return `${dd}/${mm}/${yy}`;
+}
+
+function isHtml(s = "") {
+  return /<\/?[a-z][\s\S]*>/i.test(String(s));
+}
+
+function inlineText(html = "") {
+  const decoded = he.decode(String(html));
+  const withBreaks = decoded.replace(/<br\s*\/?>/gi, "\n");
+  return withBreaks.replace(/<\/?(strong|em|b|i|u|span|p)>/gi, "");
+}
+
+function extractListItems(html = "") {
+  const decoded = he.decode(String(html));
+  const listMatch = decoded.match(/<(ul|ol)[^>]*>([\s\S]*?)<\/\1>/i);
+  if (!listMatch) return null;
+  const isOrdered = /^<ol/i.test(listMatch[0]);
+  const body = listMatch[2];
+
+  const items = [];
+  const re = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+  let m;
+  while ((m = re.exec(body))) {
+    const text = inlineText(m[1]).trim();
+    if (text) items.push(text);
+  }
+  return { isOrdered, items };
+}
+async function loadImageBuffer(signatureUrl) {
+  if (!signatureUrl) return null;
+
+  try {
+    // Nếu là URL http/https (Cloudinary, S3, v.v.)
+    if (/^https?:\/\//i.test(signatureUrl)) {
+      const resp = await axios.get(signatureUrl, {
+        responseType: "arraybuffer",
+      });
+      return Buffer.from(resp.data);
+    }
+
+    // Nếu là path local, ví dụ: "/uploads/signatures/abc.png"
+    // Tùy dự án của bạn, chỉnh lại root cho đúng
+    const filePath = path.isAbsolute(signatureUrl)
+      ? signatureUrl
+      : path.join(process.cwd(), signatureUrl);
+
+    if (!fs.existsSync(filePath)) return null;
+    return fs.readFileSync(filePath);
+  } catch (e) {
+    console.error("Không load được ảnh chữ ký:", e.message);
+    return null;
+  }
+}
+
+async function streamContractPdf(contract, res) {
+  const {
+    A,
+    B,
+    roommates = [],
+    bikes = [],
+    contract: meta = {},
+    terms = [],
+    regulations = [],
+  } = contract;
+
+  const building = contract.buildingId;
+  const room = contract.roomId;
+
+  const fileNameRaw = `HopDong_${meta.no || contract._id}.pdf`;
+  const fileName = sanitizeFileName(fileNameRaw);
+  const cd = contentDisposition(fileName, { type: "attachment" });
+
+  res.setHeader("Content-Disposition", cd);
+  res.setHeader("Content-Type", "application/pdf");
+
+  const pdf = new PDFDocument({
+    size: "A4",
+    margins: { top: 50, left: 50, right: 50, bottom: 50 },
+  });
+
+  pdf.on("error", (err) => {
+    if (!res.headersSent) {
+      res.status(500).json({ message: err.message || "PDF stream error" });
+    } else {
+      try {
+        res.end();
+      } catch {}
+    }
+  });
+
+  pdf.pipe(res);
+
+  // Font
+  try {
+    pdf.font(FONT_REGULAR);
+  } catch {
+    pdf.font("Times-Roman");
+  }
+
+  // ===== HEADER =====
+  pdf
+    .fontSize(12)
+    .text("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", { align: "center" })
+    .moveDown(0.2)
+    .text("ĐỘC LẬP – TỰ DO – HẠNH PHÚC", { align: "center" });
+
+  pdf.moveDown(0.8);
+  try {
+    pdf.font(FONT_BOLD);
+  } catch {}
+  pdf
+    .fontSize(16)
+    .text("HỢP ĐỒNG THUÊ PHÒNG", { align: "center", underline: true });
+
+  try {
+    pdf.font(FONT_REGULAR);
+  } catch {}
+  pdf.moveDown(0.5);
+  pdf
+    .fontSize(10)
+    .fillColor("gray")
+    .text(`Số: ${meta.no || "........"}`, { align: "center" })
+    .fillColor("black");
+
+  // Ngày ký & địa điểm
+  pdf.moveDown(1);
+  pdf
+    .fontSize(12)
+    .text(
+      `Hôm nay, ngày ${formatDate(meta.signDate) || "....../....../......"}`
+    );
+  pdf.text(
+    `Tại: ${
+      meta.signPlace || (building && building.address) || "................"
+    }`
+  );
+
+  pdf.moveDown(0.5);
+
+  // ===== BÊN A =====
+  pdf.moveDown(0.3);
+  try {
+    pdf.font(FONT_BOLD);
+  } catch {}
+  pdf.text("BÊN CHO THUÊ (BÊN A):");
+  try {
+    pdf.font(FONT_REGULAR);
+  } catch {}
+
+  pdf
+    .fontSize(11)
+    .text(`Họ tên: ${A?.name || ""}`)
+    .text(
+      `CCCD: ${A?.cccd || ""}   Cấp ngày: ${
+        formatDate(A?.cccdIssuedDate) || ""
+      }   Nơi cấp: ${A?.cccdIssuedPlace || ""}`
+    )
+    .text(`Hộ khẩu thường trú: ${A?.permanentAddress || ""}`)
+    .text(`Điện thoại: ${A?.phone || ""}`)
+    .text(`Email: ${A?.email || ""}`);
+
+  // ===== BÊN B =====
+  pdf.moveDown(0.6);
+  try {
+    pdf.font(FONT_BOLD);
+  } catch {}
+  pdf.text("BÊN THUÊ (BÊN B):");
+  try {
+    pdf.font(FONT_REGULAR);
+  } catch {}
+
+  pdf
+    .fontSize(11)
+    .text(`Họ tên: ${B?.name || ""}`)
+    .text(
+      `CCCD: ${B?.cccd || ""}   Cấp ngày: ${
+        formatDate(B?.cccdIssuedDate) || ""
+      }   Nơi cấp: ${B?.cccdIssuedPlace || ""}`
+    )
+    .text(`Hộ khẩu thường trú: ${B?.permanentAddress || ""}`)
+    .text(`Điện thoại: ${B?.phone || ""}`)
+    .text(`Email: ${B?.email || ""}`);
+
+  // Roommates
+  if (roommates.length) {
+    pdf.moveDown(0.6);
+    try {
+      pdf.font(FONT_BOLD);
+    } catch {}
+    pdf.text("Người ở cùng (roommates):");
+    try {
+      pdf.font(FONT_REGULAR);
+    } catch {}
+
+    roommates.forEach((r, idx) => {
+      pdf
+        .fontSize(11)
+        .text(
+          `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""} – Điện thoại: ${
+            r.phone || ""
+          }`
+        );
+    });
+  }
+
+  // ===== THÔNG TIN PHÒNG & GIÁ =====
+  pdf.moveDown(0.8);
+  try {
+    pdf.font(FONT_BOLD);
+  } catch {}
+  pdf.text("THÔNG TIN PHÒNG VÀ GIÁ THUÊ:");
+  try {
+    pdf.font(FONT_REGULAR);
+  } catch {}
+
+  const buildingName = building?.name || "";
+  const roomNumber = room?.roomNumber || "";
+  const area = room?.area;
+  pdf
+    .fontSize(11)
+    .text(
+      `Tòa nhà: ${buildingName} – Địa chỉ: ${
+        building?.address || "................................"
+      }`
+    )
+    .text(`Phòng: ${roomNumber}    Diện tích: ${area || ""} m²`)
+    .text(`Giá thuê: ${meta.price?.toLocaleString("vi-VN") || ""} VND/tháng`)
+    .text(
+      `Tiền cọc: ${
+        meta.deposit?.toLocaleString("vi-VN") || ""
+      } VND (bằng chữ: ................................)`
+    )
+    .text(
+      `Thời hạn thuê: từ ngày ${formatDate(
+        meta.startDate
+      )} đến ngày ${formatDate(meta.endDate)}`
+    )
+    .text(`Chu kỳ thanh toán: mỗi ${meta.paymentCycleMonths || 1} tháng/lần`);
+
+  // Bikes
+  if (bikes.length) {
+    pdf.moveDown(0.5);
+    try {
+      pdf.font(FONT_BOLD);
+    } catch {}
+    pdf.text("Phương tiện gửi kèm:");
+    try {
+      pdf.font(FONT_REGULAR);
+    } catch {}
+
+    bikes.forEach((b, idx) => {
+      pdf
+        .fontSize(11)
+        .text(
+          `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${
+            b.color || ""
+          } – Hãng: ${b.brand || ""}`
+        );
+    });
+  }
+
+  // ===== ĐIỀU KHOẢN (terms snapshot) =====
+  if (terms.length) {
+    pdf.moveDown(1);
+    try {
+      pdf.font(FONT_BOLD);
+    } catch {}
+    pdf.fontSize(13).text("I. ĐIỀU KHOẢN HỢP ĐỒNG", { underline: true });
+    try {
+      pdf.font(FONT_REGULAR);
+    } catch {}
+    pdf.moveDown(0.5);
+
+    const sortedTerms = [...terms].sort(
+      (a, b) => (a.order || 0) - (b.order || 0)
+    );
+
+    sortedTerms.forEach((t, idx) => {
+      try {
+        pdf.font(FONT_BOLD);
+      } catch {}
+      pdf.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
+      try {
+        pdf.font(FONT_REGULAR);
+      } catch {}
+
+      const desc = t.description || "";
+      if (!desc) {
+        pdf.moveDown(0.3);
+        return;
+      }
+
+      if (isHtml(desc)) {
+        const list = extractListItems(desc);
+        if (list && list.items.length) {
+          pdf.moveDown(0.2);
+          list.items.forEach((it, i) => {
+            const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
+            try {
+              pdf.font(FONT_BOLD);
+            } catch {}
+            pdf.fontSize(11).text(prefix, { continued: true });
+            try {
+              pdf.font(FONT_REGULAR);
+            } catch {}
+            pdf.fontSize(11).text(it, {
+              paragraphGap: 4,
+              align: "justify",
+            });
+          });
+        } else {
+          pdf.moveDown(0.2);
+          pdf
+            .fontSize(11)
+            .text(inlineText(desc), { paragraphGap: 6, align: "justify" });
+        }
+      } else {
+        pdf.moveDown(0.2);
+        pdf
+          .fontSize(11)
+          .text(String(desc), { paragraphGap: 6, align: "justify" });
+      }
+
+      pdf.moveDown(0.3);
+    });
+  }
+
+  // ===== NỘI QUY (regulations snapshot) =====
+  if (regulations.length) {
+    pdf.moveDown(1);
+    try {
+      pdf.font(FONT_BOLD);
+    } catch {}
+    pdf.fontSize(13).text("II. NỘI QUY / QUY ĐỊNH", { underline: true });
+    try {
+      pdf.font(FONT_REGULAR);
+    } catch {}
+    pdf.moveDown(0.5);
+
+    const sortedRegs = [...regulations].sort(
+      (a, b) => (a.order || 0) - (b.order || 0)
+    );
+
+    sortedRegs.forEach((r, idx) => {
+      try {
+        pdf.font(FONT_BOLD);
+      } catch {}
+      pdf.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
+      try {
+        pdf.font(FONT_REGULAR);
+      } catch {}
+
+      const desc = r.description || "";
+      if (!desc) {
+        pdf.moveDown(0.3);
+        return;
+      }
+
+      if (isHtml(desc)) {
+        const list = extractListItems(desc);
+        if (list && list.items.length) {
+          pdf.moveDown(0.2);
+          list.items.forEach((it, i) => {
+            const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
+            try {
+              pdf.font(FONT_BOLD);
+            } catch {}
+            pdf.fontSize(11).text(prefix, { continued: true });
+            try {
+              pdf.font(FONT_REGULAR);
+            } catch {}
+            pdf.fontSize(11).text(it, {
+              paragraphGap: 4,
+              align: "justify",
+            });
+          });
+        } else {
+          pdf.moveDown(0.2);
+          pdf
+            .fontSize(11)
+            .text(inlineText(desc), { paragraphGap: 6, align: "justify" });
+        }
+      } else {
+        pdf.moveDown(0.2);
+        pdf
+          .fontSize(11)
+          .text(String(desc), { paragraphGap: 6, align: "justify" });
+      }
+      pdf.moveDown(0.3);
+    });
+  }
+
+  // ===== CHỮ KÝ =====
+  pdf.moveDown(2);
+
+  const pageWidth = pdf.page.width;
+  const margins = pdf.page.margins;
+
+  const columnWidth = (pageWidth - margins.left - margins.right) / 2;
+  const leftX = margins.left;
+  const rightX = margins.left + columnWidth;
+
+  const landlordSigUrl = contract.landlordSignatureUrl;
+  const tenantSigUrl = contract.tenantSignatureUrl;
+
+  const landlordSigBuf = await loadImageBuffer(landlordSigUrl);
+  const tenantSigBuf = await loadImageBuffer(tenantSigUrl);
+
+  // ---- Tiêu đề ký ----
+  try {
+    pdf.font(FONT_BOLD);
+  } catch {}
+  pdf
+    .fontSize(12)
+    .text("ĐẠI DIỆN BÊN A", leftX, pdf.y, {
+      width: columnWidth,
+      align: "center",
+    })
+    .text("ĐẠI DIỆN BÊN B", rightX, pdf.y - 16, {
+      width: columnWidth,
+      align: "center",
+    });
+
+  pdf.moveDown(1);
+
+  // ---- Chú thích ----
+  try {
+    pdf.font(FONT_REGULAR);
+  } catch {}
+  pdf
+    .fontSize(11)
+    .text("(Ký, ghi rõ họ tên)", leftX, pdf.y, {
+      width: columnWidth,
+      align: "center",
+    })
+    .text("(Ký, ghi rõ họ tên)", rightX, pdf.y - 14, {
+      width: columnWidth,
+      align: "center",
+    });
+
+  pdf.moveDown(1.5);
+
+  // ---- Ảnh chữ ký ----
+  const sigWidth = 120; // chỉnh cho đẹp
+  const sigHeight = 70;
+
+  const currentY = pdf.y;
+
+  if (landlordSigBuf) {
+    pdf.image(
+      landlordSigBuf,
+      leftX + columnWidth / 2 - sigWidth / 2,
+      currentY,
+      {
+        fit: [sigWidth, sigHeight],
+      }
+    );
+  }
+
+  if (tenantSigBuf) {
+    pdf.image(tenantSigBuf, rightX + columnWidth / 2 - sigWidth / 2, currentY, {
+      fit: [sigWidth, sigHeight],
+    });
+  }
+
+  pdf.moveDown(6);
+  pdf.end();
+}
+
+exports.residentDownloadMyContractPdf = async (req, res) => {
+  try {
+    const tenantId = req.user?._id;
+    const { id } = req.params;
+
+    const contract = await Contract.findOne({
+      _id: id,
+      tenantId,
+      isDeleted: { $ne: true },
+    })
+      .populate({ path: "buildingId", select: "_id name address" })
+      .populate({ path: "roomId", select: "_id roomNumber floorId area price" })
+      .lean();
+
+    if (!contract) {
+      return res.status(404).json({
+        message:
+          "Không tìm thấy hợp đồng của bạn hoặc bạn không có quyền truy cập",
+      });
+    }
+
+    if (contract.status !== "completed") {
+      return res.status(400).json({
+        message: "Hợp đồng chưa hoàn tất, chưa thể tải PDF",
+      });
+    }
+
+    await streamContractPdf(contract, res);
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) {
+      return res.status(400).json({ message: e.message || "Bad request" });
+    }
+    try {
+      res.end();
+    } catch {}
   }
 };
