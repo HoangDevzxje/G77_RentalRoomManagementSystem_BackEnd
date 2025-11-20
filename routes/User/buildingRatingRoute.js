@@ -104,6 +104,77 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *         description: Lỗi server
  */
 
+/**
+ * @swagger
+ * /ratings/{ratingId}:
+ *   delete:
+ *     summary: Xóa đánh giá của chính người dùng
+ *     tags: [Resident Building Rating]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: ratingId
+ *         in: path
+ *         required: true
+ *         description: ID của đánh giá cần xóa
+ *         schema:
+ *           type: string
+ *           example: "67c260745c24cc0d226d72ab"
+ *     responses:
+ *       200:
+ *         description: Xóa đánh giá thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Đã xóa đánh giá thành công"
+ *       400:
+ *         description: ID đánh giá không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "ID đánh giá không hợp lệ"
+ *       404:
+ *         description: Không tìm thấy đánh giá hoặc người dùng không có quyền xóa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Không tìm thấy đánh giá hoặc bạn không có quyền xóa"
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Lỗi hệ thống, vui lòng thử lại"
+ */
+
 
 /**
  * @swagger
@@ -179,6 +250,7 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  */
 
 router.post("/", checkAuthorize(["resident"]), uploadMultiple, buildingRatingController.createOrUpdateRating);
-router.get("/:buildingId", checkAuthorize(["resident"]), buildingRatingController.getBuildingRatings);
+router.delete("/:ratingId", checkAuthorize(["resident"]), buildingRatingController.deleteMyRating);
+router.get("/:buildingId", buildingRatingController.getBuildingRatings);
 
 module.exports = router;

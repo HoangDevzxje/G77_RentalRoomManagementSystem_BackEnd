@@ -112,7 +112,45 @@ const createOrUpdateRating = async (req, res) => {
         });
     }
 };
+const deleteMyRating = async (req, res) => {
+    const { ratingId } = req.params;
+    const userId = req.user.id;
 
+    if (!mongoose.Types.ObjectId.isValid(ratingId)) {
+        return res.status(400).json({
+            success: false,
+            message: 'ID đánh giá không hợp lệ'
+        });
+    }
+
+    try {
+        const rating = await BuildingRating.findOne({
+            _id: ratingId,
+            userId: userId
+        });
+
+        if (!rating) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy đánh giá hoặc bạn không có quyền xóa'
+            });
+        }
+
+        await BuildingRating.deleteOne({ _id: ratingId });
+
+        res.json({
+            success: true,
+            message: 'Đã xóa đánh giá thành công'
+        });
+
+    } catch (error) {
+        console.error('Delete rating error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi hệ thống, vui lòng thử lại'
+        });
+    }
+};
 const getBuildingRatings = async (req, res) => {
     const { buildingId } = req.params;
 
@@ -178,4 +216,8 @@ const getBuildingRatings = async (req, res) => {
     }
 };
 
-module.exports = { createOrUpdateRating, getBuildingRatings };
+module.exports = {
+    createOrUpdateRating,
+    getBuildingRatings,
+    deleteMyRating
+};
