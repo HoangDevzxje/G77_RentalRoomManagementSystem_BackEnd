@@ -78,7 +78,6 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
             const buildingField = options.buildingField || "buildingId";
 
             buildingId = req.query[buildingField] || req.body?.[buildingField] || req.params[buildingField];
-            console.log("buildingId:", buildingId);
             if (!buildingId && options.allowFromDb && options.model) {
                 const idField = options.idField || "id";
                 const recordId = req.params[idField]
@@ -87,7 +86,6 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
                 } else {
                     try {
                         const Model = require(`../models/${options.model}`);
-                        console.log("Model:", req.params);
                         const record = await Model.findById(recordId)
                             .select("buildingId")
                             .lean();
@@ -108,12 +106,12 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
 
             // === CHECK BUILDING BẮT BUỘC ===
             if (options.checkBuilding) {
-                console.log("🔍 CHECK BUILDING ID:", {
-                    from_query: req.query[buildingField],
-                    from_body: req.body?.[buildingField],
-                    from_db: buildingId && !req.query[buildingField] && !req.body?.[buildingField] ? "DB" : undefined,
-                    final: buildingId
-                });
+                // console.log("🔍 CHECK BUILDING ID:", {
+                //     from_query: req.query[buildingField],
+                //     from_body: req.body?.[buildingField],
+                //     from_db: buildingId && !req.query[buildingField] && !req.body?.[buildingField] ? "DB" : undefined,
+                //     final: buildingId
+                // });
                 if (!buildingId) {
                     return res.status(400).json({
                         message: `Thiếu thông tin tòa nhà (${buildingField})`,

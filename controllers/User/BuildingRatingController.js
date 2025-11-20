@@ -72,13 +72,6 @@ const createOrUpdateRating = async (req, res) => {
             })
             .lean();
 
-        const userDisplay = updatedRating.isAnonymous
-            ? null
-            : {
-                fullName: updatedRating.userId?.userInfo?.fullName || 'Người dùng hệ thống',
-                avatar: updatedRating.userId?.userInfo?.avatar || null
-            };
-
         res.json({
             success: true,
             message: updatedRating.createdAt === updatedRating.updatedAt
@@ -91,7 +84,10 @@ const createOrUpdateRating = async (req, res) => {
                 comment: updatedRating.comment,
                 images: updatedRating.images,
                 isAnonymous: updatedRating.isAnonymous,
-                user: userDisplay,
+                user: {
+                    fullName: updatedRating.userId?.userInfo?.fullName,
+                    email: updatedRating.userId?.email
+                },
                 createdAt: updatedRating.createdAt,
                 updatedAt: updatedRating.updatedAt
             }
