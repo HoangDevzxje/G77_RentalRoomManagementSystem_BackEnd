@@ -5,7 +5,7 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
 /**
  * @swagger
  * tags:
- *   - name: Admin management account
+ *   - name: Admin Account Management
  *     description: API quản lý tài khoản người dùng (Admin)
  */
 
@@ -17,7 +17,7 @@ const { checkAuthorize } = require('../../middleware/authMiddleware');
  *     description: |
  *       Trả về danh sách tất cả tài khoản trong hệ thống.  
  *       Hỗ trợ **phân trang**, **tìm kiếm theo email**, và chỉ Admin mới được truy cập.
- *     tags: [Admin management account]
+ *     tags: [Admin Account Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -99,7 +99,7 @@ router.get("/", checkAuthorize(["admin"]), accountController.getAllUsers);
  *     description: |
  *       Bật hoặc tắt (kích hoạt / vô hiệu hóa) tài khoản người dùng theo **ID**.  
  *       Chỉ Admin mới có quyền thực hiện.
- *     tags: [Admin management account]
+ *     tags: [Admin Account Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -150,7 +150,7 @@ router.patch("/:id/status", checkAuthorize(["admin"]), accountController.channgS
  *     description: |
  *       Cho phép **Admin** thay đổi quyền người dùng giữa các giá trị:  
  *       `resident`, `landlord`, hoặc `admin`.
- *     tags: [Admin management account]
+ *     tags: [Admin Account Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -213,7 +213,7 @@ router.patch("/:id/role", checkAuthorize(["admin"]), accountController.updateRol
  *     summary: Lấy thông tin chi tiết của tài khoản theo ID
  *     description: |
  *       Trả về thông tin chi tiết của một tài khoản cụ thể dựa trên **ID** người dùng.  
- *     tags: [Admin management account]
+ *     tags: [Admin Account Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
