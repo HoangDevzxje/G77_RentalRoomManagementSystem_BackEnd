@@ -109,7 +109,7 @@ const getDetailPostByTenant = async (req, res) => {
         _id: { $in: post.roomIds },
         isDeleted: false,
       })
-        .select("_id name price status roomNumber")
+        .select("_id name price status roomNumber images area")
         .lean();
     }
 
