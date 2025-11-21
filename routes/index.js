@@ -64,7 +64,7 @@ const routes = (app) => {
   app.use("/contacts", contactRoute);
   app.use("/contracts", contractRoute);
   app.use("/profiles", userRoutes);
-  app.use("/residents/maintenance", maintenanceRoutesUser);
+  app.use("/maintenance", maintenanceRoutesUser);
   app.use("/rooms", roomRoute);
 };
 
