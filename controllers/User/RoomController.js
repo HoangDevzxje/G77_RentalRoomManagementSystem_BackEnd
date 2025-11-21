@@ -2,6 +2,7 @@ const Room = require("../../models/Room");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Furniture = require("../../models/Furniture");
 const Account = require("../../models/Account");
+const Building = require("../../models/Building");
 
 exports.getMyRoomDetail = async (req, res) => {
   try {
@@ -11,10 +12,13 @@ exports.getMyRoomDetail = async (req, res) => {
         .json({ message: "Chỉ resident mới được dùng API này" });
     }
 
-    const tenantId = req.user._id;
+    const tenantId = req.user._id ?? req.user.id;
+    if (!tenantId) {
+      return res.status(400).json({ message: "Thiếu thông tin user" });
+    }
 
     const room = await Room.findOne({
-      currentTenantIds: tenantId,
+      currentTenantIds: { $in: [tenantId] },
       status: "rented",
       isDeleted: false,
       active: true,
@@ -40,6 +44,20 @@ exports.getMyRoomDetail = async (req, res) => {
       return res.status(404).json({
         message: "Bạn chưa được gán vào phòng nào hoặc phòng chưa active",
       });
+    }
+
+    // Backup: Nếu buildingId chưa được populate
+    if (room.buildingId && typeof room.buildingId === "string") {
+      try {
+        const building = await Building.findById(room.buildingId)
+          .select("name address contact")
+          .lean();
+        if (building) {
+          room.buildingId = building;
+        }
+      } catch (err) {
+        console.warn("Cannot populate buildingId:", err?.message);
+      }
     }
 
     const roomFurnitures = await RoomFurniture.find({ roomId: room._id })
@@ -82,6 +100,7 @@ exports.getMyRoomDetail = async (req, res) => {
       images: Array.isArray(room.images) ? room.images : [],
       building: room.buildingId
         ? {
+            _id: room.buildingId._id ?? room.buildingId,
             name: room.buildingId.name,
             address: room.buildingId.address,
             contact: room.buildingId.contact || null,
