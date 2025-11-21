@@ -616,6 +616,7 @@ router.put(
       model: "Room"
     }
   ),
+  uploadMultiple,
   checkSubscription,
   RoomCtrl.update
 );

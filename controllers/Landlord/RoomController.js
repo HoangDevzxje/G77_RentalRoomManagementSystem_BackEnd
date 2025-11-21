@@ -365,6 +365,17 @@ const update = async (req, res) => {
       return res
         .status(403)
         .json({ message: "Tòa nhà đang tạm dừng hoạt động" });
+    
+    // Parse JSON data from the 'data' field (similar to create function)
+    let updateData;
+    if (req.body && req.body.data) {
+      // New format: data is in req.body.data as JSON string
+      updateData = JSON.parse(req.body.data);
+    } else {
+      // Fallback: old format for backward compatibility
+      updateData = req.body || {};
+    }
+    
     let {
       roomNumber,
       area,
@@ -375,7 +386,7 @@ const update = async (req, res) => {
       floorId,
       replaceAllImages,
       removeUrls,
-    } = req.body;
+    } = updateData;
 
     // Chuẩn hóa primitives
     if (price !== undefined) {
