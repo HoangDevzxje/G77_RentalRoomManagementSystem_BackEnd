@@ -2,6 +2,9 @@ const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const contractController = require("../../controllers/Landlord/ContractController");
 const checkSubscription = require("../../middleware/checkSubscription");
+const { PERMISSIONS } = require("../../constants/permissions");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+
 /**
  * @swagger
  * tags:
@@ -13,11 +16,17 @@ const checkSubscription = require("../../middleware/checkSubscription");
  * @swagger
  * /landlords/contracts:
  *   get:
- *     summary: Lấy danh sách hợp đồng của chủ trọ
+ *     summary: Lấy danh sách hợp đồng của landlord hoặc staff thuộc landlord
  *     description: |
- *       Trả về danh sách hợp đồng mà user hiện tại là landlord (landlordId).
- *       Hỗ trợ phân trang, lọc theo trạng thái, lọc theo tình trạng xác nhận vào ở
- *       và tìm kiếm theo số hợp đồng (contract.no).
+ *       Trả về danh sách hợp đồng dựa trên quyền truy cập của user:
+ *       - Nếu là landlord → xem toàn bộ hợp đồng của mình.
+ *       - Nếu là staff → chỉ xem hợp đồng thuộc các tòa nhà được phân quyền (assignedBuildingIds).
+ * 
+ *       Hỗ trợ:
+ *       - Lọc theo trạng thái hợp đồng.
+ *       - Lọc theo tình trạng xác nhận vào ở (moveInConfirmedAt).
+ *       - Tìm kiếm theo số hợp đồng (contract.no).
+ *       - Phân trang.
  *     tags: [Landlord Contracts]
  *     security:
  *       - bearerAuth: []
@@ -27,36 +36,49 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *         schema:
  *           type: string
  *           enum: [draft, sent_to_tenant, signed_by_tenant, signed_by_landlord, completed, voided, terminated]
- *         description: Lọc theo trạng thái hợp đồng
+ *         description: Lọc theo trạng thái hợp đồng.
+ *
  *       - name: moveIn
  *         in: query
  *         schema:
  *           type: string
  *           enum: [confirmed, not_confirmed]
  *         description: |
- *           Lọc theo việc đã xác nhận người thuê vào ở hay chưa:
- *           - confirmed: chỉ hợp đồng đã được confirm move-in
- *           - not_confirmed: hợp đồng chưa confirm move-in
+ *           Lọc theo trạng thái xác nhận vào ở:
+ *           - confirmed → moveInConfirmedAt != null
+ *           - not_confirmed → moveInConfirmedAt = null
+ *
+ *       - name: buildingId
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: |
+ *           Lọc theo tòa nhà.  
+ *           Nếu là staff: chỉ được phép xem nếu buildingId thuộc assignedBuildingIds.
+ *
  *       - name: search
  *         in: query
  *         schema:
  *           type: string
- *         description: Từ khóa tìm kiếm (hiện tại áp dụng cho số hợp đồng - contract.no)
+ *         description: Tìm kiếm theo số hợp đồng (contract.no).
+ *
  *       - name: page
  *         in: query
  *         schema:
  *           type: integer
  *           default: 1
- *         description: Trang hiện tại (bắt đầu từ 1)
+ *         description: Trang hiện tại (bắt đầu từ 1).
+ *
  *       - name: limit
  *         in: query
  *         schema:
  *           type: integer
  *           default: 20
- *         description: Số bản ghi mỗi trang
+ *         description: Số bản ghi mỗi trang.
+ *
  *     responses:
  *       200:
- *         description: Danh sách hợp đồng của landlord
+ *         description: Danh sách hợp đồng.
  *         content:
  *           application/json:
  *             schema:
@@ -71,19 +93,10 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                         type: string
  *                       status:
  *                         type: string
- *                         enum:
- *                           - draft
- *                           - sent_to_tenant
- *                           - signed_by_tenant
- *                           - signed_by_landlord
- *                           - completed
- *                           - voided
- *                           - terminated
  *                       moveInConfirmedAt:
  *                         type: string
  *                         format: date-time
  *                         nullable: true
- *                         description: Thời điểm landlord xác nhận người thuê vào ở (nếu có)
  *                       sentToTenantAt:
  *                         type: string
  *                         format: date-time
@@ -131,6 +144,13 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                           endDate:
  *                             type: string
  *                             format: date
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *
  *                 total:
  *                   type: integer
  *                 page:
@@ -139,9 +159,13 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *                   type: integer
  *                 totalPages:
  *                   type: integer
+ *
  *       400:
- *         description: Lỗi truy vấn
+ *         description: Lỗi truy vấn.
+ *       403:
+ *         description: Staff không có quyền xem building này.
  */
+
 
 /**
  * @swagger
@@ -949,88 +973,184 @@ const checkSubscription = require("../../middleware/checkSubscription");
  */
 router.post(
   "/from-contact",
-  checkAuthorize("landlord", "staff"),
-
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE),
+  checkSubscription,
   contractController.createFromContact
 );
 router.get(
   "/renewal-requests",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW),
   contractController.listRenewalRequests
 );
 router.put(
   "/:id",
-  checkAuthorize("landlord", "staff"),
-
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.updateData
 );
 router.post(
   "/:id/sign-landlord",
-  checkAuthorize("landlord", "staff"),
-
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.signByLandlord
 );
 router.post(
   "/:id/send-to-tenant",
-  checkAuthorize("landlord", "staff"),
-
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.sendToTenant
 );
 router.get(
   "/:id",
-  checkAuthorize("landlord", "staff"),
-
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
   contractController.getDetail
 );
 router.get(
   "/",
-  checkAuthorize("landlord", "staff"),
-
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW),
   contractController.listMine
 );
 router.post(
   "/:id/confirm-move-in",
-  checkAuthorize("landlord", "staff"),
-
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.confirmMoveIn
 );
 
 router.post(
   "/:id/approve-extension",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.approveExtension
 );
 
 router.post(
   "/:id/reject-extension",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.rejectExtension
 );
 
 router.delete(
   "/:id",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_DELETE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.deleteContract
 );
 
 router.post(
   "/:id/void",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.voidContract
 );
 router.post(
   "/:id/clone",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.cloneContract
 );
 router.post(
   "/:id/terminate",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
+    {
+      checkBuilding: true,
+      allowFromDb: true,
+      model: "Contract",
+      idField: "id"
+    }
+  ),
+  checkSubscription,
   contractController.terminateContract
 );
 router.get(
   "/:id/download",
-  checkAuthorize("landlord", "staff"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW),
   contractController.downloadContractPdf
 );
 module.exports = router;

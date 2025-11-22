@@ -67,7 +67,8 @@ function mapAccountToPerson(acc) {
 // body: { contactId }
 exports.createFromContact = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { contactId } = req.body || {};
 
     if (!contactId) {
@@ -79,14 +80,19 @@ exports.createFromContact = async (req, res) => {
       _id: contactId,
       landlordId,
       isDeleted: { $ne: true },
-    });
+    }).populate("buildingId");
 
     if (!contact) {
       return res
         .status(404)
         .json({ message: "Không tìm thấy yêu cầu liên hệ" });
     }
-
+    if (req.user.role === "staff" && !req.staff.assignedBuildingIds.includes(String(contact.buildingId._id))) {
+      return res.status(403).json({ message: "Tòa nhà không thuộc quyền quản lý của bạn!" });
+    }
+    if (req.user.role === "landlord" && String(contact.landlordId) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Tòa nhà không thuộc quyền quản lý của bạn!" });
+    }
     //Nếu contact đã có contractId -> load contract đó và trả luôn (và chưa bị xóa)
     if (contact.contractId) {
       const existed = await Contract.findOne({
@@ -180,19 +186,34 @@ exports.createFromContact = async (req, res) => {
         });
       });
     }
+    let representativeAcc = null;
 
-    //Lấy info landlord & tenant & room để prefill
-    const [landlordAcc, tenantAcc, room] = await Promise.all([
-      Account.findById(landlordId).populate("userInfo").lean(),
+    if (isStaff) {
+      // Staff tạo → dùng thông tin của staff làm đại diện bên A
+      representativeAcc = await Account.findById(req.user._id)
+        .populate("userInfo")
+        .lean();
+
+      if (!representativeAcc?.userInfo?.fullName) {
+        return res.status(400).json({
+          message: "Nhân viên chưa cập nhật họ tên, không thể đại diện ký hợp đồng",
+        });
+      }
+    } else {
+      // Landlord tạo → dùng thông tin chính chủ
+      representativeAcc = await Account.findById(landlordId)
+        .populate("userInfo")
+        .lean();
+
+      if (!representativeAcc) {
+        return res.status(400).json({ message: "Không tìm thấy tài khoản chủ trọ" });
+      }
+    }
+    // Lấy tenant và room
+    const [tenantAcc, room] = await Promise.all([
       Account.findById(contact.tenantId).populate("userInfo").lean(),
       Room.findById(contact.roomId).lean(),
     ]);
-
-    if (!landlordAcc) {
-      return res
-        .status(400)
-        .json({ message: "Không tìm thấy tài khoản chủ trọ" });
-    }
 
     if (!tenantAcc) {
       return res
@@ -200,7 +221,9 @@ exports.createFromContact = async (req, res) => {
         .json({ message: "Không tìm thấy tài khoản người thuê" });
     }
 
-    const A = mapAccountToPerson(landlordAcc); // đảm bảo có name
+    // Map thông tin hợp đồng
+    const A = mapAccountToPerson(representativeAcc);
+    A.name = representativeAcc.userInfo.fullName.trim();
     const B = mapAccountToPerson(tenantAcc);
 
     const contractInfo = {
@@ -221,6 +244,7 @@ exports.createFromContact = async (req, res) => {
       B,
       contract: contractInfo,
       status: "draft",
+      createBy: req.user._id,
     });
 
     //Gán contractId lại cho contact
@@ -239,7 +263,8 @@ exports.createFromContact = async (req, res) => {
 // DELETE /landlords/contracts/:id
 exports.deleteContract = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const contract = await Contract.findOne({
@@ -284,7 +309,8 @@ exports.deleteContract = async (req, res) => {
 // body: { A, contract, termIds?, regulationIds?, terms?, regulations? }
 exports.updateData = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { A, contract: contractInfo, terms, regulations } = req.body || {};
 
@@ -299,7 +325,15 @@ exports.updateData = async (req, res) => {
           "Chỉ được chỉnh sửa hợp đồng khi đang ở trạng thái 'draft' và chưa ký",
       });
     }
-
+    if (isStaff) {
+      if (!doc.createBy || doc.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được chỉnh sửa hợp đồng do chính bạn tạo",
+          createdBy: doc.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     if (A) {
       doc.A = {
         ...(doc.A?.toObject?.() || doc.A || {}),
@@ -332,7 +366,8 @@ exports.updateData = async (req, res) => {
 // POST /landlords/contracts/:id/send-to-tenant
 exports.sendToTenant = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const contract = await Contract.findOne({ _id: id, landlordId });
@@ -345,7 +380,15 @@ exports.sendToTenant = async (req, res) => {
         message: `Chỉ được gửi hợp đồng khi đang ở trạng thái 'draft' hoặc 'signed_by_landlord'. Hiện tại: ${contract.status}`,
       });
     }
-
+    if (isStaff) {
+      if (!contract.createBy || contract.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được gửi hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     contract.status = "sent_to_tenant";
     contract.sentToTenantAt = new Date();
     await contract.save();
@@ -363,7 +406,8 @@ exports.sendToTenant = async (req, res) => {
 // body: { signatureUrl }
 exports.signByLandlord = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { signatureUrl } = req.body || {};
 
@@ -383,6 +427,15 @@ exports.signByLandlord = async (req, res) => {
       return res.status(400).json({
         message: `Không thể ký ở trạng thái hiện tại: ${contract.status}`,
       });
+    }
+    if (isStaff) {
+      if (!contract.createBy || contract.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được ký hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
     }
     contract.landlordSignatureUrl = signatureUrl;
     if (contract.tenantSignatureUrl) {
@@ -414,7 +467,8 @@ exports.signByLandlord = async (req, res) => {
 // POST /landlords/contracts/:id/confirm-move-in
 exports.confirmMoveIn = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const contract = await Contract.findOne({ _id: id, landlordId });
@@ -427,7 +481,15 @@ exports.confirmMoveIn = async (req, res) => {
         message: "Chỉ xác nhận vào ở khi hợp đồng đã hoàn tất",
       });
     }
-
+    if (isStaff) {
+      if (!contract.createBy || contract.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được xác nhận vào ở cho hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     const room = await Room.findById(contract.roomId);
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
@@ -464,7 +526,8 @@ exports.confirmMoveIn = async (req, res) => {
 // GET /landlords/contracts/:id
 exports.getDetail = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const contract = await Contract.findOne({ _id: id, landlordId })
@@ -511,7 +574,8 @@ exports.getDetail = async (req, res) => {
 // POST /landlords/contracts/:id/void
 exports.voidContract = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { reason } = req.body || {};
 
@@ -535,7 +599,15 @@ exports.voidContract = async (req, res) => {
         message: `Hợp đồng đang ở trạng thái ${contract.status}, không thể vô hiệu hóa.`,
       });
     }
-
+    if (isStaff) {
+      if (!contract.createBy || contract.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được xác nhận vào ở cho hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     contract.status = "voided";
     contract.voidedAt = new Date();
     if (reason) contract.voidReason = reason;
@@ -564,7 +636,8 @@ exports.voidContract = async (req, res) => {
 // Tạo hợp đồng mới (draft) từ hợp đồng cũ
 exports.cloneContract = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const old = await Contract.findOne({ _id: id, landlordId }).lean();
@@ -581,7 +654,15 @@ exports.cloneContract = async (req, res) => {
         )}. Hiện tại: ${old.status}`,
       });
     }
-
+    if (isStaff) {
+      if (!old.createBy || old.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được sao chép hợp đồng do chính mình tạo",
+          createdBy: old.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     // Tạo contract mới: copy các thông tin cần thiết
     const newContract = await Contract.create({
       landlordId: old.landlordId,
@@ -623,7 +704,8 @@ exports.cloneContract = async (req, res) => {
 // body: { reason?, terminatedAt? }
 exports.terminateContract = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { reason, terminatedAt } = req.body || {};
 
@@ -652,7 +734,15 @@ exports.terminateContract = async (req, res) => {
         message: `Hợp đồng đang ở trạng thái ${contract.status}, không thể chấm dứt thêm`,
       });
     }
-
+    if (isStaff) {
+      if (!old.createBy || old.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được chấm dút hợp đồng do chính mình tạo",
+          createdBy: old.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     // Lấy phòng
     const room = await Room.findById(contract.roomId);
     if (!room) {
@@ -691,22 +781,34 @@ exports.terminateContract = async (req, res) => {
 // GET /landlords/contracts
 exports.listMine = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const {
       status,
       search,
       moveIn, // 'confirmed' | 'not_confirmed'
+      buildingId,
       page = 1,
       limit = 20,
     } = req.query;
 
     const filter = { landlordId };
 
+    if (isStaff && req.staff?.assignedBuildingIds?.length > 0) {
+      filter.buildingId = { $in: req.staff.assignedBuildingIds };
+    }
     // Filter theo trạng thái
     if (status) {
       filter.status = status;
     }
-
+    if (buildingId) {
+      if (isStaff && !req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép xem hợp đồng của tòa nhà này",
+        });
+      }
+      filter.buildingId = buildingId;
+    }
     // Filter theo đã xác nhận vào ở hay chưa
     if (moveIn === "confirmed") {
       filter.moveInConfirmedAt = { $ne: null }; // đã confirm
@@ -738,6 +840,7 @@ exports.listMine = async (req, res) => {
             "buildingId",
             "roomId",
             "tenantId",
+            "createBy",
             "contract.no",
             "contract.startDate",
             "contract.endDate",
@@ -774,7 +877,8 @@ exports.listMine = async (req, res) => {
 // POST /landlords/contracts/:id/approve-extension
 exports.approveExtension = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { note } = req.body || {};
 
@@ -812,7 +916,15 @@ exports.approveExtension = async (req, res) => {
           "Ngày kết thúc mới không hợp lệ (phải lớn hơn ngày kết thúc hiện tại)",
       });
     }
-
+    if (isStaff) {
+      if (!old.createBy || old.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được chấm dút hợp đồng do chính mình tạo",
+          createdBy: old.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     const now = new Date();
 
     // Lưu vào lịch sử gia hạn
@@ -848,7 +960,8 @@ exports.approveExtension = async (req, res) => {
 // POST /landlords/contracts/:id/reject-extension
 exports.rejectExtension = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { reason } = req.body || {};
 
@@ -863,7 +976,15 @@ exports.rejectExtension = async (req, res) => {
         message: "Không có yêu cầu gia hạn nào đang chờ xử lý",
       });
     }
-
+    if (isStaff) {
+      if (!old.createBy || old.createBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          message: "Bạn chỉ được chấm dút hợp đồng do chính mình tạo",
+          createdBy: old.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     const now = new Date();
 
     contract.renewalRequest.status = "rejected";
@@ -886,16 +1007,26 @@ exports.rejectExtension = async (req, res) => {
 // GET /landlords/contracts/renewal-requests?status=pending|approved|rejected&buildingId=...
 exports.listRenewalRequests = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { status = "pending", buildingId, page = 1, limit = 20 } = req.query;
 
     const filter = {
       landlordId,
       "renewalRequest.status": status,
     };
-
+    if (isStaff && req.staff?.assignedBuildingIds?.length > 0) {
+      filter.buildingId = { $in: req.staff.assignedBuildingIds };
+    }
     if (buildingId) {
-      filter.buildingId = buildingId;
+      const bid = buildingId.toString();
+      if (isStaff && !req.staff.assignedBuildingIds.includes(bid)) {
+        return res.status(403).json({
+          message: "Bạn không được phép xem yêu cầu gia hạn của tòa nhà này",
+          buildingId: bid,
+        });
+      }
+      filter.buildingId = bid;
     }
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -1006,7 +1137,8 @@ exports.downloadContractPdf = async (req, res) => {
   let pdf;
 
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     // Lấy hợp đồng thuộc landlord
@@ -1063,7 +1195,7 @@ exports.downloadContractPdf = async (req, res) => {
       } else {
         try {
           res.end();
-        } catch {}
+        } catch { }
       }
     });
 
@@ -1086,14 +1218,14 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.8);
     try {
       pdf.font(FONT_BOLD);
-    } catch {}
+    } catch { }
     pdf
       .fontSize(16)
       .text("HỢP ĐỒNG THUÊ PHÒNG", { align: "center", underline: true });
 
     try {
       pdf.font(FONT_REGULAR);
-    } catch {}
+    } catch { }
     pdf.moveDown(0.5);
     pdf
       .fontSize(10)
@@ -1109,8 +1241,7 @@ exports.downloadContractPdf = async (req, res) => {
         `Hôm nay, ngày ${formatDate(meta.signDate) || "....../....../......"},`
       );
     pdf.text(
-      `Tại: ${
-        meta.signPlace || (building && building.address) || "................"
+      `Tại: ${meta.signPlace || (building && building.address) || "................"
       }`
     );
 
@@ -1120,18 +1251,17 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.3);
     try {
       pdf.font(FONT_BOLD);
-    } catch {}
+    } catch { }
     pdf.text("BÊN CHO THUÊ (BÊN A):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch {}
+    } catch { }
 
     pdf
       .fontSize(11)
       .text(`Họ tên: ${A?.name || ""}`)
       .text(
-        `CCCD: ${A?.cccd || ""}   Cấp ngày: ${
-          formatDate(A?.cccdIssuedDate) || ""
+        `CCCD: ${A?.cccd || ""}   Cấp ngày: ${formatDate(A?.cccdIssuedDate) || ""
         }   Nơi cấp: ${A?.cccdIssuedPlace || ""}`
       )
       .text(`Hộ khẩu thường trú: ${A?.permanentAddress || ""}`)
@@ -1142,18 +1272,17 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.6);
     try {
       pdf.font(FONT_BOLD);
-    } catch {}
+    } catch { }
     pdf.text("BÊN THUÊ (BÊN B):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch {}
+    } catch { }
 
     pdf
       .fontSize(11)
       .text(`Họ tên: ${B?.name || ""}`)
       .text(
-        `CCCD: ${B?.cccd || ""}   Cấp ngày: ${
-          formatDate(B?.cccdIssuedDate) || ""
+        `CCCD: ${B?.cccd || ""}   Cấp ngày: ${formatDate(B?.cccdIssuedDate) || ""
         }   Nơi cấp: ${B?.cccdIssuedPlace || ""}`
       )
       .text(`Hộ khẩu thường trú: ${B?.permanentAddress || ""}`)
@@ -1165,18 +1294,17 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(0.6);
       try {
         pdf.font(FONT_BOLD);
-      } catch {}
+      } catch { }
       pdf.text("Người ở cùng (roommates):");
       try {
         pdf.font(FONT_REGULAR);
-      } catch {}
+      } catch { }
 
       roommates.forEach((r, idx) => {
         pdf
           .fontSize(11)
           .text(
-            `${idx + 1}. ${r.name || ""} – CCCD: ${
-              r.cccd || ""
+            `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""
             } – Điện thoại: ${r.phone || ""}`
           );
       });
@@ -1186,11 +1314,11 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.8);
     try {
       pdf.font(FONT_BOLD);
-    } catch {}
+    } catch { }
     pdf.text("THÔNG TIN PHÒNG VÀ GIÁ THUÊ:");
     try {
       pdf.font(FONT_REGULAR);
-    } catch {}
+    } catch { }
 
     const buildingName = building?.name || "";
     const roomNumber = room?.roomNumber || "";
@@ -1198,15 +1326,13 @@ exports.downloadContractPdf = async (req, res) => {
     pdf
       .fontSize(11)
       .text(
-        `Tòa nhà: ${buildingName} – Địa chỉ: ${
-          building?.address || "................................"
+        `Tòa nhà: ${buildingName} – Địa chỉ: ${building?.address || "................................"
         }`
       )
       .text(`Phòng: ${roomNumber}    Diện tích: ${area || ""} m²`)
       .text(`Giá thuê: ${meta.price?.toLocaleString("vi-VN") || ""} VND/tháng`)
       .text(
-        `Tiền cọc: ${
-          meta.deposit?.toLocaleString("vi-VN") || ""
+        `Tiền cọc: ${meta.deposit?.toLocaleString("vi-VN") || ""
         } VND (bằng chữ: ................................)`
       )
       .text(
@@ -1221,18 +1347,17 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(0.5);
       try {
         pdf.font(FONT_BOLD);
-      } catch {}
+      } catch { }
       pdf.text("Phương tiện gửi kèm:");
       try {
         pdf.font(FONT_REGULAR);
-      } catch {}
+      } catch { }
 
       bikes.forEach((b, idx) => {
         pdf
           .fontSize(11)
           .text(
-            `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${
-              b.color || ""
+            `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${b.color || ""
             } – Hãng: ${b.brand || ""}`
           );
       });
@@ -1243,11 +1368,11 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(1); // cho rõ ràng, để terms sang trang mới
       try {
         pdf.font(FONT_BOLD);
-      } catch {}
+      } catch { }
       pdf.fontSize(13).text("I. ĐIỀU KHOẢN HỢP ĐỒNG", { underline: true });
       try {
         pdf.font(FONT_REGULAR);
-      } catch {}
+      } catch { }
       pdf.moveDown(0.5);
 
       // sort theo order nếu có
@@ -1258,11 +1383,11 @@ exports.downloadContractPdf = async (req, res) => {
       sortedTerms.forEach((t, idx) => {
         try {
           pdf.font(FONT_BOLD);
-        } catch {}
+        } catch { }
         pdf.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
         try {
           pdf.font(FONT_REGULAR);
-        } catch {}
+        } catch { }
 
         const desc = t.description || "";
         if (!desc) {
@@ -1278,11 +1403,11 @@ exports.downloadContractPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 pdf.font(FONT_BOLD);
-              } catch {}
+              } catch { }
               pdf.fontSize(11).text(prefix, { continued: true });
               try {
                 pdf.font(FONT_REGULAR);
-              } catch {}
+              } catch { }
               pdf.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -1310,11 +1435,11 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(1);
       try {
         pdf.font(FONT_BOLD);
-      } catch {}
+      } catch { }
       pdf.fontSize(13).text("II. NỘI QUY / QUY ĐỊNH", { underline: true });
       try {
         pdf.font(FONT_REGULAR);
-      } catch {}
+      } catch { }
       pdf.moveDown(0.5);
 
       const sortedRegs = [...regulations].sort(
@@ -1324,11 +1449,11 @@ exports.downloadContractPdf = async (req, res) => {
       sortedRegs.forEach((r, idx) => {
         try {
           pdf.font(FONT_BOLD);
-        } catch {}
+        } catch { }
         pdf.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
         try {
           pdf.font(FONT_REGULAR);
-        } catch {}
+        } catch { }
 
         const desc = r.description || "";
         if (!desc) {
@@ -1344,11 +1469,11 @@ exports.downloadContractPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 pdf.font(FONT_BOLD);
-              } catch {}
+              } catch { }
               pdf.fontSize(11).text(prefix, { continued: true });
               try {
                 pdf.font(FONT_REGULAR);
-              } catch {}
+              } catch { }
               pdf.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -1391,7 +1516,7 @@ exports.downloadContractPdf = async (req, res) => {
     // ===== Tiêu đề =====
     try {
       pdf.font(FONT_BOLD);
-    } catch {}
+    } catch { }
     pdf
       .fontSize(12)
       .text("ĐẠI DIỆN BÊN A", leftX, pdf.y, {
@@ -1408,7 +1533,7 @@ exports.downloadContractPdf = async (req, res) => {
     // ===== Hướng dẫn ký =====
     try {
       pdf.font(FONT_REGULAR);
-    } catch {}
+    } catch { }
     pdf
       .fontSize(11)
       .text("(Ký, ghi rõ họ tên)", leftX, pdf.y, {
@@ -1445,7 +1570,7 @@ exports.downloadContractPdf = async (req, res) => {
 
     try {
       pdf.font(FONT_BOLD);
-    } catch {}
+    } catch { }
     pdf
       .fontSize(12)
       .text(AName, leftX, pdf.y, {
@@ -1466,6 +1591,6 @@ exports.downloadContractPdf = async (req, res) => {
     }
     try {
       res.end();
-    } catch {}
+    } catch { }
   }
 };

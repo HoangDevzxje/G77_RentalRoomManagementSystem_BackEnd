@@ -225,6 +225,10 @@ const contractSchema = new mongoose.Schema(
     terminationNote: { type: String },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
+    createBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+    }
   },
   { timestamps: true }
 );
