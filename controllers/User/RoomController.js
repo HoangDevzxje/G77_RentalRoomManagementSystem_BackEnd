@@ -2,6 +2,8 @@ const Room = require("../../models/Room");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Furniture = require("../../models/Furniture");
 const Account = require("../../models/Account");
+const Building = require("../../models/Building");
+const BuildingService = require("../../models/BuildingService");
 
 exports.getMyRoomDetail = async (req, res) => {
   try {
@@ -11,15 +13,22 @@ exports.getMyRoomDetail = async (req, res) => {
         .json({ message: "Chỉ resident mới được dùng API này" });
     }
 
-    const tenantId = req.user._id;
+    const tenantId = req.user._id ?? req.user.id;
+    if (!tenantId) {
+      return res.status(400).json({ message: "Thiếu thông tin user" });
+    }
 
     const room = await Room.findOne({
-      currentTenantIds: tenantId,
+      currentTenantIds: { $in: [tenantId] },
       status: "rented",
       isDeleted: false,
       active: true,
     })
-      .populate({ path: "buildingId", select: "name address contact" })
+      .populate({
+        path: "buildingId",
+        select:
+          "name address contact eIndexType ePrice wIndexType wPrice description",
+      })
       .populate({ path: "floorId", select: "name floorNumber" })
       .populate({
         path: "currentTenantIds",
@@ -41,6 +50,29 @@ exports.getMyRoomDetail = async (req, res) => {
         message: "Bạn chưa được gán vào phòng nào hoặc phòng chưa active",
       });
     }
+
+    if (room.buildingId && typeof room.buildingId === "string") {
+      try {
+        const building = await Building.findById(room.buildingId)
+          .select(
+            "name address contact eIndexType ePrice wIndexType wPrice description"
+          )
+          .lean();
+        if (building) {
+          room.buildingId = building;
+        }
+      } catch (err) {
+        console.warn("Cannot populate buildingId:", err?.message);
+      }
+    }
+
+    // Lấy danh sách dịch vụ của tòa nhà
+    const buildingServices = await BuildingService.find({
+      buildingId: room.buildingId._id || room.buildingId,
+      isDeleted: false,
+    })
+      .select("name label description chargeType fee currency")
+      .lean();
 
     const roomFurnitures = await RoomFurniture.find({ roomId: room._id })
       .populate({ path: "furnitureId", select: "name" })
@@ -76,16 +108,45 @@ exports.getMyRoomDetail = async (req, res) => {
           }))
         : [];
 
+    // Lấy thông tin điện nước từ building
+    const building = room.buildingId;
+    const electricityInfo = {
+      indexType: building?.eIndexType || "byNumber",
+      price: building?.ePrice || 0,
+      startIndex: room.eStart || 0,
+    };
+
+    const waterInfo = {
+      indexType: building?.wIndexType || "byNumber",
+      price: building?.wPrice || 0,
+      startIndex: room.wStart || 0,
+    };
+
+    const formattedServices = buildingServices.map((service) => ({
+      id: service._id,
+      name: service.name,
+      label: service.label || getServiceLabel(service.name),
+      description: service.description,
+      chargeType: service.chargeType,
+      fee: service.fee,
+      currency: service.currency,
+      displayText: getServiceDisplayText(service),
+    }));
+
     const respRoom = {
       id: room._id,
       _id: room._id,
       roomNumber: room.roomNumber || null,
       images: Array.isArray(room.images) ? room.images : [],
-      building: room.buildingId
+      building: building
         ? {
-            name: room.buildingId.name,
-            address: room.buildingId.address,
-            contact: room.buildingId.contact || null,
+            _id: building._id ?? building,
+            name: building.name,
+            address: building.address,
+            contact: building.contact || null,
+            description: building.description || null,
+            electricity: electricityInfo,
+            water: waterInfo,
           }
         : null,
       floor: room.floorId
@@ -112,6 +173,9 @@ exports.getMyRoomDetail = async (req, res) => {
         : 0,
       maxTenants: room.maxTenants ?? null,
       status: room.status ?? null,
+      electricity: electricityInfo,
+      water: waterInfo,
+      services: formattedServices,
     };
 
     return res.json({
@@ -123,3 +187,34 @@ exports.getMyRoomDetail = async (req, res) => {
     return res.status(500).json({ message: "Lỗi lấy thông tin phòng" });
   }
 };
+
+function getServiceLabel(serviceName) {
+  const labels = {
+    internet: "Internet",
+    parking: "Chỗ để xe",
+    cleaning: "Dọn dẹp",
+    security: "An ninh",
+    other: "Dịch vụ khác",
+  };
+  return labels[serviceName] || serviceName;
+}
+
+function getServiceDisplayText(service) {
+  const { chargeType, fee, currency, label } = service;
+
+  if (chargeType === "included") {
+    return "Đã bao gồm";
+  }
+
+  const feeText = fee
+    ? `${Number(fee).toLocaleString("vi-VN")} ${currency}`
+    : "Miễn phí";
+
+  const chargeTexts = {
+    perRoom: "/phòng",
+    perPerson: "/người",
+    included: "",
+  };
+
+  return `${feeText}${chargeTexts[chargeType] || ""}`;
+}

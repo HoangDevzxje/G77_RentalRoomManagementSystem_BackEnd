@@ -521,20 +521,18 @@ exports.voidContract = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    if (
-      !["draft", "signed_by_landlord", "sent_to_tenant"].includes(
-        contract.status
-      )
-    ) {
+    // Không cho void nếu đã move-in
+    if (contract.moveInConfirmedAt) {
       return res.status(400).json({
         message:
-          "Chỉ có thể hủy hợp đồng do nhập sai khi đang ở trạng thái draft / signed_by_landlord / sent_to_tenant và chưa có chữ ký người thuê",
+          "Không thể vô hiệu hóa hợp đồng vì người thuê đã xác nhận vào ở. Vui lòng dùng chức năng chấm dứt hợp đồng (terminate).",
       });
     }
 
-    if (contract.tenantSignatureUrl) {
+    // Không cho void nếu đã terminated / voided
+    if (["terminated", "voided"].includes(contract.status)) {
       return res.status(400).json({
-        message: "Không thể hủy hợp đồng vì người thuê đã ký",
+        message: `Hợp đồng đang ở trạng thái ${contract.status}, không thể vô hiệu hóa.`,
       });
     }
 
@@ -542,7 +540,7 @@ exports.voidContract = async (req, res) => {
     contract.voidedAt = new Date();
     if (reason) contract.voidReason = reason;
 
-    // Nếu lỡ room đang trỏ về hợp đồng này thì clear (phòng trả về available)
+    // Nếu room đang trỏ về hợp đồng này thì clear
     const room = await Room.findById(contract.roomId);
     if (room && String(room.currentContractId) === String(contract._id)) {
       room.currentContractId = null;
@@ -554,7 +552,7 @@ exports.voidContract = async (req, res) => {
     await contract.save();
 
     res.json({
-      message: "Đã hủy hợp đồng (void) thành công",
+      message: "Đã vô hiệu hóa hợp đồng thành công",
       status: contract.status,
     });
   } catch (e) {

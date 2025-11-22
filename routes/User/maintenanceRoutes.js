@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const ctrl = require("../../controllers/User/MaintenanceController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
+const { uploadMultiple } = require("../../configs/cloudinary");
 
 /**
  * @swagger
@@ -14,14 +15,14 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  * @swagger
  * /maintenance:
  *   post:
- *     summary: Tạo yêu cầu bảo trì mới
+ *     summary: Tạo yêu cầu bảo trì mới (hỗ trợ upload ảnh từ thiết bị)
  *     tags: [Resident - Maintenance]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
@@ -31,41 +32,38 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *             properties:
  *               roomId:
  *                 type: string
- *                 description: ID phòng xảy ra sự cố
  *               furnitureId:
  *                 type: string
- *                 description: ID đồ nội thất hỏng
+ *                 description: Có thể là ID hoặc tên đồ nội thất
  *               title:
  *                 type: string
- *                 example: "Vòi nước bị rò rỉ"
  *               description:
  *                 type: string
- *                 example: "Rò rỉ tại bồn rửa, nước chảy liên tục"
- *               photos:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     url:
- *                       type: string
- *                     note:
- *                       type: string
  *               priority:
  *                 type: string
  *                 enum: [low, medium, high, urgent]
- *                 example: medium
  *               affectedQuantity:
  *                 type: number
- *                 example: 1
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                   description: Ảnh upload từ thiết bị (tối đa 5 ảnh)
  *     responses:
- *       200:
+ *       201:
  *         description: Tạo yêu cầu thành công
  *       400:
  *         description: Thiếu hoặc sai dữ liệu
  *       500:
  *         description: Lỗi server
  */
-router.post("/", checkAuthorize(["resident"]), ctrl.createRequest);
+router.post(
+  "/",
+  checkAuthorize(["resident"]),
+  uploadMultiple,
+  ctrl.createRequest
+);
 
 /**
  * @swagger
