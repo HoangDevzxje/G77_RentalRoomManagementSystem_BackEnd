@@ -1,5 +1,6 @@
 require("dotenv").config();
 require("./jobs/contractReminderJob");
+require("./jobs/autoGenerateInvoices")();
 const express = require("express");
 const cors = require("cors");
 const http = require("http");

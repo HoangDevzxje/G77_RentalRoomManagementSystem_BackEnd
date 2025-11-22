@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>{{TITLE}}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial,
+          sans-serif;
+        background-color: #f4f5f7;
+        margin: 0;
+        padding: 0;
+      }
+      .wrapper {
+        width: 100%;
+        padding: 24px 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+      }
+      .header {
+        background: #2563eb;
+        color: #ffffff;
+        padding: 16px 24px;
+      }
+      .header h1 {
+        font-size: 20px;
+        margin: 0;
+      }
+      .content {
+        padding: 24px;
+        font-size: 14px;
+        color: #111827;
+        line-height: 1.6;
+      }
+      .content p {
+        margin: 0 0 8px;
+      }
+      .content .highlight {
+        font-weight: 600;
+      }
+      .info-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+        font-size: 13px;
+      }
+      .info-table th,
+      .info-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+      }
+      .info-table th {
+        background: #f9fafb;
+        font-weight: 600;
+      }
+      .total-row td {
+        font-weight: 700;
+      }
+      .total-amount {
+        font-size: 18px;
+        font-weight: 700;
+        color: #dc2626;
+      }
+      .button-wrap {
+        margin: 20px 0 8px;
+        text-align: center;
+      }
+      .btn-primary {
+        display: inline-block;
+        padding: 10px 20px;
+        background: #2563eb;
+        color: #ffffff !important;
+        text-decoration: none;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .footer {
+        padding: 12px 24px 16px;
+        font-size: 12px;
+        color: #6b7280;
+        background: #f9fafb;
+      }
+      .footer p {
+        margin: 0 0 4px;
+      }
+      @media (max-width: 640px) {
+        .container {
+          border-radius: 0;
+        }
+        .content,
+        .header,
+        .footer {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="container">
+        <div class="header">
+          <h1>{{TITLE}}</h1>
+        </div>
+        <div class="content">
+          <p>Chào <span class="highlight">{{TENANT_NAME}}</span>,</p>
+          <p>
+            Hệ thống gửi đến bạn
+            <span class="highlight">hóa đơn tiền phòng / điện nước</span> cho
+            kỳ <span class="highlight">{{PERIOD}}</span>.
+          </p>
+
+          <table class="info-table">
+            <tr>
+              <th>Số hóa đơn</th>
+              <td>{{INVOICE_NUMBER}}</td>
+            </tr>
+            <tr>
+              <th>Phòng</th>
+              <td>{{ROOM_NUMBER}}</td>
+            </tr>
+            <tr>
+              <th>Kỳ</th>
+              <td>{{PERIOD}}</td>
+            </tr>
+            <tr class="total-row">
+              <th>Tổng thanh toán</th>
+              <td class="total-amount">{{TOTAL_AMOUNT}} {{CURRENCY}}</td>
+            </tr>
+            <tr>
+              <th>Hạn thanh toán</th>
+              <td>{{DUE_DATE}}</td>
+            </tr>
+          </table>
+
+          <p>
+            Ghi chú từ chủ trọ:
+            <span class="highlight">{{NOTE}}</span>
+          </p>
+
+          <div class="button-wrap">
+            <a href="{{APP_URL}}" class="btn-primary" target="_blank"
+              >Xem chi tiết & thanh toán</a
+            >
+          </div>
+
+          <p>Nếu bạn đã thanh toán, vui lòng bỏ qua email này.</p>
+        </div>
+        <div class="footer">
+          <p>Trân trọng,</p>
+          <p>Hệ thống quản lý phòng trọ</p>
+          <p style="margin-top: 6px">
+            Email này được gửi tự động, vui lòng không trả lời lại.
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

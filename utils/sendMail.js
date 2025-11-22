@@ -3,58 +3,102 @@ const path = require("path");
 const fs = require("fs");
 require("dotenv").config();
 
-const templatePath = path.join(__dirname, "otpTemplate.html"); // chú ý __dirname thay vì process.cwd()
-let emailTemplate = "";
+const otpTemplatePath = path.join(__dirname, "templates", "otpTemplate.html");
+const invoiceTemplatePath = path.join(
+  __dirname,
+  "templates",
+  "invoiceTemplate.html"
+);
+
+let otpTemplate = "";
+let invoiceTemplate = "";
 
 try {
-    emailTemplate = fs.readFileSync(templatePath, "utf8");
+  otpTemplate = fs.readFileSync(otpTemplatePath, "utf8");
 } catch (err) {
-    console.error("Không tìm thấy file template email:", err);
-    process.exit(1);
+  console.error("Không tìm thấy file otpTemplate.html:", err);
 }
 
-const sendEmail = async (toEmail, otp, type = "register") => {
-    try {
-        const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS, // nên dùng App Password nếu bật 2FA
-            },
-        });
+try {
+  invoiceTemplate = fs.readFileSync(invoiceTemplatePath, "utf8");
+} catch (err) {
+  console.error("Không tìm thấy file invoiceTemplate.html:", err);
+}
 
-        let title = "";
-        let subject = "";
+/**
+ * @param {string} toEmail
+ * @param {*} payload
+ *   - Với type = 'register' | 'reset-password' => payload là OTP (string)
+ *   - Với type = 'invoice' => payload là object { tenantName, invoiceNumber, ... }
+ * @param {'register'|'reset-password'|'invoice'|'generic_otp'} type
+ */
+const sendEmail = async (toEmail, payload, type = "register") => {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS, // App Password nếu bật 2FA
+      },
+    });
 
-        if (type === "register") {
-            title = "Xác nhận đăng ký tài khoản";
-            subject = "🔐 Mã OTP xác nhận đăng ký";
-        } else if (type === "reset-password") {
-            title = "Xác nhận đặt lại mật khẩu";
-            subject = "🔐 Mã OTP đặt lại mật khẩu";
-        } else {
-            title = "Mã xác thực OTP";
-            subject = "🔐 Mã OTP của bạn";
-        }
+    let title = "";
+    let subject = "";
+    let html = "";
 
-        let html = emailTemplate
-            .replace(/{{TITLE}}/g, title)
-            .replace(/{{OTP}}/g, otp);
+    if (type === "register") {
+      title = "Xác nhận đăng ký tài khoản";
+      subject = "🔐 Mã OTP xác nhận đăng ký";
 
-        const mailOptions = {
-            from: `"Rental Room Management System" <${process.env.EMAIL_USER}>`,
-            to: toEmail,
-            subject: subject,
-            html: html,
-        };
+      const otp = String(payload || "");
+      html = otpTemplate.replace(/{{TITLE}}/g, title).replace(/{{OTP}}/g, otp);
+    } else if (type === "reset-password") {
+      title = "Xác nhận đặt lại mật khẩu";
+      subject = "🔐 Mã OTP đặt lại mật khẩu";
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log("Email OTP đã được gửi thành công:", info.messageId);
-        return { success: true, messageId: info.messageId };
-    } catch (error) {
-        console.error("Lỗi khi gửi email OTP:", error.message);
-        return { success: false, error: error.message };
+      const otp = String(payload || "");
+      html = otpTemplate.replace(/{{TITLE}}/g, title).replace(/{{OTP}}/g, otp);
+    } else if (type === "invoice") {
+      title = "Thông báo hóa đơn tiền phòng";
+      subject = "🧾 Hóa đơn tiền phòng / điện nước";
+
+      const data = payload || {};
+      html = invoiceTemplate
+        .replace(/{{TITLE}}/g, title)
+        .replace(/{{TENANT_NAME}}/g, data.tenantName || "Anh/Chị")
+        .replace(/{{INVOICE_NUMBER}}/g, data.invoiceNumber || "")
+        .replace(/{{PERIOD}}/g, data.period || "")
+        .replace(/{{ROOM_NUMBER}}/g, data.roomNumber || "")
+        .replace(/{{TOTAL_AMOUNT}}/g, data.totalAmount || "0")
+        .replace(/{{CURRENCY}}/g, data.currency || "VND")
+        .replace(/{{DUE_DATE}}/g, data.dueDate || "")
+        .replace(/{{NOTE}}/g, data.note || "Không có ghi chú.")
+        .replace(
+          /{{APP_URL}}/g,
+          data.appUrl || process.env.APP_URL || "https://example.com"
+        );
+    } else {
+      // fallback generic OTP
+      title = "Mã xác thực OTP";
+      subject = "🔐 Mã OTP của bạn";
+      const otp = String(payload || "");
+      html = otpTemplate.replace(/{{TITLE}}/g, title).replace(/{{OTP}}/g, otp);
     }
+
+    const mailOptions = {
+      from: `"Rental Room Management System" <${process.env.EMAIL_USER}>`,
+      to: toEmail,
+      subject,
+      html,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Email đã được gửi thành công:", info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("Lỗi khi gửi email:", error.message);
+    return { success: false, error: error.message };
+  }
 };
 
 module.exports = sendEmail;

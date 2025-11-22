@@ -32,6 +32,7 @@ const roomRoute = require("././User/roomRoute");
 const roommateRoute = require("././User/roommateRoute");
 const buildingRatingRoute = require("././User/buildingRatingRoute");
 
+
 const routes = (app) => {
   app.use("/auth", authRoutes);
   app.use("/subscriptions", subscriptionRoutes);
