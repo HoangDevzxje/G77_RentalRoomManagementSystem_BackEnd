@@ -2,6 +2,7 @@ const MaintenanceRequest = require("../../models/MaintenanceRequest");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Room = require("../../models/Room");
 const Building = require("../../models/Building");
+const mongoose = require("mongoose");
 
 const isAdmin = (u) => u?.role === "admin";
 const isLandlord = (u) => u?.role === "landlord";
@@ -22,82 +23,184 @@ exports.createRequest = async (req, res) => {
       furnitureId,
       title,
       description,
-      photos,
-      priority,
+      priority = "medium",
       affectedQuantity = 1,
     } = req.body;
 
-    const rf = await RoomFurniture.findOne({ roomId, furnitureId });
-    if (!rf)
-      return res
-        .status(400)
-        .json({ message: "Furniture không thuộc phòng này" });
-
-    // chặn trùng non-final (khuyến nghị)
-    const existsNonFinal = await MaintenanceRequest.exists({
-      roomId,
-      furnitureId,
-      status: { $nin: ["resolved", "rejected"] },
-    });
-    if (existsNonFinal) {
-      return res
-        .status(400)
-        .json({ message: "Đã có yêu cầu đang xử lý cho món này trong phòng." });
+    if (!roomId || !furnitureId || !title) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu roomId, furnitureId hoặc tiêu đề",
+      });
     }
 
-    const room = await Room.findById(roomId)
-      .select("buildingId building")
-      .lean();
-    if (!room) return res.status(404).json({ message: "Không tìm thấy phòng" });
-    const buildingId = room.buildingId || room.building;
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID phòng không hợp lệ",
+      });
+    }
 
+    // Tìm RoomFurniture dựa trên roomId và furnitureId (có thể là ID hoặc name)
+    let rf;
+    if (mongoose.Types.ObjectId.isValid(furnitureId)) {
+      rf = await RoomFurniture.findOne({ roomId, furnitureId });
+    } else {
+      const furniture = await mongoose
+        .model("Furniture")
+        .findOne({ name: furnitureId })
+        .select("_id");
+
+      if (furniture) {
+        rf = await RoomFurniture.findOne({
+          roomId,
+          furnitureId: furniture._id,
+        });
+      }
+    }
+
+    if (!rf) {
+      return res.status(400).json({
+        success: false,
+        message: "Đồ nội thất không thuộc phòng này hoặc không tồn tại",
+      });
+    }
+
+    const actualFurnitureId = rf.furnitureId;
+    const existsNonFinal = await MaintenanceRequest.exists({
+      roomId,
+      furnitureId: actualFurnitureId,
+      status: { $nin: ["resolved", "rejected"] },
+    });
+
+    if (existsNonFinal) {
+      return res.status(400).json({
+        success: false,
+        message: "Đã có yêu cầu đang xử lý cho món đồ này trong phòng",
+      });
+    }
+
+    // Lấy thông tin phòng và tòa nhà
+    const room = await Room.findById(roomId)
+      .select("buildingId building roomNumber")
+      .lean();
+
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy phòng",
+      });
+    }
+
+    const buildingId = room.buildingId || room.building;
     const qty = Number(affectedQuantity) || 1;
-    if (qty < 1)
-      return res.status(400).json({ message: "affectedQuantity phải >= 1" });
-    if (qty > rf.quantity)
-      return res
-        .status(400)
-        .json({ message: "affectedQuantity vượt số lượng trong phòng" });
+    if (isNaN(qty) || qty < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Số lượng bị ảnh hưởng phải là số >= 1",
+      });
+    }
+
+    if (qty > rf.quantity) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Số lượng bị ảnh hưởng vượt quá số lượng đồ nội thất trong phòng",
+      });
+    }
 
     let assigneeAccountId = null;
     const landlordIdFromBuilding = await getLandlordIdByBuildingId(buildingId);
+
     if (landlordIdFromBuilding) {
       assigneeAccountId = landlordIdFromBuilding;
     } else if (isLandlord(req.user)) {
       assigneeAccountId = req.user._id;
     }
 
+    const uploadedImages = req.files || [];
+    const photos = uploadedImages.map((file) => ({
+      url: file.path || file.location,
+      uploadedAt: new Date(),
+    }));
+
+    // Tạo maintenance request
     const doc = await MaintenanceRequest.create({
       buildingId,
       roomId,
-      furnitureId,
+      furnitureId: actualFurnitureId,
       reporterAccountId: req.user._id,
-      assigneeAccountId, // <= auto gán ở đây
-      title,
-      description,
-      photos,
-      priority,
+      assigneeAccountId,
+      title: title.trim(),
+      description: description?.trim() || "",
+      photos: photos,
+      priority: ["low", "medium", "high", "urgent"].includes(priority)
+        ? priority
+        : "medium",
       affectedQuantity: qty,
       timeline: [
         {
           by: req.user._id,
           action: "created",
-          note: assigneeAccountId ? "Tạo + auto-assign chủ trọ" : "Tạo yêu cầu",
+          note: assigneeAccountId
+            ? "Yêu cầu đã được giao cho người quản lý tòa nhà"
+            : "Chưa có người quản lý tòa nhà, yêu cầu chưa được giao",
+          createdAt: new Date(),
         },
       ],
     });
 
-    // cập nhật damageCount (cap ≤ quantity)
+    // Cập nhật damageCount (đảm bảo không vượt quá quantity)
     rf.damageCount = Math.min((rf.damageCount || 0) + qty, rf.quantity);
-    rf.syncConditionFromDamage();
+    if (rf.syncConditionFromDamage) {
+      rf.syncConditionFromDamage();
+    }
     await rf.save();
 
-    return res
-      .status(201)
-      .json({ message: "Đã tạo yêu cầu bảo trì", data: doc });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Lỗi tạo yêu cầu" });
+    // Populate thông tin để trả về
+    const populatedDoc = await MaintenanceRequest.findById(doc._id)
+      .populate("roomId", "roomNumber")
+      .populate("furnitureId", "name")
+      .populate({
+        path: "assigneeAccountId",
+        select: "email role userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber",
+        },
+      })
+      .lean();
+
+    return res.status(201).json({
+      success: true,
+      message: "Đã tạo yêu cầu bảo trì thành công",
+      data: populatedDoc,
+    });
+  } catch (error) {
+    console.error("Create maintenance request error:", error);
+
+    // Xử lý lỗi duplicate key (nếu có)
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Yêu cầu bảo trì đã tồn tại",
+      });
+    }
+
+    // Xử lý lỗi validation của Mongoose
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: "Dữ liệu không hợp lệ",
+        errors: errors,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Đã có lỗi xảy ra khi tạo yêu cầu bảo trì, vui lòng thử lại sau",
+    });
   }
 };
 
