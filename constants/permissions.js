@@ -1,8 +1,3 @@
-/**
- * Tất cả mã quyền trong hệ thống
- * Đồng bộ 1:1 với seed/permissions.js
- * Dùng trong: middleware, route, UI, seed, test...
- */
 const PERMISSIONS = {
 
     // === PHÒNG ===
@@ -10,10 +5,6 @@ const PERMISSIONS = {
     ROOM_CREATE: "room:create",
     ROOM_EDIT: "room:edit",
     ROOM_DELETE: "room:delete",
-
-    // === TÒA NHÀ ===
-    BUILDING_VIEW: "building:view",
-    BUILDING_EDIT: "building:edit",
 
     // dịch vụ tòa nhà
     SERVICE_VIEW: "service:view",
