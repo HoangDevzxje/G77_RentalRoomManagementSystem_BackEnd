@@ -3,10 +3,10 @@ const path = require("path");
 const fs = require("fs");
 require("dotenv").config();
 
-const otpTemplatePath = path.join(__dirname, "templates", "otpTemplate.html");
+const otpTemplatePath = path.join(__dirname, "otpTemplate.html");
 const invoiceTemplatePath = path.join(
   __dirname,
-  "templates",
+
   "invoiceTemplate.html"
 );
 

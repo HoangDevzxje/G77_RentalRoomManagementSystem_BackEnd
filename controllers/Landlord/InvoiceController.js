@@ -816,7 +816,7 @@ exports.generateInvoice = async (req, res) => {
       .json({ message: "Lỗi tạo hoá đơn", error: e.message });
   }
 };
-router.post("/generate-monthly-bulk", async (req, res) => {
+exports.generateMonthlyBulk = async (req, res) => {
   try {
     const { periodMonth, periodYear } = req.body;
     const landlordId = req.user._id;
@@ -874,4 +874,4 @@ router.post("/generate-monthly-bulk", async (req, res) => {
       error: err.message,
     });
   }
-});
+};

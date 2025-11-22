@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const tenantInvoiceController = require("../../controllers/Tenant/InvoiceController");
+const tenantInvoiceController = require("../../controllers/User/TenantInvoiceController");
 
 /**
  * @swagger
@@ -11,7 +11,7 @@ const tenantInvoiceController = require("../../controllers/Tenant/InvoiceControl
 
 /**
  * @swagger
- * /tenants/invoices:
+ * /invoices:
  *   get:
  *     summary: Tenant xem danh sách hóa đơn của mình
  *     tags: [Tenant Invoices]
@@ -104,7 +104,7 @@ router.get(
 
 /**
  * @swagger
- * /tenants/invoices/{id}:
+ * /invoices/{id}:
  *   get:
  *     summary: Tenant xem chi tiết một hóa đơn
  *     tags: [Tenant Invoices]
@@ -181,7 +181,7 @@ router.get(
 
 /**
  * @swagger
- * /tenants/invoices/{id}/pay:
+ * /invoices/{id}/pay:
  *   post:
  *     summary: Tenant báo đã thanh toán / trigger thanh toán online
  *     description: |
@@ -209,7 +209,7 @@ router.get(
  *                 enum: [bank_transfer, online_gateway]
  *               note:
  *                 type: string
- *                 description: Ghi chú (VD: "Em đã chuyển khoản, đính kèm mã giao dịch...")
+ *                 description: 'Ghi chú (VD: "Em đã chuyển khoản, đính kèm mã giao dịch...")'
  *     responses:
  *       200:
  *         description: Đã ghi nhận yêu cầu thanh toán / trả về link thanh toán

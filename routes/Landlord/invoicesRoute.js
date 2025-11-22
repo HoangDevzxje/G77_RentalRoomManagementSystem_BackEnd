@@ -425,4 +425,10 @@ router.post(
   invoiceController.sendInvoiceEmail
 );
 
+router.post(
+  "/generate-monthly-bulk",
+  checkAuthorize("landlord"),
+  invoiceController.generateMonthlyBulk
+);
+
 module.exports = router;
