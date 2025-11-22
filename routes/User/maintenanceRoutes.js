@@ -12,7 +12,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 
 /**
  * @swagger
- * /residents/maintenance:
+ * /maintenance:
  *   post:
  *     summary: Tạo yêu cầu bảo trì mới
  *     tags: [Resident - Maintenance]
@@ -69,7 +69,7 @@ router.post("/", checkAuthorize(["resident"]), ctrl.createRequest);
 
 /**
  * @swagger
- * /residents/maintenance/my-room:
+ * /maintenance/my-room:
  *   get:
  *     summary: Resident xem danh sách yêu cầu bảo trì của phòng hiện tại
  *     description: |
@@ -254,7 +254,7 @@ router.get("/my-room", checkAuthorize(["resident"]), ctrl.listMyRoomRequests);
 
 /**
  * @swagger
- * /residents/maintenance/{id}:
+ * /maintenance/{id}:
  *   get:
  *     summary: Xem chi tiết yêu cầu bảo trì của cư dân
  *     tags: [Resident - Maintenance]
@@ -279,7 +279,7 @@ router.get("/:id", checkAuthorize(["resident"]), ctrl.getRequest);
 
 /**
  * @swagger
- * /residents/maintenance/{id}/comment:
+ * /maintenance/{id}/comment:
  *   post:
  *     summary: Thêm bình luận/ghi chú vào yêu cầu bảo trì
  *     tags: [Resident - Maintenance]

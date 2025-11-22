@@ -47,6 +47,7 @@ exports.getMyRoomDetail = async (req, res) => {
       .lean();
 
     const furnitures = roomFurnitures.map((rf) => ({
+      _id: rf.furnitureId?._id,
       name: rf.furnitureId?.name || rf.name || "Unknown",
       quantity: rf.quantity ?? 0,
       condition: rf.condition ?? null,
