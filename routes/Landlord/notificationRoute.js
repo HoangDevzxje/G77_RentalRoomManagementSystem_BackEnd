@@ -5,13 +5,12 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 const checkSubscription = require("../../middleware/checkSubscription");
 const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
-
-
+const { uploadMultiple } = require("../../configs/cloudinary");
 /**
  * @swagger
  * tags:
  *   - name: Landlord Notifications
- *     description: API quản lý thông báo cho Landlord & Staff
+ *     description: Quản lý thông báo (Landlord, Staff, Resident) - Hỗ trợ gửi kèm ảnh & file
  */
 
 /**
@@ -21,134 +20,86 @@ const { PERMISSIONS } = require("../../constants/permissions");
  *     Notification:
  *       type: object
  *       properties:
- *         id:
- *           type: string
- *         landlordId:
- *           type: string
- *         createBy:
- *           type: string
- *         createByRole:
- *           type: string
- *           enum: [landlord, staff]
- *         title:
- *           type: string
- *         content:
- *           type: string
- *         type:
- *           type: string
- *           enum: [general, bill, maintenance, reminder, event]
- *         scope:
- *           type: string
- *           enum: [all, staff_buildings, building, floor, room, tenant]
- *         buildingId:
- *           type: string
- *         floorId:
- *           type: string
- *         roomId:
- *           type: string
- *         tenantId:
- *           type: string
- *         buildingIds:
+ *         id: { type: string }
+ *         landlordId: { type: string }
+ *         createBy: { type: object, properties: { id: {type: string}, name: {type: string} } }
+ *         createByRole: { type: string, enum: [landlord, staff] }
+ *         title: { type: string }
+ *         content: { type: string }
+ *         type: { type: string, enum: [general, bill, maintenance, reminder, event] }
+ *         target:
+ *           type: object
+ *           properties:
+ *             buildings: { type: array, items: { type: string } }
+ *             floors: { type: array, items: { type: string } }
+ *             rooms: { type: array, items: { type: string } }
+ *             residents: { type: array, items: { type: string } }
+ *         images: { type: array, items: { type: string } }
+ *         files:
  *           type: array
  *           items:
- *             type: string
- *         isDeleted:
- *           type: boolean
- *         createdAt:
- *           type: string
- *         updatedAt:
- *           type: string
+ *             type: object
+ *             properties:
+ *               url: { type: string }
+ *               name: { type: string }
+ *               size: { type: number }
+ *               type: { type: string }
+ *         readBy: { type: array }
+ *         createdAt: { type: string, format: date-time }
+ *         updatedAt: { type: string, format: date-time }
  */
 
 /**
  * @swagger
  * /landlords/notifications:
  *   post:
- *     summary: Tạo thông báo mới
+ *     summary: Tạo thông báo mới (hỗ trợ ảnh + file đính kèm)
  *     tags: [Landlord Notifications]
- *     security:
+ *     security: 
  *       - bearerAuth: []
- *     description: Landlord hoặc Staff có quyền được phép tạo thông báo
+ *     consumes:
+ *       - multipart/form-data
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [title, content, scope]
+ *             required: 
+ *               - title
+ *               - content
+ *               - target
  *             properties:
  *               title:
  *                 type: string
+ *                 example: "Cúp điện khẩn cấp"
  *               content:
  *                 type: string
+ *                 example: "Từ 14h-17h ngày 25/11 sẽ cúp điện toàn bộ tòa nhà A"
+ *               link:
+ *                 type: string
+ *                 example: rentalroom.com
  *               type:
  *                 type: string
  *                 enum: [general, bill, maintenance, reminder, event]
- *                 example: general
- *               scope:
+ *                 default: general
+ *                 example: maintenance
+ *               target:
  *                 type: string
- *                 enum: [all, staff_buildings, building, floor, room, tenant]
- *               buildingId:
- *                 type: string
- *               floorId:
- *                 type: string
- *               roomId:
- *                 type: string
- *               tenantId:
- *                 type: string
+ *                 description: |
+ *                   JSON string của object target. 
+ *                   Ví dụ:
+ *                   '{"buildings":["64a1b2c3d4e5f67890123456"],"floors":[],"rooms":[],"residents":[]}'
+ *                 example: '{"buildings":["64a1b2c3d4e5f67890123456"],"floors":[],"rooms":[],"residents":[]}'
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Ảnh đính kèm (jpg, png...) tối đa 20 files
  *     responses:
  *       201:
- *         description: Tạo thông báo thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *                 message: { type: string }
- *                 data:
- *                   $ref: "#/components/schemas/Notification"
- *       403:
- *         description: Không có quyền tạo thông báo
- *       500:
- *         description: Lỗi server
- */
-/**
- * @swagger
- * /landlords/notifications/{id}:
- *   patch:
- *     summary: Cập nhật thông báo
- *     description: 
- *       - Landlord có thể sửa bất kỳ thông báo nào của hệ thống mình.
- *       - Staff CHỈ được chỉnh sửa thông báo mình đã tạo, và chỉ trong 10 phút đầu.
- *     tags: [Landlord Notifications]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: ID của thông báo cần chỉnh sửa
- *         schema:
- *           type: string
- *
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               title:
- *                 type: string
- *                 example: "Cập nhật lịch cúp điện"
- *               content:
- *                 type: string
- *                 example: "Điện lực sẽ sửa chữa trong khoảng 14h - 17h."
- *
- *     responses:
- *       200:
- *         description: Cập nhật thông báo thành công
+ *         description: Gửi thông báo thành công
  *         content:
  *           application/json:
  *             schema:
@@ -159,13 +110,22 @@ const { PERMISSIONS } = require("../../constants/permissions");
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Cập nhật thông báo thành công"
+ *                   example: "Gửi thông báo thành công"
  *                 data:
  *                   type: object
- *                   $ref: "#/components/schemas/Notification"
- *
+ *                   description: Thông tin thông báo vừa tạo
+ *       400:
+ *         description: Thiếu dữ liệu hoặc target không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Thiếu tiêu đề hoặc nội dung"
  *       403:
- *         description: Không có quyền chỉnh sửa thông báo
+ *         description: Không có quyền hoặc không quản lý tòa nhà
  *         content:
  *           application/json:
  *             schema:
@@ -173,80 +133,55 @@ const { PERMISSIONS } = require("../../constants/permissions");
  *               properties:
  *                 message:
  *                   type: string
- *                   example: "Chỉ được chỉnh sửa thông báo trong 10 phút đầu"
- *
- *       404:
- *         description: Không tìm thấy thông báo
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Thông báo không tồn tại"
- *
- *       500:
- *         description: Lỗi server
+ *                   example: "Không có quyền tạo thông báo"
  */
 
 /**
  * @swagger
  * /landlords/notifications/me:
  *   get:
- *     summary: Lấy danh sách thông báo của tôi
+ *     summary: Lấy danh sách thông báo tôi NHẬN được
  *     tags: [Landlord Notifications]
- *     security:
- *       - bearerAuth: []
- *     description: Trả về danh sách thông báo theo role (tenant, landlord, staff)
+ *     security: [ { bearerAuth: [] } ]
  *     parameters:
  *       - name: page
  *         in: query
- *         schema:
- *           type: integer
- *           default: 1
+ *         schema: { type: integer, default: 1 }
  *       - name: limit
  *         in: query
- *         schema:
- *           type: integer
- *           default: 20
+ *         schema: { type: integer, default: 20 }
  *     responses:
  *       200:
- *         description: Danh sách thông báo
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     page: { type: number }
- *                     limit: { type: number }
- *                     total: { type: number }
- *                     pages: { type: number }
- *                 data:
- *                   type: array
- *                   items:
- *                     allOf:
- *                       - $ref: "#/components/schemas/Notification"
- *                       - type: object
- *                         properties:
- *                           isRead:
- *                             type: boolean
- *       500:
- *         description: Lỗi server
+ *         description: Danh sách thông báo nhận được
+ */
+
+/**
+ * @swagger
+ * /landlords/notifications/my-sent:
+ *   get:
+ *     summary: Lấy danh sách thông báo tôi ĐÃ GỬI
+ *     tags: [Landlord Notifications]
+ *     security: [ { bearerAuth: [] } ]
+ *     description: Chỉ Landlord & Staff. Staff chỉ thấy thông báo liên quan đến tòa nhà hiện quản lý
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         schema: { type: integer, default: 1 }
+ *       - name: limit
+ *         in: query
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Danh sách thông báo đã gửi + thống kê đã đọc
  */
 
 /**
  * @swagger
  * /landlords/notifications/read:
  *   post:
- *     summary: Đánh dấu thông báo đã đọc (chỉ tenant)
+ *     summary: Đánh dấu đã đọc 
  *     tags: [Landlord Notifications]
- *     security:
- *       - bearerAuth: []
+ *     security: [ { bearerAuth: [] } ]
  *     requestBody:
  *       required: true
  *       content:
@@ -257,20 +192,77 @@ const { PERMISSIONS } = require("../../constants/permissions");
  *               notificationIds:
  *                 type: array
  *                 items: { type: string }
+ *                 example: ["64a1b2c3d4e5f67890123456", "64a1b2c3d4e5f67890123457"]
  *     responses:
- *       200:
- *         description: Đánh dấu đã đọc thành công
- *       400:
- *         description: notificationIds phải là mảng
- *       403:
- *         description: Chỉ tenant được phép đánh dấu đọc
- *       500:
- *         description: Lỗi server
+ *       200: { description: "Đánh dấu thành công" }
  */
 
 /**
  * @swagger
  * /landlords/notifications/{id}:
+ *   patch:
+ *     summary: Cập nhật thông báo (có thể thêm ảnh/file mới)
+ *     tags: [Landlord Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     consumes:
+ *       - multipart/form-data
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Tiêu đề mới
+ *               content:
+ *                 type: string
+ *                 description: Nội dung mới
+ *               link:
+ *                 type: string
+ *                 description: Nội dung mới
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Thêm ảnh mới (upload lên Cloudinary)
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Cập nhật thành công"
+ *                 data:
+ *                   type: object
+ *                   description: Thông tin thông báo đã cập nhật
+ *       403:
+ *         description: Quá 10 phút hoặc không có quyền
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Chỉ được sửa trong 10 phút đầu"
+ *
  *   delete:
  *     summary: Xóa thông báo
  *     tags: [Landlord Notifications]
@@ -280,16 +272,22 @@ const { PERMISSIONS } = require("../../constants/permissions");
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
- *         description: Xóa thông báo thành công
- *       403:
- *         description: Không có quyền xóa
- *       404:
- *         description: Không tìm thấy thông báo
- *       500:
- *         description: Lỗi server
+ *         description: Xóa thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Xóa thành công"
  *
  *   get:
  *     summary: Lấy chi tiết 1 thông báo
@@ -300,7 +298,8 @@ const { PERMISSIONS } = require("../../constants/permissions");
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
  *         description: Chi tiết thông báo
@@ -309,46 +308,65 @@ const { PERMISSIONS } = require("../../constants/permissions");
  *             schema:
  *               type: object
  *               properties:
- *                 success: { type: boolean }
+ *                 success:
+ *                   type: boolean
+ *                   example: true
  *                 data:
- *                   $ref: "#/components/schemas/Notification"
- *       403:
- *         description: Không có quyền xem
- *       404:
- *         description: Không tìm thấy thông báo
- *       500:
- *         description: Lỗi server
+ *                   type: object
+ *                   description: Thông tin chi tiết thông báo
  */
-
 
 router.post(
     "/",
     checkAuthorize(["landlord", "staff"]),
     checkStaffPermission(PERMISSIONS.NOTIFICATION_CREATE),
     checkSubscription,
+    uploadMultiple,
     notificationController.createNotification
 );
-router.get("/me",
-    checkAuthorize(["landlord", "staff", "resident"]),
+
+router.get(
+    "/me",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.NOTIFICATION_VIEW),
+    notificationController.getMyNotifications
+);
+
+router.get(
+    "/my-sent",
+    checkAuthorize(["landlord", "staff"]),
     checkStaffPermission(PERMISSIONS.NOTIFICATION_VIEW),
     checkSubscription,
-    notificationController.getMyNotifications);
-router.post("/read", notificationController.markAsRead);
-router.patch("/:id",
+    notificationController.getMySentNotifications
+);
+
+router.post(
+    "/read",
+    checkAuthorize(["landlord", "staff"]),
+    notificationController.markAsRead
+);
+
+router.patch(
+    "/:id",
     checkAuthorize(["landlord", "staff"]),
     checkStaffPermission(PERMISSIONS.NOTIFICATION_EDIT),
     checkSubscription,
+    uploadMultiple,
     notificationController.updateNotification
-)
-router.delete("/:id",
+);
+
+router.delete(
+    "/:id",
     checkAuthorize(["landlord", "staff"]),
     checkStaffPermission(PERMISSIONS.NOTIFICATION_DELETE),
     checkSubscription,
-    notificationController.deleteNotification);
-router.get("/:id",
+    notificationController.deleteNotification
+);
+
+router.get(
+    "/:id",
     checkAuthorize(["landlord", "staff"]),
-    checkStaffPermission(PERMISSIONS.NOTIFICATION_VIEW),
-    checkSubscription,
-    notificationController.getNotificationById);
+    notificationController.getNotificationById
+);
 
 module.exports = router;

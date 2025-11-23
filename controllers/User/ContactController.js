@@ -2,6 +2,7 @@ const Contact = require("../../models/Contact");
 const Building = require("../../models/Building");
 const Room = require("../../models/Room");
 const Post = require("../../models/Post");
+const Notification = require("../../models/Notification");
 
 const createContact = async (req, res) => {
   try {
@@ -52,6 +53,18 @@ const createContact = async (req, res) => {
       contactName,
       contactPhone,
       tenantNote,
+    });
+
+    await Notification.create({
+      landlordId,
+      createBy: tenantId,
+      createByRole: "resident",
+      title: "Yêu cầu hợp đồng mới",
+      content: `Resident ${contactName} đã gửi yêu cầu thuê phòng.`,
+      target: {
+        buildings: [buildingId],
+      },
+      link: `/landlords/contacts`,
     });
 
     res.status(201).json({
