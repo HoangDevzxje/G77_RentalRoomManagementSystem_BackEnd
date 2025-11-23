@@ -1,9 +1,16 @@
 const UtilityReading = require("../../models/UtilityReading");
 const Room = require("../../models/Room");
 const Building = require("../../models/Building");
+const Contract = require("../../models/Contract");
 
 const toInt = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
+// Nếu chưa có, bạn có thể dùng lại từ InvoiceController hoặc define riêng:
+function getPeriodRange(periodMonth, periodYear) {
+  const start = new Date(periodYear, periodMonth - 1, 1, 0, 0, 0, 0);
+  const end = new Date(periodYear, periodMonth, 0, 23, 59, 59, 999);
+  return { start, end };
+}
 /**
  * GET /landlords/utility-readings
  * query:
@@ -358,5 +365,368 @@ exports.deleteReading = async (req, res) => {
   } catch (e) {
     console.error("deleteReading error:", e);
     res.status(400).json({ message: e.message });
+  }
+};
+exports.bulkCreateReadings = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    const { readings } = req.body || {};
+
+    if (!Array.isArray(readings) || readings.length === 0) {
+      return res.status(400).json({
+        message: "Danh sách readings phải là array và không được rỗng",
+        data: [],
+        total: 0,
+      });
+    }
+
+    const results = [];
+
+    for (let i = 0; i < readings.length; i++) {
+      const payload = readings[i] || {};
+      const {
+        roomId,
+        type,
+        periodMonth,
+        periodYear,
+        currentIndex,
+        unitPrice,
+        readingDate,
+      } = payload;
+
+      const itemResult = {
+        index: i,
+        roomId,
+        type,
+        periodMonth,
+        periodYear,
+        success: false,
+      };
+
+      try {
+        // 1) Validate cơ bản
+        if (
+          !roomId ||
+          !type ||
+          periodMonth == null ||
+          periodYear == null ||
+          currentIndex == null
+        ) {
+          itemResult.error = "Thiếu dữ liệu bắt buộc";
+          results.push(itemResult);
+          continue;
+        }
+
+        if (!["electricity", "water"].includes(type)) {
+          itemResult.error = "Loại tiện ích không hợp lệ (electricity | water)";
+          results.push(itemResult);
+          continue;
+        }
+
+        const month = Number(periodMonth);
+        const year = Number(periodYear);
+        const currIdx = Number(currentIndex);
+
+        if (!Number.isInteger(month) || month < 1 || month > 12) {
+          itemResult.error = "Tháng không hợp lệ (1-12)";
+          results.push(itemResult);
+          continue;
+        }
+        if (!Number.isInteger(year) || year < 2000) {
+          itemResult.error = "Năm không hợp lệ";
+          results.push(itemResult);
+          continue;
+        }
+        if (!Number.isFinite(currIdx) || currIdx < 0) {
+          itemResult.error = "currentIndex phải là số >= 0";
+          results.push(itemResult);
+          continue;
+        }
+
+        // 2) Kiểm tra phòng + tòa thuộc landlord
+        const room = await Room.findById(roomId)
+          .select("buildingId isDeleted")
+          .lean();
+
+        if (!room || room.isDeleted) {
+          itemResult.error = "Không tìm thấy phòng hoặc phòng đã bị xoá";
+          results.push(itemResult);
+          continue;
+        }
+
+        const building = await Building.findById(room.buildingId)
+          .select("landlordId isDeleted status")
+          .lean();
+
+        if (
+          !building ||
+          building.isDeleted ||
+          String(building.landlordId) !== String(landlordId)
+        ) {
+          itemResult.error =
+            "Phòng không thuộc quyền quản lý của landlord hiện tại";
+          results.push(itemResult);
+          continue;
+        }
+
+        if (building.status !== "active") {
+          itemResult.error = "Tòa nhà không ở trạng thái active";
+          results.push(itemResult);
+          continue;
+        }
+
+        // 3) Check trùng kỳ (thêm landlordId cho chặt chẽ)
+        const existed = await UtilityReading.findOne({
+          landlordId,
+          roomId,
+          type,
+          periodMonth: month,
+          periodYear: year,
+          isDeleted: false,
+        }).lean();
+
+        if (existed) {
+          itemResult.error =
+            "Đã tồn tại chỉ số cho phòng này, loại này, kỳ này";
+          results.push(itemResult);
+          continue;
+        }
+
+        // 4) Lấy previousIndex (dùng helper sẵn có của bạn)
+        const previousIndex = await getPreviousIndex({ roomId, type });
+
+        // 5) Tạo UtilityReading
+        const doc = await UtilityReading.create({
+          landlordId,
+          buildingId: room.buildingId,
+          roomId,
+          type,
+          periodMonth: month,
+          periodYear: year,
+          readingDate: readingDate ? new Date(readingDate) : new Date(),
+          previousIndex,
+          currentIndex: currIdx,
+          unitPrice: unitPrice != null ? Number(unitPrice) : 0,
+          createdById: landlordId,
+        });
+
+        itemResult.success = true;
+        itemResult.data = doc;
+        results.push(itemResult);
+      } catch (err) {
+        console.error("bulkCreateReadings item error:", err);
+        itemResult.error = err.message || "Lỗi không xác định";
+        results.push(itemResult);
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.length - successCount;
+
+    return res.status(successCount > 0 ? 200 : 400).json({
+      message: `Đã xử lý ${results.length} chỉ số: thành công ${successCount}, lỗi ${failCount}`,
+      data: results,
+      total: results.length,
+      successCount,
+      failCount,
+    });
+  } catch (e) {
+    console.error("bulkCreateReadings error:", e);
+    res.status(500).json({
+      message: e.message || "Server error",
+      data: [],
+      total: 0,
+    });
+  }
+};
+/**
+ * GET /landlords/utility-readings/rooms
+ * Lấy danh sách phòng:
+ *  - thuộc landlord hiện tại
+ *  - phòng đang rented
+ *  - có hợp đồng completed hiệu lực trong kỳ periodMonth/periodYear
+ *  - kèm trạng thái đã nhập điện/nước trong kỳ
+ */
+exports.listRoomsForUtility = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+
+    let {
+      buildingId,
+      periodMonth,
+      periodYear,
+      q,
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    const now = new Date();
+    const month = toInt(periodMonth, now.getMonth() + 1);
+    const year = toInt(periodYear, now.getFullYear());
+    const pageNum = Math.max(toInt(page, 1), 1);
+    const limitNum = Math.max(toInt(limit, 20), 1);
+
+    // 1) Tìm tất cả hợp đồng completed, hiệu lực trong kỳ
+    const { start, end } = getPeriodRange(month, year);
+
+    const activeContracts = await Contract.find({
+      landlordId,
+      status: "completed",
+      "contract.startDate": { $lte: end },
+      $or: [
+        { "contract.endDate": { $gte: start } },
+        { "contract.endDate": null },
+      ],
+      isDeleted: false,
+    })
+      .select("roomId")
+      .lean();
+
+    const roomIds = [
+      ...new Set(
+        activeContracts
+          .map((c) => c.roomId && c.roomId.toString())
+          .filter(Boolean)
+      ),
+    ];
+
+    if (!roomIds.length) {
+      return res.json({
+        message: "Không có phòng nào có hợp đồng hiệu lực trong kỳ này",
+        data: [],
+        total: 0,
+        page: pageNum,
+        limit: limitNum,
+        periodMonth: month,
+        periodYear: year,
+      });
+    }
+
+    // 2) Lọc Room trong roomIds: đang rented, không xoá, (option: theo buildingId, q)
+    const roomFilter = {
+      _id: { $in: roomIds },
+      status: "rented",
+      isDeleted: false,
+    };
+
+    if (buildingId) {
+      roomFilter.buildingId = buildingId;
+    }
+    if (q) {
+      roomFilter.roomNumber = { $regex: q, $options: "i" };
+    }
+
+    const [rooms, total] = await Promise.all([
+      Room.find(roomFilter)
+        .populate("buildingId", "name address status isDeleted")
+        .populate("floorId", "floorNumber level status isDeleted")
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      Room.countDocuments(roomFilter),
+    ]);
+
+    if (!rooms.length) {
+      return res.json({
+        message: "Không có phòng thoả điều kiện",
+        data: [],
+        total: 0,
+        page: pageNum,
+        limit: limitNum,
+        periodMonth: month,
+        periodYear: year,
+      });
+    }
+
+    // 3) Lấy trạng thái UtilityReading cho từng phòng trong kỳ (1 query duy nhất)
+    const pageRoomIds = rooms.map((r) => r._id.toString());
+
+    const readings = await UtilityReading.find({
+      landlordId,
+      roomId: { $in: pageRoomIds },
+      periodMonth: month,
+      periodYear: year,
+      isDeleted: false,
+    })
+      .select("roomId type status")
+      .lean();
+
+    // Xây map: roomId -> { electricity: {hasReading, status}, water: {...} }
+    const readingMap = {};
+    for (const r of readings) {
+      const rid = r.roomId.toString();
+      if (!readingMap[rid]) {
+        readingMap[rid] = {
+          electricity: { hasReading: false, status: null },
+          water: { hasReading: false, status: null },
+        };
+      }
+      const key = r.type === "water" ? "water" : "electricity";
+      const current = readingMap[rid][key];
+
+      // Ưu tiên thứ tự status: billed > confirmed > draft
+      const rank = { billed: 3, confirmed: 2, draft: 1 };
+      const newRank = rank[r.status] || 0;
+      const oldRank = rank[current.status] || 0;
+
+      if (newRank >= oldRank) {
+        readingMap[rid][key] = {
+          hasReading: true,
+          status: r.status,
+        };
+      }
+    }
+
+    // 4) Gắn meterStatus + template cho FE vào từng room
+    const data = rooms.map((room) => {
+      const rid = room._id.toString();
+      const meterStatus = readingMap[rid] || {
+        electricity: { hasReading: false, status: null },
+        water: { hasReading: false, status: null },
+      };
+
+      // Template cho FE nhập nhanh
+      const readingTemplate = {
+        roomId: room._id,
+        periodMonth: month,
+        periodYear: year,
+        electricity: {
+          type: "electricity",
+          currentIndex: null,
+          unitPrice: null,
+          readingDate: null,
+        },
+        water: {
+          type: "water",
+          currentIndex: null,
+          unitPrice: null,
+          readingDate: null,
+        },
+      };
+
+      return {
+        ...room,
+        meterStatus,
+        readingTemplate,
+      };
+    });
+
+    return res.json({
+      message: "Danh sách phòng có hợp đồng hiệu lực trong kỳ",
+      data,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      periodMonth: month,
+      periodYear: year,
+    });
+  } catch (e) {
+    console.error("listRoomsForUtility error:", e);
+    return res.status(500).json({
+      message: e.message || "Server error",
+      data: [],
+      total: 0,
+    });
   }
 };

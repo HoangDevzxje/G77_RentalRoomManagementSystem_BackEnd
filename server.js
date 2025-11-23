@@ -1,6 +1,14 @@
 require("dotenv").config();
 require("./jobs/contractReminderJob");
 require("./jobs/autoGenerateInvoices")();
+
+const https = require("https");
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
+const axios = require("axios");
+const ipv4Agent = new https.Agent({ family: 4 });
+axios.defaults.httpsAgent = ipv4Agent;
+
 const express = require("express");
 const cors = require("cors");
 const http = require("http");

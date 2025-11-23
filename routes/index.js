@@ -33,6 +33,7 @@ const roommateRoute = require("././User/roommateRoute");
 const buildingRatingRoute = require("././User/buildingRatingRoute");
 const invoiceLandlordRoute = require("./Landlord/invoicesRoute");
 const tenantInvoiceRoute = require("././User/tenantInvoicesRoute");
+const utilityReadingsRoute = require("././Landlord/utilityReadingsRoute");
 
 const routes = (app) => {
   app.use("/auth", authRoutes);
@@ -60,6 +61,7 @@ const routes = (app) => {
   app.use("/landlords/ratings", ratingRoute);
   app.use("/landlords/residents", residentRoute);
   app.use("/landlords/invoices", invoiceLandlordRoute);
+  app.use("/landlords/utility-readings", utilityReadingsRoute);
   app.use("/posts", postUser);
   app.use("/ratings", buildingRatingRoute);
   app.use("/roommates", roommateRoute);
