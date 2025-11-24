@@ -51,46 +51,61 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  */
 /**
  * @swagger
+ * /notifications/unread-count:
+ *   get:
+ *     summary: Đếm số thông báo chưa đọc
+ *     description: |
+ *       Trả về số lượng thông báo chưa đọc cho user hiện tại.
+ *       
+ *       **Quy tắc theo role:**
+ *       - **Resident:** chỉ xem thông báo thuộc các tòa/floor/phòng/resident liên quan đến mình.
+ *       - **Landlord:** xem tất cả thông báo do resident gửi thuộc tất cả tòa mà landlord quản lý.
+ *       - **Staff:** xem thông báo từ resident trong phạm vi tòa mà staff được phân công.
+ *       
+ *       Mọi role chỉ đếm các thông báo **chưa có trong readBy.accountId** của user hiện tại.
+ *     tags: [Resident Notification]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Số lượng thông báo chưa đọc.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 unreadCount:
+ *                   type: number
+ *                   example: 5
+ *       403:
+ *         description: Không có quyền truy cập.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Bạn không có quyền truy cập"
+ *       500:
+ *         description: Lỗi server.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Lỗi server"
+ */
+
+
+/**
+ * @swagger
  * /notifications/{id}:
- *   patch:
- *     summary: Cập nhật thông báo (có thể thêm ảnh/file mới)
- *     tags: [Resident Notification]
- *     security: [ { bearerAuth: [] } ]
- *     consumes:
- *       - multipart/form-data
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               title: { type: string }
- *               content: { type: string }
- *               files:
- *                 type: array
- *                 items:
- *                   type: file
- *                 description: Thêm ảnh/file mới vào thông báo
- *     responses:
- *       200: { description: "Cập nhật thành công" }
- *       403: { description: "Quá 10 phút hoặc không có quyền" }
- *
- *   delete:
- *     summary: Xóa thông báo
- *     tags: [Resident Notification]
- *     security: [ { bearerAuth: [] } ]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *     responses:
- *       200: { description: "Xóa thành công" }
- *
  *   get:
  *     summary: Lấy chi tiết 1 thông báo
  *     tags: [Resident Notification]
@@ -113,7 +128,11 @@ router.post(
     checkAuthorize(["resident"]),
     notificationController.markAsRead
 );
-
+router.get(
+    "/unread-count",
+    checkAuthorize(["resident"]),
+    notificationController.getUnreadCount
+);
 router.get(
     "/:id",
     checkAuthorize(["resident"]),
