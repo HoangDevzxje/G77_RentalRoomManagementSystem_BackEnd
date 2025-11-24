@@ -15,6 +15,30 @@ const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
 
+const ROOM_CONFLICT_STATUSES = [
+  "sent_to_tenant",
+  "signed_by_tenant",
+  "signed_by_landlord",
+  "completed",
+];
+const ROOM_SIGN_CONFLICT_STATUSES = [
+  "signed_by_tenant",
+  "signed_by_landlord",
+  "completed",
+];
+async function findRoomContractConflict({ roomId, landlordId, excludeId }) {
+  if (!roomId) return null;
+
+  return await Contract.findOne({
+    roomId,
+    landlordId,
+    isDeleted: { $ne: true },
+    _id: excludeId ? { $ne: excludeId } : { $exists: true },
+    status: { $in: ROOM_CONFLICT_STATUSES },
+  })
+    .select("_id status contract.no tenantId")
+    .lean();
+}
 const FONT_REGULAR =
   process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
 const FONT_BOLD =
@@ -391,11 +415,13 @@ exports.sendToTenant = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
+    // Chỉ được gửi khi draft hoặc landlord đã ký
     if (!["draft", "signed_by_landlord"].includes(contract.status)) {
       return res.status(400).json({
         message: `Chỉ được gửi hợp đồng khi đang ở trạng thái 'draft' hoặc 'signed_by_landlord'. Hiện tại: ${contract.status}`,
       });
     }
+
     if (isStaff) {
       if (
         !contract.createBy ||
@@ -408,6 +434,24 @@ exports.sendToTenant = async (req, res) => {
         });
       }
     }
+
+    // Check trùng hợp đồng theo phòng trước khi gửi
+    const conflict = await findRoomContractConflict({
+      roomId: contract.roomId,
+      landlordId,
+      excludeId: contract._id,
+    });
+
+    if (conflict) {
+      return res.status(400).json({
+        message:
+          "Phòng này hiện đã có một hợp đồng khác đang hiệu lực/xử lý. Vui lòng hoàn tất hoặc chấm dứt hợp đồng đó trước khi gửi hợp đồng mới.",
+        conflictContractId: conflict._id,
+        conflictStatus: conflict.status,
+        conflictContractNo: conflict?.contract?.no || null,
+      });
+    }
+
     contract.status = "sent_to_tenant";
     contract.sentToTenantAt = new Date();
     await contract.save();
@@ -459,6 +503,27 @@ exports.signByLandlord = async (req, res) => {
         });
       }
     }
+    if (contract.roomId) {
+      const conflict = await Contract.findOne({
+        _id: { $ne: contract._id }, // bỏ qua chính nó
+        landlordId,
+        roomId: contract.roomId,
+        isDeleted: { $ne: true },
+        status: { $in: ROOM_SIGN_CONFLICT_STATUSES },
+      })
+        .select("_id status contract.no")
+        .lean();
+
+      if (conflict) {
+        return res.status(400).json({
+          message:
+            "Phòng này đã có một hợp đồng khác đang ở trạng thái đã ký/hoàn tất. Vui lòng chấm dứt hoặc vô hiệu hoá hợp đồng đó trước khi ký hợp đồng mới.",
+          conflictContractId: conflict._id,
+          conflictStatus: conflict.status,
+          conflictContractNo: conflict?.contract?.no || null,
+        });
+      }
+    }
     contract.landlordSignatureUrl = signatureUrl;
     if (contract.tenantSignatureUrl) {
       // Tenant đã ký trước đó → đây là chữ ký thứ 2 → completed
@@ -503,6 +568,7 @@ exports.confirmMoveIn = async (req, res) => {
         message: "Chỉ xác nhận vào ở khi hợp đồng đã hoàn tất",
       });
     }
+
     if (isStaff) {
       if (
         !contract.createBy ||
@@ -515,12 +581,25 @@ exports.confirmMoveIn = async (req, res) => {
         });
       }
     }
+
     const room = await Room.findById(contract.roomId);
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
 
-    // Số người ở: 1 (Bên B) + số roommates
+    // Nếu phòng đang gắn với hợp đồng khác → chặn
+    if (
+      room.currentContractId &&
+      String(room.currentContractId) !== String(contract._id)
+    ) {
+      return res.status(400).json({
+        message:
+          "Phòng này đang được gán cho một hợp đồng khác. Vui lòng kiểm tra lại trước khi xác nhận vào ở.",
+        currentContractId: room.currentContractId,
+      });
+    }
+
+    // Số người ở: 1 (Bên B) + roommates
     const roommateCount = (contract.roommates || []).length;
     const totalTenant = 1 + roommateCount;
 
@@ -530,7 +609,6 @@ exports.confirmMoveIn = async (req, res) => {
       });
     }
 
-    // Chỉ gán tenant chính (người có Account) vào Room
     room.status = "rented";
     room.currentTenantIds = [contract.tenantId];
     room.currentContractId = contract._id;
