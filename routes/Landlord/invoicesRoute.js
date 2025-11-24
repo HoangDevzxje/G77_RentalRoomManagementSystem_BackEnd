@@ -216,9 +216,14 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
 
 /**
  * @swagger
- * /landlords/invoices/generate-monthly:
+ * /landlords/invoices/generate:
  *   post:
- *     summary: Tạo hóa đơn tháng cho một phòng (tiền phòng + điện/nước)
+ *     summary: Tạo hoá đơn tiền phòng + điện/nước cho một phòng (auto từ hợp đồng & chỉ số)
+ *     description: >
+ *       Tạo hoá đơn dựa trên:
+ *       - Hợp đồng completed hiện tại của phòng
+ *       - Tiền phòng (tuỳ chọn includeRent)
+ *       - Chỉ số điện/nước (UtilityReading) đã được xác nhận trong kỳ periodMonth/periodYear
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -228,7 +233,10 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
  *         application/json:
  *           schema:
  *             type: object
- *             required: [roomId, periodMonth, periodYear]
+ *             required:
+ *               - roomId
+ *               - periodMonth
+ *               - periodYear
  *             properties:
  *               roomId:
  *                 type: string
@@ -242,11 +250,19 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
  *                 type: boolean
  *                 default: true
  *                 description: Có tính tiền phòng vào hóa đơn hay không
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: >
+ *                   Ngày đến hạn thanh toán. Nếu không truyền, hệ thống sẽ tự tính:
+ *                   ngày 10 của tháng kế tiếp.
  *     responses:
  *       201:
- *         description: Tạo hóa đơn thành công
+ *         description: Tạo hoá đơn thành công
  *       400:
- *         description: Lỗi dữ liệu đầu vào hoặc đã tồn tại hóa đơn
+ *         description: Thiếu dữ liệu hoặc đã tồn tại hoá đơn cho phòng/kỳ này
+ *       404:
+ *         description: Không tìm thấy phòng hoặc hợp đồng hợp lệ
  */
 
 /**
@@ -344,9 +360,14 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
  *                 type: string
  *                 format: date-time
  *                 description: Thời điểm thanh toán (nếu không truyền sẽ lấy thời điểm hiện tại)
+ *               paidAmount:
+ *                 type: number
+ *                 description: >
+ *                   Số tiền thực tế đã thu. Nếu không truyền, hệ thống mặc định = totalAmount của hoá đơn.
  *               note:
  *                 type: string
  *                 example: "Thanh toán tiền mặt tại quầy"
+
  *     responses:
  *       200:
  *         description: Đã ghi nhận thanh toán hóa đơn
