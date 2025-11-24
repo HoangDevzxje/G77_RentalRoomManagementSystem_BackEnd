@@ -457,33 +457,57 @@ const getMySentNotifications = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
+    const filterBuildingId = req.query.buildingId || null;
+
     if (!["landlord", "staff"].includes(user.role)) {
         return res.status(403).json({ message: "Không có quyền" });
     }
 
-    const managedBuildingIds = user.role === "landlord"
-        ? (await Building.find({ landlordId: user._id, isDeleted: false }).distinct("_id"))
-        : (req.staff?.assignedBuildingIds || []).map(id => new mongoose.Types.ObjectId(id));
-
-    if (managedBuildingIds.length === 0) {
-        return res.json({ success: true, data: [], pagination: { total: 0 } });
-    }
-
-    const floorIds = await Floor.find({ buildingId: { $in: managedBuildingIds } }).distinct("_id");
-    const roomIds = await Room.find({ buildingId: { $in: managedBuildingIds } }).distinct("_id");
-    const residentIds = await Room.find({ buildingId: { $in: managedBuildingIds } }).distinct("currentTenantIds");
-
-    const matchQuery = {
-        landlordId: user.role === "landlord" ? user._id : req.staff.landlordId, // tất cả notification của landlord
-        isDeleted: false,
-        $or: [
-            { "target.buildings": { $in: managedBuildingIds } },
-            { "target.floors": { $in: floorIds } },
-            { "target.rooms": { $in: roomIds } },
-            { "target.residents": { $in: residentIds } }
-        ]
-    };
     try {
+        let managedBuildingIds = [];
+
+        if (user.role === "landlord") {
+            managedBuildingIds = await Building.find({
+                landlordId: user._id,
+                isDeleted: false
+            }).distinct("_id");
+        } else {
+            managedBuildingIds = (req.staff?.assignedBuildingIds || [])
+                .map(id => new mongoose.Types.ObjectId(id));
+        }
+
+        if (managedBuildingIds.length === 0) {
+            return res.json({
+                success: true,
+                data: [],
+                pagination: { total: 0, page, limit }
+            });
+        }
+
+        if (filterBuildingId && managedBuildingIds.includes(filterBuildingId) === false) {
+            return res.status(403).json({ message: "Bạn không quản lý tòa nhà này" });
+        }
+
+        const filterBuildings = filterBuildingId
+            ? [filterBuildingId]
+            : managedBuildingIds;
+
+        const floorIds = await Floor.find({ buildingId: { $in: filterBuildings } }).distinct("_id");
+        const roomIds = await Room.find({ buildingId: { $in: filterBuildings } }).distinct("_id");
+        const residentIds = await Room.find({ buildingId: { $in: filterBuildings } }).distinct("currentTenantIds");
+
+        const matchQuery = {
+            landlordId: user.role === "landlord" ? user._id : req.staff.landlordId,
+            isDeleted: false,
+            createByRole: { $in: ["landlord", "staff"] },
+            $or: [
+                { "target.buildings": { $in: filterBuildings } },
+                { "target.floors": { $in: floorIds } },
+                { "target.rooms": { $in: roomIds } },
+                { "target.residents": { $in: residentIds.flat() } }
+            ]
+        };
+
         const [notifications, total] = await Promise.all([
             Notification.find(matchQuery)
                 .sort({ createdAt: -1 })
@@ -495,7 +519,7 @@ const getMySentNotifications = async (req, res) => {
                     populate: {
                         path: "userInfo",
                         model: "UserInformation",
-                        select: "fullName phoneNumber",
+                        select: "fullName phoneNumber"
                     },
                 })
                 .lean(),
