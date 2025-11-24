@@ -372,30 +372,38 @@ const update = async (req, res) => {
     const building = await Building.findById(req.params.id);
     if (!building)
       return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+
     const { name } = req.body;
     const landlordId = req.user._id;
-    const existed = await Building.exists({
-      landlordId,
-      name: name.trim(),
-      isDeleted: false,
-    });
-    if (existed) {
-      await session.abortTransaction();
-      session.endSession();
-      return res
-        .status(409)
-        .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
-    }
+
     if (
       req.user.role !== "landlord" &&
-      String(building.landlordId) !== String(req.user._id)
+      String(building.landlordId) !== String(landlordId)
     ) {
       return res.status(403).json({ message: "Không có quyền" });
     }
+
+    if (name && name.trim() !== building.name) {
+      const existed = await Building.exists({
+        landlordId,
+        name: name.trim(),
+        _id: { $ne: building._id },
+        isDeleted: false,
+      });
+
+      if (existed) {
+        return res
+          .status(409)
+          .json({ message: "Tên tòa đã tồn tại trong tài khoản của bạn" });
+      }
+    }
+
     Object.assign(building, req.body);
     await building.save();
+
     res.json({ success: true, data: building });
   } catch (err) {
+    // 4. Handle other errors
     res.status(400).json({ message: err.message });
   }
 };

@@ -386,6 +386,83 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
  *       500:
  *         description: Lỗi khi gửi email
  */
+/**
+ * @swagger
+ * /landlords/invoices/generate-monthly-bulk:
+ *   post:
+ *     summary: Tạo hóa đơn tháng hàng loạt cho các phòng đang được thuê
+ *     description: >
+ *       Dùng để chủ trọ tạo hóa đơn tháng cho nhiều phòng cùng lúc dựa trên:
+ *       - Kỳ periodMonth/periodYear
+ *       - Phòng đang ở trạng thái rented
+ *       - Thuộc các tòa active của landlord hiện tại
+ *       - Có thể lọc theo buildingId
+ *
+ *       Mỗi phòng sẽ gọi lại logic generateMonthlyInvoice hiện có.
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [periodMonth, periodYear]
+ *             properties:
+ *               periodMonth:
+ *                 type: integer
+ *                 example: 10
+ *               periodYear:
+ *                 type: integer
+ *                 example: 2025
+ *               buildingId:
+ *                 type: string
+ *                 nullable: true
+ *                 description: Nếu truyền, chỉ tạo hóa đơn cho các phòng thuộc tòa này
+ *               includeRent:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Có tính tiền phòng vào hóa đơn hay không
+ *     responses:
+ *       201:
+ *         description: Đã xử lý và có ít nhất một phòng tạo hóa đơn thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       roomId:
+ *                         type: string
+ *                       roomNumber:
+ *                         type: string
+ *                       success:
+ *                         type: boolean
+ *                       statusCode:
+ *                         type: integer
+ *                       message:
+ *                         type: string
+ *                       invoiceId:
+ *                         type: string
+ *                         nullable: true
+ *                 total:
+ *                   type: integer
+ *                 successCount:
+ *                   type: integer
+ *                 failCount:
+ *                   type: integer
+ *       400:
+ *         description: Dữ liệu vào không hợp lệ hoặc tất cả phòng đều lỗi
+ *       401:
+ *         description: Không có quyền truy cập
+ */
 
 // Tạo hóa đơn tháng auto từ UtilityReading + tiền phòng
 router.post(
@@ -399,6 +476,11 @@ router.post(
   "/generate",
   checkAuthorize("landlord"),
   invoiceController.generateInvoice
+);
+router.post(
+  "/generate-monthly-bulk",
+  checkAuthorize("landlord"),
+  invoiceController.generateMonthlyInvoicesBulk
 );
 
 // Danh sách hóa đơn
@@ -423,12 +505,6 @@ router.post(
   "/:id/send",
   checkAuthorize("landlord"),
   invoiceController.sendInvoiceEmail
-);
-
-router.post(
-  "/generate-monthly-bulk",
-  checkAuthorize("landlord"),
-  invoiceController.generateMonthlyBulk
 );
 
 module.exports = router;

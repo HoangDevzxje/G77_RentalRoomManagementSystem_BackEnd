@@ -816,62 +816,149 @@ exports.generateInvoice = async (req, res) => {
       .json({ message: "Lỗi tạo hoá đơn", error: e.message });
   }
 };
-exports.generateMonthlyBulk = async (req, res) => {
-  try {
-    const { periodMonth, periodYear } = req.body;
-    const landlordId = req.user._id;
 
-    if (!periodMonth || !periodYear) {
+exports.generateMonthlyInvoicesBulk = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+    let {
+      periodMonth,
+      periodYear,
+      buildingId,
+      includeRent = true,
+    } = req.body || {};
+
+    const month = Number(periodMonth);
+    const year = Number(periodYear);
+
+    if (
+      !month ||
+      !year ||
+      !Number.isInteger(month) ||
+      month < 1 ||
+      month > 12 ||
+      !Number.isInteger(year) ||
+      year < 2000
+    ) {
       return res.status(400).json({
-        message: "Thiếu periodMonth / periodYear",
+        message: "periodMonth/periodYear không hợp lệ",
+        data: [],
+        total: 0,
+        successCount: 0,
+        failCount: 0,
       });
     }
 
-    const rooms = await Room.find({
-      landlordId,
+    // 1) Lấy danh sách phòng đang rented, thuộc landlord, tòa active
+    const roomFilter = {
       status: "rented",
       isDeleted: false,
-    }).lean();
+    };
+    if (buildingId) {
+      roomFilter.buildingId = buildingId;
+    }
 
-    let success = [];
-    let failed = [];
+    const rooms = await Room.find(roomFilter)
+      .populate("buildingId", "landlordId status isDeleted name")
+      .lean();
 
-    for (const room of rooms) {
+    const filteredRooms = rooms.filter(
+      (r) =>
+        r.buildingId &&
+        !r.buildingId.isDeleted &&
+        r.buildingId.status === "active" &&
+        String(r.buildingId.landlordId) === String(landlordId)
+    );
+
+    if (!filteredRooms.length) {
+      return res.status(200).json({
+        message: "Không có phòng nào phù hợp để tạo hóa đơn",
+        data: [],
+        total: 0,
+        successCount: 0,
+        failCount: 0,
+      });
+    }
+
+    const results = [];
+    let successCount = 0;
+    let failCount = 0;
+
+    // 2) Loop từng phòng và gọi lại generateMonthlyInvoice hiện có
+    for (const room of filteredRooms) {
+      const summary = {
+        roomId: room._id,
+        roomNumber: room.roomNumber,
+        success: false,
+        statusCode: null,
+        message: null,
+        invoiceId: null,
+      };
+
       const fakeReq = {
         user: { _id: landlordId },
         body: {
-          roomId: room._id,
-          periodMonth,
-          periodYear,
+          roomId: room._id.toString(),
+          periodMonth: month,
+          periodYear: year,
+          includeRent,
         },
       };
 
+      // fake res để bắt status + json từ generateMonthlyInvoice
+      const out = { status: 500, body: null };
       const fakeRes = {
-        status: () => fakeRes,
-        json: (data) => {
-          if (data?.data) success.push(room._id);
-          else
-            failed.push({
-              roomId: room._id,
-              message: data?.message,
-            });
+        status(code) {
+          out.status = code;
+          return this;
+        },
+        json(payload) {
+          out.body = payload;
+          return this;
         },
       };
 
-      await InvoiceController.generateMonthlyInvoice(fakeReq, fakeRes);
+      try {
+        await exports.generateMonthlyInvoice(fakeReq, fakeRes);
+
+        summary.statusCode = out.status;
+        summary.message = out.body?.message || null;
+
+        if (out.status === 201 && out.body?.data?._id) {
+          summary.success = true;
+          summary.invoiceId = out.body.data._id;
+          successCount++;
+        } else {
+          summary.success = false;
+          failCount++;
+        }
+      } catch (err) {
+        summary.statusCode = 500;
+        summary.message = err.message || "Lỗi không xác định khi tạo hóa đơn";
+        summary.success = false;
+        failCount++;
+      }
+
+      results.push(summary);
     }
 
-    return res.status(200).json({
-      message: "Đã xử lý tạo hóa đơn hàng loạt",
-      successCount: success.length,
-      failedCount: failed.length,
-      failed,
+    const total = results.length;
+    const httpStatus = successCount > 0 ? 201 : 400;
+
+    return res.status(httpStatus).json({
+      message: `Đã xử lý ${total} phòng: thành công ${successCount}, lỗi ${failCount}`,
+      data: results,
+      total,
+      successCount,
+      failCount,
     });
-  } catch (err) {
-    console.error("generateMonthlyBulk error:", err);
+  } catch (e) {
+    console.error("generateMonthlyInvoicesBulk error:", e);
     return res.status(500).json({
-      message: "Lỗi hệ thống khi tạo hóa đơn hàng loạt",
-      error: err.message,
+      message: e.message || "Server error",
+      data: [],
+      total: 0,
+      successCount: 0,
+      failCount: 0,
     });
   }
 };
