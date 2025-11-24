@@ -192,6 +192,58 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *       500:
  *         description: Lỗi server
  */
+/**
+ * @swagger
+ * /landlords/notifications/unread-count:
+ *   get:
+ *     summary: Đếm số thông báo chưa đọc
+ *     description: |
+ *       Trả về số lượng thông báo chưa đọc cho user hiện tại.
+ *       
+ *       **Quy tắc theo role:**
+ *       - **Resident:** chỉ xem thông báo thuộc các tòa/floor/phòng/resident liên quan đến mình.
+ *       - **Landlord:** xem tất cả thông báo do resident gửi thuộc tất cả tòa mà landlord quản lý.
+ *       - **Staff:** xem thông báo từ resident trong phạm vi tòa mà staff được phân công.
+ *       
+ *       Mọi role chỉ đếm các thông báo **chưa có trong readBy.accountId** của user hiện tại.
+ *     tags: [Landlord Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Số lượng thông báo chưa đọc.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 unreadCount:
+ *                   type: number
+ *                   example: 5
+ *       403:
+ *         description: Không có quyền truy cập.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Bạn không có quyền truy cập"
+ *       500:
+ *         description: Lỗi server.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Lỗi server"
+ */
 
 
 /**
@@ -363,6 +415,12 @@ router.post(
     "/read",
     checkAuthorize(["landlord", "staff"]),
     notificationController.markAsRead
+);
+router.get(
+    "/unread-count",
+    checkAuthorize(["landlord", "staff"]),
+    checkStaffPermission(PERMISSIONS.NOTIFICATION_VIEW),
+    notificationController.getUnreadCount
 );
 
 router.patch(

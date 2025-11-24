@@ -402,7 +402,7 @@ const deleteNotification = async (req, res) => {
 
     try {
         const noti = await Notification.findById(id);
-        if (!noti || noti.isDeleted) {
+        if (!noti) {
             return res.status(404).json({ message: "Không tìm thấy thông báo" });
         }
 
@@ -426,7 +426,7 @@ const deleteNotification = async (req, res) => {
             }
         }
 
-        await Notification.findByIdAndUpdate(id, { isDeleted: true, deletedAt: new Date() });
+        await Notification.findByIdAndDelete(id);
 
         res.json({ success: true, message: "Xóa thông báo thành công" });
     } catch (error) {
@@ -545,6 +545,82 @@ const getMySentNotifications = async (req, res) => {
         res.status(500).json({ message: "Lỗi server" });
     }
 };
+const getUnreadCount = async (req, res) => {
+    const user = req.user;
+    try {
+        let matchQuery = { isDeleted: false };
+
+        if (user.role === "resident") {
+            const rooms = await Room.find({
+                currentTenantIds: user._id,
+                active: true,
+                isDeleted: { $ne: true }
+            }).select("buildingId floorId _id").lean();
+
+            if (!rooms.length) {
+                return res.json({ success: true, unreadCount: 0 });
+            }
+
+            const buildingIds = rooms.map(r => r.buildingId);
+            const floorIds = rooms.map(r => r.floorId).filter(Boolean);
+            const roomIds = rooms.map(r => r._id);
+
+            const building = await Building.findById(buildingIds[0]).select("landlordId").lean();
+            const landlordId = building?.landlordId;
+
+            matchQuery = {
+                landlordId,
+                "readBy.accountId": { $ne: user._id },
+                $or: [
+                    { "target.buildings": { $in: buildingIds } },
+                    { "target.floors": { $in: floorIds } },
+                    { "target.rooms": { $in: roomIds } },
+                    { "target.residents": user._id }
+                ]
+            };
+        }
+        else if (user.role === "landlord") {
+            matchQuery = {
+                landlordId: user._id,
+                createByRole: "resident",
+                "readBy.accountId": { $ne: user._id }
+            };
+        }
+        else if (user.role === "staff" && req.staff) {
+            const buildingIds = req.staff.assignedBuildingIds.map(id => new mongoose.Types.ObjectId(id));
+
+            const floors = await Floor.find({ buildingId: { $in: buildingIds } }).select("_id").lean();
+            const floorIds = floors.map(f => f._id);
+
+            const rooms = await Room.find({ buildingId: { $in: buildingIds }, active: true }).select("_id").lean();
+            const roomIds = rooms.map(r => r._id);
+
+            matchQuery = {
+                landlordId: req.staff.landlordId,
+                createByRole: "resident",
+                "readBy.accountId": { $ne: user._id },
+                $or: [
+                    { "target.buildings": { $in: buildingIds } },
+                    { "target.floors": { $in: floorIds } },
+                    { "target.rooms": { $in: roomIds } }
+                ]
+            };
+        }
+        else {
+            return res.json({ success: true, unreadCount: 0 });
+        }
+
+        const unreadCount = await Notification.countDocuments(matchQuery);
+        res.json({
+            success: true,
+            unreadCount
+        });
+
+    } catch (error) {
+        console.error("getUnreadCount error:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+};
 
 
 module.exports = {
@@ -554,5 +630,6 @@ module.exports = {
     updateNotification,
     deleteNotification,
     getNotificationById,
-    getMySentNotifications
+    getMySentNotifications,
+    getUnreadCount
 };
