@@ -55,7 +55,25 @@ const getResidentIdsFromTarget = async (target) => {
 
     return Array.from(residentIds);
 };
+const getRecipientAdminIds = async (target) => {
+    const buildingIds = await getBuildingIdsFromTarget(target);
+    if (buildingIds.length === 0) return [];
 
+    const admins = new Set();
+
+    const buildings = await Building.find({ _id: { $in: buildingIds } })
+        .select("landlordId")
+        .lean();
+    buildings.forEach(b => b.landlordId && admins.add(b.landlordId.toString()));
+
+    const staffList = await Employee.find({
+        assignedBuildings: { $in: buildingIds },
+        isDeleted: false
+    }).select("accountId").lean();
+    staffList.forEach(s => admins.add(s.accountId.toString()));
+
+    return Array.from(admins);
+};
 const createNotification = async (req, res) => {
     const user = req.user;
     const isLandlord = user.role === "landlord";
@@ -128,14 +146,26 @@ const createNotification = async (req, res) => {
             }
         };
 
+        // REALTIME EMIT – CHUẨN 100%
         if (io) {
-            if (parsedTarget.buildings?.length) parsedTarget.buildings.forEach(bid => io.to(`building:${bid}`).emit("new_notification", payload));
-            if (parsedTarget.floors?.length) parsedTarget.floors.forEach(fid => io.to(`floor:${fid}`).emit("new_notification", payload));
-            if (parsedTarget.rooms?.length) parsedTarget.rooms.forEach(rid => io.to(`room:${rid}`).emit("new_notification", payload));
-            if (parsedTarget.residents?.length) parsedTarget.residents.forEach(uid => io.to(`user:${uid}`).emit("new_notification", payload));
+            let recipientIds = [];
 
-            const residentIds = await getResidentIdsFromTarget(parsedTarget);
-            residentIds.forEach(uid => io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 }));
+            if (user.role === "resident") {
+                // Resident gửi → landlord + staff nhận
+                recipientIds = await getRecipientAdminIds(parsedTarget);
+            } else {
+                // Landlord/Staff gửi → cư dân nhận
+                recipientIds = await getResidentIdsFromTarget(parsedTarget);
+            }
+
+            recipientIds.forEach(uid => {
+                io.to(`user:${uid}`).emit("new_notification", payload);
+
+                // Chỉ tăng unread khi admin gửi cho cư dân
+                if (user.role !== "resident") {
+                    io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 });
+                }
+            });
         }
 
         return res.status(201).json({
@@ -345,12 +375,21 @@ const updateNotification = async (req, res) => {
                 updatedAt: noti.updatedAt
             };
 
-            if (noti.target.buildings?.length) noti.target.buildings.forEach(bid => io.to(`building:${bid}`).emit("notification_updated", payload));
-            if (noti.target.floors?.length) noti.target.floors.forEach(fid => io.to(`floor:${fid}`).emit("notification_updated", payload));
-            if (noti.target.rooms?.length) noti.target.rooms.forEach(rid => io.to(`room:${rid}`).emit("notification_updated", payload));
-            if (noti.target.residents?.length) noti.target.residents.forEach(uid => io.to(`user:${uid}`).emit("notification_updated", payload));
-        }
+            let recipientIds = [];
 
+            if (noti.createByRole === "resident") {
+                // Thông báo do resident tạo → landlord + staff nhận update
+                recipientIds = await getRecipientAdminIds(noti.target);
+            } else {
+                // Thông báo do landlord/staff tạo → cư dân nhận update
+                recipientIds = await getResidentIdsFromTarget(noti.target);
+            }
+
+            recipientIds.forEach(uid => {
+                io.to(`user:${uid}`).emit("notification_updated", payload);
+            });
+        }
+        // =====================================================================
         res.json({ success: true, message: "Cập nhật thành công", data: noti });
     } catch (error) {
         console.error("updateNotification error:", error);

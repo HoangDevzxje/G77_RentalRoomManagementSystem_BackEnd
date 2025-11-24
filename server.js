@@ -77,7 +77,7 @@ io.on("connection", (socket) => {
   require("./sockets/joinRooms")(socket, io);
 
   // Các event khác (chat, typing, v.v.) sẽ import ở đây
-  require("./sockets/notificationSocket")(socket, io);
+  // require("./sockets/notificationSocket")(socket, io);
   // require("./sockets/chatSocket")(socket, io);
 
   socket.on("disconnect", () => {

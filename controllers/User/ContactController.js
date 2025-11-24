@@ -3,6 +3,7 @@ const Building = require("../../models/Building");
 const Room = require("../../models/Room");
 const Post = require("../../models/Post");
 const Notification = require("../../models/Notification");
+const Staff = require("../../models/Staff");
 
 const createContact = async (req, res) => {
   try {
@@ -55,17 +56,51 @@ const createContact = async (req, res) => {
       tenantNote,
     });
 
-    await Notification.create({
+    // === TẠO THÔNG BÁO + EMIT REALTIME ===
+    const notification = await Notification.create({
       landlordId,
       createBy: tenantId,
       createByRole: "resident",
       title: "Yêu cầu hợp đồng mới",
-      content: `Resident ${contactName} đã gửi yêu cầu thuê phòng.`,
-      target: {
-        buildings: [buildingId],
-      },
+      content: `${contactName} (${contactPhone}) muốn thuê phòng ${room.roomNumber || roomId}`,
+      // type: "contract_request",
+      target: { buildings: [buildingId] },
       link: `/landlords/contacts`,
     });
+
+    // === REALTIME EMIT  ===
+    const io = req.app.get("io");
+    if (io) {
+      const payload = {
+        id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          id: tenantId.toString(),
+          name: req.user.fullName || contactName,
+          role: "resident"
+        }
+      };
+
+      io.to(`user:${landlordId}`).emit("new_notification", payload);
+
+      const staffList = await Staff.find({
+        assignedBuildings: buildingId,
+        isDeleted: false
+      }).select("accountId").lean();
+
+      staffList.forEach(staff => {
+        io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+      });
+
+      io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
+      staffList.forEach(staff => {
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
 
     res.status(201).json({
       success: true,

@@ -2,6 +2,8 @@ const Booking = require("../../models/Booking");
 const LandlordSchedule = require("../../models/LandlordSchedule");
 const Post = require("../../models/Post");
 const dayjs = require("dayjs");
+const Staff = require("../../models/Staff");
+const Notification = require("../../models/Notification");
 
 const getAvailableSlots = async (req, res) => {
   try {
@@ -118,8 +120,8 @@ const create = async (req, res) => {
       return res.status(400).json({ success: false, message: "Ngày không hợp lệ!" });
     }
 
-    const dayOfWeek = checkDate.day(); 
-    
+    const dayOfWeek = checkDate.day();
+
     // lấy default slots và overrides giống như getAvailableSlots
     const defaultSlots = schedule.defaultSlots.filter(s => s.dayOfWeek === dayOfWeek && s.isAvailable);
     const overrides = schedule.overrides.filter(o => dayjs(o.date).isSame(checkDate, "day"));
@@ -199,7 +201,51 @@ const create = async (req, res) => {
       contactPhone,
       status: "pending",
     });
+    // =============================================
+    const io = req.app.get("io");
+    if (io) {
+      const notification = await Notification.create({
+        landlordId,
+        createBy: tenantId,
+        createByRole: "resident",
+        title: "Có lịch xem phòng mới!",
+        content: `${contactName} (${contactPhone}) muốn xem phòng vào ${dayjs(date).format("DD/MM/YYYY")} lúc ${timeSlot}`,
+        // type: "booking_request",
+        target: { buildings: [buildingId] },
+        link: `/landlords/bookings`,
+      });
 
+      const payload = {
+        id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          id: tenantId.toString(),
+          name: req.user.fullName || contactName,
+          role: "resident",
+          phone: contactPhone
+        }
+      };
+
+      // 1. Gửi cho Landlord
+      io.to(`user:${landlordId}`).emit("new_notification", payload);
+      io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
+
+      // 2. Gửi cho tất cả Staff quản lý tòa này (nếu có)
+      const staffList = await Staff.find({
+        assignedBuildings: buildingId,
+        isDeleted: false
+      }).select("accountId").lean();
+
+      staffList.forEach(staff => {
+        io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
+    // =============================================
     return res.status(201).json({
       success: true,
       message: "Đặt lịch xem phòng thành công! Vui lòng chờ chủ trọ xác nhận.",
@@ -217,47 +263,47 @@ const create = async (req, res) => {
 
 
 const getMyBookings = async (req, res) => {
-    try {
-        const tenantId = req.user._id;
+  try {
+    const tenantId = req.user._id;
 
-        const bookings = await Booking.find({
-            tenantId,
-            isDeleted: false
-        })
-            .populate("postId", "title address")
-            .populate("buildingId", "name")
-            .populate("landlordId", "email")
-            .sort({ createdAt: -1 });
+    const bookings = await Booking.find({
+      tenantId,
+      isDeleted: false
+    })
+      .populate("postId", "title address")
+      .populate("buildingId", "name")
+      .populate("landlordId", "email")
+      .sort({ createdAt: -1 });
 
-        res.json({
-            success: true,
-            data: bookings
-        });
-    } catch (err) {
-        console.error("Error getMyBookings:", err);
-        res.status(500).json({ message: "Lỗi hệ thống khi lấy danh sách đặt lịch!" });
-    }
+    res.json({
+      success: true,
+      data: bookings
+    });
+  } catch (err) {
+    console.error("Error getMyBookings:", err);
+    res.status(500).json({ message: "Lỗi hệ thống khi lấy danh sách đặt lịch!" });
+  }
 };
 
 const cancel = async (req, res) => {
-    try {
-        const tenantId = req.user._id;
-        const { id } = req.params;
+  try {
+    const tenantId = req.user._id;
+    const { id } = req.params;
 
-        const booking = await Booking.findOne({ _id: id, tenantId, isDeleted: false });
-        if (!booking) return res.status(404).json({ message: "Không tìm thấy lịch đặt!" });
+    const booking = await Booking.findOne({ _id: id, tenantId, isDeleted: false });
+    if (!booking) return res.status(404).json({ message: "Không tìm thấy lịch đặt!" });
 
-        if (booking.status === "accepted")
-            return res.status(400).json({ message: "Không thể hủy lịch đã được chấp nhận!" });
+    if (booking.status === "accepted")
+      return res.status(400).json({ message: "Không thể hủy lịch đã được chấp nhận!" });
 
-        booking.status = "cancelled";
-        await booking.save();
+    booking.status = "cancelled";
+    await booking.save();
 
-        res.json({ success: true, message: "Hủy lịch thành công!" });
-    } catch (err) {
-        console.error("Error cancelBooking:", err);
-        res.status(500).json({ message: "Lỗi hệ thống khi hủy lịch!" });
-    }
+    res.json({ success: true, message: "Hủy lịch thành công!" });
+  } catch (err) {
+    console.error("Error cancelBooking:", err);
+    res.status(500).json({ message: "Lỗi hệ thống khi hủy lịch!" });
+  }
 };
 
 module.exports = { create, getMyBookings, cancel, getAvailableSlots };

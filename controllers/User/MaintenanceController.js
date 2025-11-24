@@ -3,6 +3,8 @@ const RoomFurniture = require("../../models/RoomFurniture");
 const Room = require("../../models/Room");
 const Building = require("../../models/Building");
 const mongoose = require("mongoose");
+const Staff = require("../../models/Staff");
+const Notification = require("../../models/Notification");
 
 const isAdmin = (u) => u?.role === "admin";
 const isLandlord = (u) => u?.role === "landlord";
@@ -156,7 +158,58 @@ exports.createRequest = async (req, res) => {
       rf.syncConditionFromDamage();
     }
     await rf.save();
+    // =====================================================
+    // REALTIME NOTIFICATION CHO LANDLORD + STAFF KHI BÁO HỎNG
+    // =====================================================
+    const io = req.app.get("io");
+    if (io) {
+      const building = await Building.findById(buildingId)
+        .select("landlordId name")
+        .lean();
 
+      const notification = await Notification.create({
+        landlordId: building.landlordId,
+        createBy: req.user._id,
+        createByRole: "resident",
+        title: `Báo hỏng: ${title}`,
+        content: `Phòng ${room.roomNumber || roomId} - ${rf.furnitureName || "Đồ nội thất"} bị hỏng (${qty} cái)${priority === "urgent" ? " - KHẨN CẤP" : ""}`,
+        // type: "maintenance_request",
+        target: { buildings: [buildingId] },
+        link: `/landlords/maintenance`,
+      });
+
+      const payload = {
+        id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        priority: notification.priority,
+        createdAt: notification.createdAt,
+        createBy: {
+          id: req.user._id.toString(),
+          name: req.user.fullName || req.user.username,
+          role: "resident",
+          roomNumber: room.roomNumber || roomId,
+          buildingName: building?.name || "Tòa nhà"
+        },
+        photos: photos.map(p => p.url) // gửi ảnh
+      };
+
+      io.to(`user:${building.landlordId}`).emit("new_notification", payload);
+      io.to(`user:${building.landlordId}`).emit("unread_count_increment", { increment: 1 });
+
+      const staffList = await Staff.find({
+        assignedBuildings: buildingId,
+        isDeleted: false
+      }).select("accountId").lean();
+
+      staffList.forEach(staff => {
+        io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      });
+
+    }
     // Populate thông tin để trả về
     const populatedDoc = await MaintenanceRequest.findById(doc._id)
       .populate("roomId", "roomNumber")
