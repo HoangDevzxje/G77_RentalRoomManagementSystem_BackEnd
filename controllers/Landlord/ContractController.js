@@ -673,7 +673,7 @@ exports.cloneContract = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    const ALLOWED_CLONE_STATUSES = ["completed", "voided"];
+    const ALLOWED_CLONE_STATUSES = ["terminated", "voided"];
 
     if (!ALLOWED_CLONE_STATUSES.includes(old.status)) {
       return res.status(400).json({
@@ -682,6 +682,7 @@ exports.cloneContract = async (req, res) => {
         )}. Hiện tại: ${old.status}`,
       });
     }
+
     if (isStaff) {
       if (
         !old.createBy ||
@@ -694,6 +695,21 @@ exports.cloneContract = async (req, res) => {
         });
       }
     }
+
+    // ❗ Check xem đã có hợp đồng mới được clone từ hợp đồng này chưa
+    const existingClone = await Contract.findOne({
+      clonedFrom: old._id,
+      status: { $in: ["draft", "pending", "active", "signed"] }, // tùy status của bạn
+    }).lean();
+
+    if (existingClone) {
+      return res.status(400).json({
+        message:
+          "Hợp đồng này đã có bản sao được tạo trước đó. Vui lòng chỉnh sửa hợp đồng đã tạo thay vì tạo mới.",
+        clonedContractId: existingClone._id,
+      });
+    }
+
     // Tạo contract mới: copy các thông tin cần thiết
     const newContract = await Contract.create({
       landlordId: old.landlordId,
@@ -719,6 +735,7 @@ exports.cloneContract = async (req, res) => {
       regulations: old.regulations || [],
 
       status: "draft",
+      clonedFrom: old._id,
     });
 
     res.json({

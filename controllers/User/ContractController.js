@@ -8,11 +8,15 @@ const PDFDocument = require("pdfkit");
 const contentDisposition = require("content-disposition");
 const he = require("he");
 const Building = require("../../models/Building");
+const axios = require("axios");
+const path = require("path");
+const fs = require("fs");
 
 const FONT_REGULAR =
   process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
 const FONT_BOLD =
   process.env.CONTRACT_FONT_BOLD_PATH || "public/fonts/NotoSans-Bold.ttf";
+
 // Helper: map Account + UserInformation -> personSchema
 function mapAccountToPerson(acc) {
   if (!acc) return undefined;
@@ -502,6 +506,31 @@ async function loadImageBuffer(signatureUrl) {
     if (/^https?:\/\//i.test(signatureUrl)) {
       const resp = await axios.get(signatureUrl, {
         responseType: "arraybuffer",
+        timeout: 15000,
+      });
+      return Buffer.from(resp.data);
+    }
+
+    const filePath = path.isAbsolute(signatureUrl)
+      ? signatureUrl
+      : path.join(process.cwd(), signatureUrl);
+
+    if (!fs.existsSync(filePath)) return null;
+    return fs.readFileSync(filePath);
+  } catch (e) {
+    console.error("Không load được ảnh chữ ký:", e.message);
+    return null;
+  }
+}
+async function loadImageBuffer(signatureUrl) {
+  if (!signatureUrl) return null;
+
+  try {
+    // Nếu là URL http/https (Cloudinary, S3, v.v.)
+    if (/^https?:\/\//i.test(signatureUrl)) {
+      const resp = await axios.get(signatureUrl, {
+        responseType: "arraybuffer",
+        timeout: 15000,
       });
       return Buffer.from(resp.data);
     }

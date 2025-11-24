@@ -228,7 +228,12 @@ const contractSchema = new mongoose.Schema(
     createBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account",
-    }
+    },
+    clonedFrom: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Contract",
+      default: null,
+    },
   },
   { timestamps: true }
 );
