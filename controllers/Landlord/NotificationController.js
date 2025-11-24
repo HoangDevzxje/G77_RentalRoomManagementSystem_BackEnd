@@ -209,6 +209,7 @@ const getMyNotifications = async (req, res) => {
 
             matchQuery = {
                 landlordId,
+                createByRole: { $in: ["landlord", "staff"] },
                 $or: [
                     { "target.buildings": { $in: buildingIds } },
                     { "target.floors": { $in: floorIds } },
