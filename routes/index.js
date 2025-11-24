@@ -34,6 +34,8 @@ const buildingRatingRoute = require("././User/buildingRatingRoute");
 const invoiceLandlordRoute = require("./Landlord/invoicesRoute");
 const tenantInvoiceRoute = require("././User/tenantInvoicesRoute");
 const utilityReadingsRoute = require("././Landlord/utilityReadingsRoute");
+
+const paymentRoute = require("./paymentRoute");
 const routes = (app) => {
   app.use("/auth", authRoutes);
   app.use("/subscriptions", subscriptionRoutes);
@@ -71,6 +73,7 @@ const routes = (app) => {
   app.use("/maintenance", maintenanceRoutesUser);
   app.use("/rooms", roomRoute);
   app.use("/invoices", tenantInvoiceRoute);
+  app.use("/payment", paymentRoute);
 };
 
 module.exports = routes;

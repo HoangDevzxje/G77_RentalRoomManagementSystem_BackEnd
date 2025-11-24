@@ -14,6 +14,19 @@ const PAYMENT_METHODS = [
   "online_gateway", // VNPay
   null,
 ];
+const paymentLogSchema = new mongoose.Schema(
+  {
+    gateway: { type: String }, // "momo"
+    method: { type: String }, // "captureWallet"
+    amount: { type: Number },
+    currency: { type: String, default: "VND" },
+    status: { type: String }, // "success", "fail"
+    transId: { type: String }, // momoTransId hoặc orderId
+    raw: { type: Object }, // full payload từ MoMo
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
 const invoiceItemSchema = new mongoose.Schema(
   {

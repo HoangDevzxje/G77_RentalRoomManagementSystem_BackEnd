@@ -252,7 +252,6 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                 totalPages:
  *                   type: integer
  */
-router.get("/", checkAuthorize("landlord"), utilityController.listReadings);
 
 /**
  * @swagger
@@ -294,7 +293,6 @@ router.get("/", checkAuthorize("landlord"), utilityController.listReadings);
  *       201:
  *         description: Tạo thành công
  */
-router.post("/", checkAuthorize("landlord"), utilityController.createReading);
 
 /**
  * @swagger
@@ -419,7 +417,6 @@ router.post("/", checkAuthorize("landlord"), utilityController.createReading);
  *       404:
  *         description: Không tìm thấy
  */
-router.get("/:id", checkAuthorize("landlord"), utilityController.getReading);
 
 /**
  * @swagger
@@ -459,11 +456,6 @@ router.get("/:id", checkAuthorize("landlord"), utilityController.getReading);
  *       400:
  *         description: Không cho sửa vì đã confirmed/billed
  */
-router.patch(
-  "/:id",
-  checkAuthorize("landlord"),
-  utilityController.updateReading
-);
 
 /**
  * @swagger
@@ -485,11 +477,6 @@ router.patch(
  *       400:
  *         description: Không thể xác nhận
  */
-router.post(
-  "/:id/confirm",
-  checkAuthorize("landlord"),
-  utilityController.confirmReading
-);
 
 /**
  * @swagger
@@ -511,22 +498,34 @@ router.post(
  *       400:
  *         description: Không thể xóa (đã billed)
  */
-router.delete(
-  "/:id",
-  checkAuthorize("landlord"),
-  utilityController.deleteReading
-);
-
 router.get(
   "/rooms",
   checkAuthorize("landlord"),
   utilityController.listRoomsForUtility
 );
+router.get("/", checkAuthorize("landlord"), utilityController.listReadings);
+router.post("/", checkAuthorize("landlord"), utilityController.createReading);
 
 router.post(
   "/bulk",
   checkAuthorize("landlord"),
   utilityController.bulkCreateReadings
 );
+router.post(
+  "/:id/confirm",
+  checkAuthorize("landlord"),
+  utilityController.confirmReading
+);
+router.delete(
+  "/:id",
+  checkAuthorize("landlord"),
+  utilityController.deleteReading
+);
+router.patch(
+  "/:id",
+  checkAuthorize("landlord"),
+  utilityController.updateReading
+);
+router.get("/:id", checkAuthorize("landlord"), utilityController.getReading);
 
 module.exports = router;

@@ -151,7 +151,7 @@ DB.connectDB()
       console.log(`Server + Socket.IO running at http://localhost:${port}`);
       console.log(`Swagger: http://localhost:${port}/api-docs`);
     });
-    registerAutoEndContractsCron();
+    // registerAutoEndContractsCron();
     startExpirationJob();
     // Graceful shutdown
     process.on("SIGTERM", shutDown);

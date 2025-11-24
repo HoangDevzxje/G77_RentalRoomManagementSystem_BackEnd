@@ -178,16 +178,14 @@ router.get(
   checkAuthorize("resident"),
   tenantInvoiceController.getMyInvoiceDetail
 );
-
 /**
  * @swagger
  * /invoices/{id}/pay:
  *   post:
- *     summary: Tenant báo đã thanh toán / trigger thanh toán online
- *     description: |
- *       Tuỳ implementation:
- *       - Nếu dùng cổng online (VNPay...), endpoint này có thể tạo URL thanh toán.
- *       - Nếu chỉ báo đã chuyển khoản, landlord sẽ verify phía sau.
+ *     summary: Tạo link thanh toán MoMo cho hóa đơn
+ *     description: >
+ *       Tenant yêu cầu thanh toán online. Hệ thống tạo yêu cầu thanh toán qua cổng MoMo Sandbox
+ *       và trả về payUrl để FE redirect người dùng sang MoMo.
  *     tags: [Tenant Invoices]
  *     security:
  *       - bearerAuth: []
@@ -197,6 +195,7 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
+ *         description: ID của hóa đơn
  *     requestBody:
  *       required: false
  *       content:
@@ -206,22 +205,33 @@ router.get(
  *             properties:
  *               method:
  *                 type: string
- *                 enum: [bank_transfer, online_gateway]
- *               note:
- *                 type: string
- *                 description: 'Ghi chú (VD: "Em đã chuyển khoản, đính kèm mã giao dịch...")'
+ *                 description: Phương thức thanh toán, hiện tại chỉ hỗ trợ online_gateway (MoMo)
+ *                 enum: [online_gateway]
  *     responses:
  *       200:
- *         description: Đã ghi nhận yêu cầu thanh toán / trả về link thanh toán
+ *         description: Tạo link thanh toán MoMo thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 payUrl:
+ *                   type: string
+ *                   description: URL thanh toán MoMo, FE redirect người dùng đến URL này
+ *                 momo:
+ *                   type: object
+ *                   description: Toàn bộ response từ MoMo
  *       400:
- *         description: Hóa đơn không hợp lệ
+ *         description: Hóa đơn không hợp lệ hoặc tạo yêu cầu MoMo thất bại
  *       404:
- *         description: Không tìm thấy
+ *         description: Không tìm thấy hóa đơn
  */
-// router.post(
-//   "/:id/pay",
-//   checkAuthorize("resident"),
-//   tenantInvoiceController.payMyInvoice
-// );
+router.post(
+  "/:id/pay",
+  checkAuthorize("resident"),
+  tenantInvoiceController.payMyInvoice
+);
 
 module.exports = router;
