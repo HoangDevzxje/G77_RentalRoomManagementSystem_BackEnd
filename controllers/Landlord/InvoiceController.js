@@ -817,6 +817,8 @@ exports.generateInvoice = async (req, res) => {
   }
 };
 
+// POST /landlords/invoices/generate-monthly-bulk
+// body: { periodMonth, periodYear, buildingId?, includeRent? }
 exports.generateMonthlyInvoicesBulk = async (req, res) => {
   try {
     const landlordId = req.user?._id;
@@ -830,6 +832,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
     const month = Number(periodMonth);
     const year = Number(periodYear);
 
+    // 1) Validate input
     if (
       !month ||
       !year ||
@@ -848,7 +851,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       });
     }
 
-    // 1) Lấy danh sách phòng đang rented, thuộc landlord, tòa active
+    // 2) Lấy danh sách phòng rented (optional filter theo building)
     const roomFilter = {
       status: "rented",
       isDeleted: false,
@@ -861,6 +864,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       .populate("buildingId", "landlordId status isDeleted name")
       .lean();
 
+    // Chỉ giữ phòng thuộc landlord hiện tại + tòa active, not deleted
     const filteredRooms = rooms.filter(
       (r) =>
         r.buildingId &&
@@ -883,7 +887,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
     let successCount = 0;
     let failCount = 0;
 
-    // 2) Loop từng phòng và gọi lại generateMonthlyInvoice hiện có
+    // 3) Loop từng phòng và gọi lại generateMonthlyInvoice
     for (const room of filteredRooms) {
       const summary = {
         roomId: room._id,
@@ -904,7 +908,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
         },
       };
 
-      // fake res để bắt status + json từ generateMonthlyInvoice
+      // fake res để capture status + json
       const out = { status: 500, body: null };
       const fakeRes = {
         status(code) {
@@ -918,11 +922,13 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       };
 
       try {
+        // Gọi lại function đơn lẻ
         await exports.generateMonthlyInvoice(fakeReq, fakeRes);
 
         summary.statusCode = out.status;
         summary.message = out.body?.message || null;
 
+        // Nếu generateMonthlyInvoice trả 201 + có data._id → success
         if (out.status === 201 && out.body?.data?._id) {
           summary.success = true;
           summary.invoiceId = out.body.data._id;
@@ -932,8 +938,16 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
           failCount++;
         }
       } catch (err) {
+        console.error(
+          "generateMonthlyInvoicesBulk - error creating invoice for room",
+          {
+            roomId: room._id,
+            error: err.message,
+          }
+        );
         summary.statusCode = 500;
-        summary.message = err.message || "Lỗi không xác định khi tạo hóa đơn";
+        summary.message =
+          err.message || "Lỗi không xác định khi tạo hóa đơn cho phòng";
         summary.success = false;
         failCount++;
       }

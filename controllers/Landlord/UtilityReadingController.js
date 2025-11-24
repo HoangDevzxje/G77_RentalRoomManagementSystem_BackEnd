@@ -108,10 +108,11 @@ async function getPreviousIndex({ roomId, type }) {
  *  - unitPrice (optional)
  *  - readingDate (optional)
  */
+// POST /landlords/utility-readings
 exports.createReading = async (req, res) => {
   try {
+    const landlordId = req.user?._id;
     const {
-      landlordId,
       roomId,
       type,
       periodMonth,
@@ -124,25 +125,73 @@ exports.createReading = async (req, res) => {
     if (
       !roomId ||
       !type ||
-      !periodMonth ||
-      !periodYear ||
+      periodMonth == null ||
+      periodYear == null ||
       currentIndex == null
     ) {
       return res.status(400).json({ message: "Thiếu dữ liệu bắt buộc" });
     }
 
-    const room = await Room.findById(roomId).select("buildingId").lean();
-    if (!room) {
-      return res.status(404).json({ message: "Không tìm thấy phòng" });
+    if (!["electricity", "water"].includes(type)) {
+      return res
+        .status(400)
+        .json({ message: "Loại tiện ích không hợp lệ (electricity | water)" });
     }
 
-    // Kiểm tra trùng kỳ (room + type + month/year)
+    const month = Number(periodMonth);
+    const year = Number(periodYear);
+    const currIdx = Number(currentIndex);
+
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return res.status(400).json({ message: "Tháng không hợp lệ (1-12)" });
+    }
+
+    if (!Number.isInteger(year) || year < 2000) {
+      return res.status(400).json({ message: "Năm không hợp lệ" });
+    }
+
+    if (!Number.isFinite(currIdx) || currIdx < 0) {
+      return res.status(400).json({ message: "currentIndex phải là số >= 0" });
+    }
+
+    // 2) Validate phòng + tòa thuộc landlord hiện tại
+    const room = await Room.findById(roomId)
+      .select("buildingId isDeleted")
+      .lean();
+
+    if (!room || room.isDeleted) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy phòng hoặc phòng đã bị xóa" });
+    }
+
+    const building = await Building.findById(room.buildingId)
+      .select("landlordId isDeleted status")
+      .lean();
+
+    if (
+      !building ||
+      building.isDeleted ||
+      String(building.landlordId) !== String(landlordId)
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Phòng không thuộc quyền quản lý của landlord" });
+    }
+
+    if (building.status !== "active") {
+      return res
+        .status(400)
+        .json({ message: "Tòa nhà không ở trạng thái active" });
+    }
+
+    // 3) Check trùng kỳ
     const existed = await UtilityReading.findOne({
       landlordId,
       roomId,
       type,
-      periodMonth: Number(periodMonth),
-      periodYear: Number(periodYear),
+      periodMonth: month,
+      periodYear: year,
       isDeleted: false,
     }).lean();
 
@@ -152,18 +201,40 @@ exports.createReading = async (req, res) => {
       });
     }
 
-    const previousIndex = await getPreviousIndex({ roomId, type });
+    // 4) previousIndex + validate so với currentIndex
+    let previousIndex = await getPreviousIndex({ roomId, type });
+    if (!Number.isFinite(previousIndex) || previousIndex < 0) {
+      previousIndex = 0;
+    }
 
+    if (currIdx < previousIndex) {
+      return res.status(400).json({
+        message:
+          "currentIndex phải lớn hơn hoặc bằng previousIndex (chỉ số kỳ trước)",
+      });
+    }
+
+    // 5) Validate unitPrice
+    let price = 0;
+    if (unitPrice != null) {
+      price = Number(unitPrice);
+      if (!Number.isFinite(price) || price < 0) {
+        return res.status(400).json({ message: "unitPrice phải là số >= 0" });
+      }
+    }
+
+    // 6) Tạo document
     const doc = await UtilityReading.create({
+      landlordId,
       buildingId: room.buildingId,
       roomId,
       type,
-      periodMonth: Number(periodMonth),
-      periodYear: Number(periodYear),
+      periodMonth: month,
+      periodYear: year,
       readingDate: readingDate ? new Date(readingDate) : new Date(),
       previousIndex,
-      currentIndex: Number(currentIndex),
-      unitPrice: unitPrice != null ? Number(unitPrice) : 0,
+      currentIndex: currIdx,
+      unitPrice: price,
       createdById: landlordId,
     });
 
@@ -203,11 +274,7 @@ exports.getReading = async (req, res) => {
   }
 };
 
-/**
- * PATCH /landlords/utility-readings/:id
- * Chỉ cho update khi status = draft
- * body có thể gồm: currentIndex, unitPrice, readingDate, periodMonth, periodYear
- */
+// PATCH /landlords/utility-readings/:id
 exports.updateReading = async (req, res) => {
   try {
     const landlordId = req.user._id;
@@ -216,14 +283,14 @@ exports.updateReading = async (req, res) => {
       previousIndex,
       currentIndex,
       unitPrice,
-      amount,
+
       type,
       periodMonth,
       periodYear,
       roomId,
       buildingId,
-      note, // cho phép chỉnh note
-      status, // cho phép landlord đổi từ 'draft' -> 'confirmed'
+      note,
+      status,
     } = req.body || {};
 
     const reading = await UtilityReading.findOne({
@@ -238,11 +305,9 @@ exports.updateReading = async (req, res) => {
     const locked = reading.status === "billed" || !!reading.invoiceId;
 
     if (locked) {
-      // Nếu locked mà cố sửa field "critical"
       if (
         previousIndex != null ||
         currentIndex != null ||
-        amount != null ||
         unitPrice != null ||
         type != null ||
         periodMonth != null ||
@@ -257,32 +322,62 @@ exports.updateReading = async (req, res) => {
       }
     }
 
-    // Cho phép update bình thường khi chưa lock
+    // Nếu chưa lock, cho phép cập nhật nhưng phải validate
     if (!locked) {
-      if (previousIndex != null) reading.previousIndex = previousIndex;
-      if (currentIndex != null) reading.currentIndex = currentIndex;
-      if (unitPrice != null) reading.unitPrice = unitPrice;
-      if (amount != null) reading.amount = amount;
-      if (type != null) reading.type = type;
-      if (periodMonth != null) reading.periodMonth = periodMonth;
-      if (periodYear != null) reading.periodYear = periodYear;
-      if (roomId != null) reading.roomId = roomId;
-      if (buildingId != null) reading.buildingId = buildingId;
+      // previousIndex
+      if (previousIndex != null) {
+        const prev = Number(previousIndex);
+        if (!Number.isFinite(prev) || prev < 0) {
+          return res
+            .status(400)
+            .json({ message: "previousIndex phải là số >= 0" });
+        }
+        reading.previousIndex = prev;
+      }
 
-      // Re-calc consumption nếu có current/previous
+      // currentIndex
+      if (currentIndex != null) {
+        const curr = Number(currentIndex);
+        if (!Number.isFinite(curr) || curr < 0) {
+          return res
+            .status(400)
+            .json({ message: "currentIndex phải là số >= 0" });
+        }
+        reading.currentIndex = curr;
+      }
+
+      // Check current >= previous nếu cả 2 đã có
       if (
         reading.currentIndex != null &&
         reading.previousIndex != null &&
-        reading.currentIndex >= reading.previousIndex
+        reading.currentIndex < reading.previousIndex
       ) {
-        reading.consumption = reading.currentIndex - reading.previousIndex;
+        return res.status(400).json({
+          message:
+            "currentIndex phải lớn hơn hoặc bằng previousIndex (chỉ số kỳ trước)",
+        });
       }
+
+      // unitPrice
+      if (unitPrice != null) {
+        const price = Number(unitPrice);
+        if (!Number.isFinite(price) || price < 0) {
+          return res.status(400).json({ message: "unitPrice phải là số >= 0" });
+        }
+        reading.unitPrice = price;
+      }
+
+      if (type != null) reading.type = type;
+      if (periodMonth != null) reading.periodMonth = Number(periodMonth);
+      if (periodYear != null) reading.periodYear = Number(periodYear);
+      if (roomId != null) reading.roomId = roomId;
+      if (buildingId != null) reading.buildingId = buildingId;
+      // consumption + amount sẽ được schema pre("validate") tự tính lại
     }
 
-    // Các field vẫn cho phép chỉnh dù đã locked
+    // Các field vẫn cho phép chỉnh dù locked
     if (note != null) reading.note = note;
     if (!locked && status) {
-      // chỉ cho đổi status khi chưa billed
       reading.status = status;
     }
 
@@ -294,10 +389,7 @@ exports.updateReading = async (req, res) => {
   }
 };
 
-/**
- * POST /landlords/utility-readings/:id/confirm
- * Lock lại, không cho sửa nữa
- */
+// POST /landlords/utility-readings/:id/confirm
 exports.confirmReading = async (req, res) => {
   try {
     const landlordId = req.user?._id;
@@ -305,6 +397,7 @@ exports.confirmReading = async (req, res) => {
 
     const doc = await UtilityReading.findOne({
       _id: id,
+      landlordId,
       isDeleted: false,
     });
 
@@ -318,6 +411,31 @@ exports.confirmReading = async (req, res) => {
       });
     }
 
+    // Validate trước khi confirm: currentIndex >= previousIndex, unitPrice >= 0
+    if (
+      !Number.isFinite(doc.currentIndex) ||
+      doc.currentIndex < 0 ||
+      !Number.isFinite(doc.previousIndex) ||
+      doc.previousIndex < 0
+    ) {
+      return res.status(400).json({
+        message:
+          "Giá trị previousIndex / currentIndex không hợp lệ (phải là số >= 0)",
+      });
+    }
+
+    if (doc.currentIndex < doc.previousIndex) {
+      return res.status(400).json({
+        message:
+          "currentIndex phải lớn hơn hoặc bằng previousIndex (chỉ số kỳ trước)",
+      });
+    }
+
+    if (doc.unitPrice != null && doc.unitPrice < 0) {
+      return res.status(400).json({ message: "unitPrice phải là số >= 0" });
+    }
+
+    // Cập nhật trạng thái
     doc.status = "confirmed";
     doc.confirmedAt = new Date();
     doc.confirmedById = landlordId;
@@ -443,6 +561,17 @@ exports.bulkCreateReadings = async (req, res) => {
           continue;
         }
 
+        // Validate unitPrice
+        let price = 0;
+        if (unitPrice != null) {
+          price = Number(unitPrice);
+          if (!Number.isFinite(price) || price < 0) {
+            itemResult.error = "unitPrice phải là số >= 0";
+            results.push(itemResult);
+            continue;
+          }
+        }
+
         // 2) Kiểm tra phòng + tòa thuộc landlord
         const room = await Room.findById(roomId)
           .select("buildingId isDeleted")
@@ -475,7 +604,7 @@ exports.bulkCreateReadings = async (req, res) => {
           continue;
         }
 
-        // 3) Check trùng kỳ (thêm landlordId cho chặt chẽ)
+        // 3) Check trùng kỳ
         const existed = await UtilityReading.findOne({
           landlordId,
           roomId,
@@ -492,8 +621,18 @@ exports.bulkCreateReadings = async (req, res) => {
           continue;
         }
 
-        // 4) Lấy previousIndex (dùng helper sẵn có của bạn)
-        const previousIndex = await getPreviousIndex({ roomId, type });
+        // 4) previousIndex + validate
+        let previousIndex = await getPreviousIndex({ roomId, type });
+        if (!Number.isFinite(previousIndex) || previousIndex < 0) {
+          previousIndex = 0;
+        }
+
+        if (currIdx < previousIndex) {
+          itemResult.error =
+            "currentIndex phải lớn hơn hoặc bằng previousIndex (chỉ số kỳ trước)";
+          results.push(itemResult);
+          continue;
+        }
 
         // 5) Tạo UtilityReading
         const doc = await UtilityReading.create({
@@ -506,7 +645,7 @@ exports.bulkCreateReadings = async (req, res) => {
           readingDate: readingDate ? new Date(readingDate) : new Date(),
           previousIndex,
           currentIndex: currIdx,
-          unitPrice: unitPrice != null ? Number(unitPrice) : 0,
+          unitPrice: price,
           createdById: landlordId,
         });
 
@@ -539,6 +678,7 @@ exports.bulkCreateReadings = async (req, res) => {
     });
   }
 };
+
 /**
  * GET /landlords/utility-readings/rooms
  * Lấy danh sách phòng:
