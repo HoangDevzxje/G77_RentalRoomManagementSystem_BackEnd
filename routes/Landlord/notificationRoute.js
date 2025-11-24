@@ -161,19 +161,38 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *   get:
  *     summary: Lấy danh sách thông báo tôi ĐÃ GỬI
  *     tags: [Landlord Notifications]
- *     security: [ { bearerAuth: [] } ]
- *     description: Chỉ Landlord & Staff. Staff chỉ thấy thông báo liên quan đến tòa nhà hiện quản lý
+ *     security:
+ *       - bearerAuth: []
+ *     description: >
+ *       - Chỉ landlord & staff.<br>
+ *       - Landlord sẽ thấy TẤT CẢ thông báo trong các tòa mà landlord quản lý, bao gồm thông báo do landlord hoặc staff tạo.<br>
+ *       - Staff chỉ thấy các thông báo trong **tòa nhà staff được phân công**, dù thông báo đó do landlord hay staff khác tạo.<br>
+ *       - Có thể lọc theo `buildingId`.
  *     parameters:
  *       - name: page
  *         in: query
- *         schema: { type: integer, default: 1 }
+ *         schema:
+ *           type: integer
+ *           default: 1
  *       - name: limit
  *         in: query
- *         schema: { type: integer, default: 20 }
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *       - name: buildingId
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Lọc theo tòa nhà mà landlord hoặc staff quản lý
  *     responses:
  *       200:
- *         description: Danh sách thông báo đã gửi + thống kê đã đọc
+ *         description: Danh sách thông báo đã gửi kèm số liệu đọc
+ *       403:
+ *         description: Không có quyền hoặc không quản lý tòa nhà này
+ *       500:
+ *         description: Lỗi server
  */
+
 
 /**
  * @swagger

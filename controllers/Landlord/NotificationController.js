@@ -457,7 +457,9 @@ const getMySentNotifications = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const filterBuildingId = req.query.buildingId || null;
+    const filterBuildingId = req.query.buildingId
+        ? new mongoose.Types.ObjectId(req.query.buildingId)
+        : null;
 
     if (!["landlord", "staff"].includes(user.role)) {
         return res.status(403).json({ message: "Không có quyền" });
@@ -484,7 +486,7 @@ const getMySentNotifications = async (req, res) => {
             });
         }
 
-        if (filterBuildingId && managedBuildingIds.includes(filterBuildingId) === false) {
+        if (filterBuildingId && !managedBuildingIds.some(id => id.equals(filterBuildingId))) {
             return res.status(403).json({ message: "Bạn không quản lý tòa nhà này" });
         }
 
