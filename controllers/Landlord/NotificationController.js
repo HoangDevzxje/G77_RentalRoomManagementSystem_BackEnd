@@ -209,7 +209,7 @@ const getMyNotifications = async (req, res) => {
 
             matchQuery = {
                 landlordId,
-                createByRole: { $in: ["landlord", "staff"] },
+                createByRole: { $in: ["landlord", "staff", "system"] },
                 $or: [
                     { "target.buildings": { $in: buildingIds } },
                     { "target.floors": { $in: floorIds } },
@@ -219,10 +219,34 @@ const getMyNotifications = async (req, res) => {
             };
         }
         else if (user.role === "landlord") {
-            // Chỉ lấy thông báo do resident tạo
-            matchQuery = {
+            const buildings = await Building.find({
                 landlordId: user._id,
-                createByRole: { $in: ["resident", "system"] }
+                isDeleted: { $ne: true }
+            }).select("_id").lean();
+            const buildingIds = buildings.map(b => b._id);
+
+            const floors = await Floor.find({
+                buildingId: { $in: buildingIds },
+                isDeleted: { $ne: true }
+            }).select("_id").lean();
+
+            const rooms = await Room.find({
+                buildingId: { $in: buildingIds },
+                active: true,
+                isDeleted: { $ne: true }
+            }).select("_id").lean();
+
+            const floorIds = floors.map(f => f._id);
+            const roomIds = rooms.map(r => r._id);
+
+            matchQuery = {
+                createByRole: { $in: ["resident", "system"] },
+                $or: [
+                    { "target.buildings": { $in: buildingIds } },
+                    { "target.floors": { $in: floorIds } },
+                    { "target.rooms": { $in: roomIds } },
+                    { "target.residents": user._id }
+                ]
             };
         }
         else if (user.role === "staff" && req.staff) {
@@ -242,7 +266,8 @@ const getMyNotifications = async (req, res) => {
                 $or: [
                     { "target.buildings": { $in: buildingIds } },
                     { "target.floors": { $in: floorIds } },
-                    { "target.rooms": { $in: roomIds } }
+                    { "target.rooms": { $in: roomIds } },
+                    { "target.residents": user._id }
                 ]
             };
 
