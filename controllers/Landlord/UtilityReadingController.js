@@ -98,16 +98,7 @@ async function getPreviousIndex({ roomId, type }) {
   return 0;
 }
 
-/**
- * POST /landlords/utility-readings
- * body:
- *  - roomId (required)
- *  - type: electricity | water (required)
- *  - periodMonth, periodYear (required)
- *  - currentIndex (required)
- *  - unitPrice (optional)
- *  - readingDate (optional)
- */
+
 // POST /landlords/utility-readings
 exports.createReading = async (req, res) => {
   try {

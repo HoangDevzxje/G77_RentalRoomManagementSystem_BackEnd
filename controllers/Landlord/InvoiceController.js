@@ -976,3 +976,143 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
     });
   }
 };
+// Lấy danh sách phòng có hợp đồng completed, hợp lệ trong kỳ để tạo hoá đơn
+exports.listRoomsForInvoice = async (req, res) => {
+  try {
+    const landlordId = req.user?._id;
+
+    if (!landlordId) {
+      return res.status(401).json({ message: "Không xác định được landlord" });
+    }
+
+    let {
+      buildingId,
+      periodMonth,
+      periodYear,
+      q,
+      page = 1,
+      limit = 20,
+    } = req.query || {};
+
+    const now = new Date();
+    const month = Number.isFinite(Number(periodMonth))
+      ? Number(periodMonth)
+      : now.getMonth() + 1;
+    const year = Number.isFinite(Number(periodYear))
+      ? Number(periodYear)
+      : now.getFullYear();
+
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return res
+        .status(400)
+        .json({ message: "periodMonth không hợp lệ (1–12)" });
+    }
+    if (!Number.isInteger(year) || year < 2000) {
+      return res.status(400).json({ message: "periodYear không hợp lệ" });
+    }
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+
+    // Dùng lại hàm getPeriodRange đã khai báo ở đầu file
+    const { start, end } = getPeriodRange(month, year);
+
+    // 1) Lấy tất cả contract completed, thuộc landlord, còn hiệu lực trong kỳ
+    const filter = {
+      landlordId,
+      status: "completed",
+      isDeleted: false,
+      "contract.startDate": { $lte: end },
+      $or: [
+        { "contract.endDate": { $gte: start } },
+        { "contract.endDate": null },
+      ],
+    };
+
+    if (buildingId) {
+      filter.buildingId = buildingId;
+    }
+
+    let contractsQuery = Contract.find(filter)
+      .populate("roomId", "roomNumber status isDeleted floorId")
+      .populate("buildingId", "name address status isDeleted")
+      .populate("tenantId", "email userInfo")
+      .sort({ "contract.startDate": -1 });
+
+    const allContracts = await contractsQuery.lean();
+
+    // 2) Lọc những contract có phòng hợp lệ (room rented & không bị xóa)
+    let filtered = allContracts.filter((c) => {
+      const r = c.roomId;
+      const b = c.buildingId;
+      if (!r || r.isDeleted) return false;
+      if (r.status !== "rented") return false;
+      if (!b || b.isDeleted || b.status !== "active") return false;
+      return true;
+    });
+
+    // 3) Lọc theo search roomNumber nếu có
+    if (q) {
+      const keyword = String(q).trim().toLowerCase();
+      filtered = filtered.filter((c) =>
+        c.roomId?.roomNumber?.toLowerCase().includes(keyword)
+      );
+    }
+
+    const total = filtered.length;
+    const startIndex = (pageNum - 1) * limitNum;
+    const endIndex = startIndex + limitNum;
+
+    const pageItems = filtered.slice(startIndex, endIndex).map((c) => {
+      const room = c.roomId || {};
+      const building = c.buildingId || {};
+      const tenant = c.tenantId || {};
+      const tenantInfo = tenant.userInfo || {};
+
+      return {
+        contractId: c._id,
+        contractStatus: c.status,
+        contract: {
+          no: c.contract?.no || "",
+          startDate: c.contract?.startDate || null,
+          endDate: c.contract?.endDate || null,
+          price: c.contract?.price || 0,
+        },
+        room: {
+          _id: room._id,
+          roomNumber: room.roomNumber,
+          status: room.status,
+          floorId: room.floorId,
+        },
+        building: {
+          _id: building._id,
+          name: building.name,
+          address: building.address,
+        },
+        tenant: {
+          _id: tenant._id,
+          email: tenant.email,
+          fullName: tenantInfo.fullName,
+          phoneNumber: tenantInfo.phoneNumber,
+        },
+      };
+    });
+
+    return res.json({
+      message: "Danh sách phòng có hợp đồng completed trong kỳ",
+      data: pageItems,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      periodMonth: month,
+      periodYear: year,
+    });
+  } catch (e) {
+    console.error("listRoomsForInvoice error:", e);
+    return res.status(500).json({
+      message: e.message || "Server error",
+      data: [],
+      total: 0,
+    });
+  }
+};

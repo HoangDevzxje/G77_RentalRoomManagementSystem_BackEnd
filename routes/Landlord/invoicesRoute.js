@@ -5,9 +5,121 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
 /**
  * @swagger
  * tags:
- *   - name: Invoices
+ *   - name: /landlords/invoices
  *     description: Quản lý hóa đơn tiền phòng + điện/nước
  */
+
+/**
+ * @swagger
+ * /landlords/invoices/rooms:
+ *   get:
+ *     summary: Lấy danh sách phòng đang có hợp đồng completed trong kỳ để tạo hoá đơn
+ *     description: >
+ *       Trả về danh sách phòng thuộc landlord hiện tại, có hợp đồng ở trạng thái completed
+ *       và còn hiệu lực trong kỳ periodMonth/periodYear. Dùng để FE hiển thị list phòng có
+ *       thể tạo hoá đơn tiền phòng + điện/nước.
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: buildingId
+ *         schema:
+ *           type: string
+ *         description: Lọc theo tòa nhà
+ *       - in: query
+ *         name: periodMonth
+ *         schema:
+ *           type: integer
+ *         description: Tháng kỳ cần tạo hoá đơn (mặc định = tháng hiện tại)
+ *       - in: query
+ *         name: periodYear
+ *         schema:
+ *           type: integer
+ *         description: Năm kỳ cần tạo hoá đơn (mặc định = năm hiện tại)
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Tìm theo số phòng (roomNumber)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Danh sách phòng đủ điều kiện tạo hoá đơn trong kỳ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       contractId:
+ *                         type: string
+ *                       contractStatus:
+ *                         type: string
+ *                         example: completed
+ *                       contract:
+ *                         type: object
+ *                         properties:
+ *                           no: { type: string }
+ *                           startDate:
+ *                             type: string
+ *                             format: date-time
+ *                           endDate:
+ *                             type: string
+ *                             format: date-time
+ *                           price:
+ *                             type: number
+ *                       room:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           roomNumber: { type: string }
+ *                           status: { type: string }
+ *                           floorId: { type: string }
+ *                       building:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           name: { type: string }
+ *                           address: { type: string }
+ *                       tenant:
+ *                         type: object
+ *                         properties:
+ *                           _id: { type: string }
+ *                           email: { type: string }
+ *                           fullName: { type: string }
+ *                           phoneNumber: { type: string }
+ *                 total:
+ *                   type: integer
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 periodMonth:
+ *                   type: integer
+ *                 periodYear:
+ *                   type: integer
+ */
+router.get(
+  "/rooms",
+  checkAuthorize("landlord"),
+  invoiceController.listRoomsForInvoice
+);
 
 /**
  * @swagger
