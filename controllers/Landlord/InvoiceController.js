@@ -987,6 +987,7 @@ exports.listRoomsForInvoice = async (req, res) => {
 
     let {
       buildingId,
+      roomId,
       periodMonth,
       periodYear,
       q,
@@ -1014,10 +1015,9 @@ exports.listRoomsForInvoice = async (req, res) => {
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
 
-    // Dùng lại hàm getPeriodRange đã khai báo ở đầu file
     const { start, end } = getPeriodRange(month, year);
 
-    // 1) Lấy tất cả contract completed, thuộc landlord, còn hiệu lực trong kỳ
+    // 1) Lọc contract completed, thuộc landlord, còn hiệu lực trong kỳ
     const filter = {
       landlordId,
       status: "completed",
@@ -1033,15 +1033,26 @@ exports.listRoomsForInvoice = async (req, res) => {
       filter.buildingId = buildingId;
     }
 
+    if (roomId) {
+      filter.roomId = roomId;
+    }
+
     let contractsQuery = Contract.find(filter)
       .populate("roomId", "roomNumber status isDeleted floorId")
       .populate("buildingId", "name address status isDeleted")
-      .populate("tenantId", "email userInfo")
+      .populate({
+        path: "tenantId",
+        select: "email role userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber dob gender address",
+        },
+      })
       .sort({ "contract.startDate": -1 });
 
     const allContracts = await contractsQuery.lean();
 
-    // 2) Lọc những contract có phòng hợp lệ (room rented & không bị xóa)
+    // 2) Chỉ giữ contract có room hợp lệ
     let filtered = allContracts.filter((c) => {
       const r = c.roomId;
       const b = c.buildingId;
@@ -1051,7 +1062,7 @@ exports.listRoomsForInvoice = async (req, res) => {
       return true;
     });
 
-    // 3) Lọc theo search roomNumber nếu có
+    // 3) Search theo roomNumber (q) nếu có
     if (q) {
       const keyword = String(q).trim().toLowerCase();
       filtered = filtered.filter((c) =>
