@@ -38,7 +38,7 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e8,
   pingTimeout: 60000,
 });
-
+global._io = io;
 // Middleware xác thực Socket.IO (bắt buộc có JWT)
 io.use((socket, next) => {
   const req = {
