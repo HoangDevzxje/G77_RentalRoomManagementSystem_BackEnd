@@ -219,11 +219,10 @@ const getMyNotifications = async (req, res) => {
             };
         }
         else if (user.role === "landlord") {
-
             // Chỉ lấy thông báo do resident tạo
             matchQuery = {
                 landlordId: user._id,
-                createByRole: "resident"
+                createByRole: { $in: ["resident", "system"] }
             };
         }
         else if (user.role === "staff" && req.staff) {
@@ -239,7 +238,7 @@ const getMyNotifications = async (req, res) => {
 
             matchQuery = {
                 landlordId: req.staff.landlordId,
-                createByRole: "resident",
+                createByRole: { $in: ["resident", "system"] },
                 $or: [
                     { "target.buildings": { $in: buildingIds } },
                     { "target.floors": { $in: floorIds } },
