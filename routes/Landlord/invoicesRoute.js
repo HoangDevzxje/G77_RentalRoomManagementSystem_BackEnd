@@ -28,6 +28,11 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
  *           type: string
  *         description: Lọc theo tòa nhà
  *       - in: query
+ *         name: roomId
+ *         schema:
+ *           type: string
+ *         description: Lọc theo một phòng cụ thể (dùng ở màn chi tiết phòng)
+ *       - in: query
  *         name: periodMonth
  *         schema:
  *           type: integer
