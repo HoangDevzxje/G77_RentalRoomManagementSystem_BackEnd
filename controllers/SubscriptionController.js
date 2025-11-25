@@ -5,6 +5,10 @@ const { v4: uuidv4 } = require('uuid');
 
 const Subscription = require('../models/Subscription');
 const Package = require('../models/Package');
+const sendTrialWelcomeEmail = require('../utils/sendTrialWelcomeEmail');
+const Account = require('../models/Account');
+const UserInformation = require('../models/UserInformation');
+const sendPaymentSuccessEmail = require('../utils/sendPaymentSuccessEmail');
 
 const VNP_TMNCODE = process.env.VNP_TMNCODE;
 const VNP_HASHSECRET = process.env.VNP_HASHSECRET;
@@ -97,9 +101,28 @@ const startTrial = async (req, res) => {
         });
         await sub.save();
 
-        return sendSuccess(res, { subscription: sub, endDate, durationDays: trialPkg.durationDays }, 'Dùng thử kích hoạt thành công!');
+        const landlord = await Account.findOne({ _id: landlordId }).populate('userInfo');
+        const fullName = landlord?.userInfo?.fullName || "Quý khách";
+        sendTrialWelcomeEmail({
+            to: req.user.email,
+            fullName,
+            durationDays: trialPkg.durationDays,
+            startDate,
+            endDate,
+            maxRooms: trialPkg.roomLimit
+        }).catch(err => {
+            console.error("Lỗi gửi email dùng thử:", err);
+        });
+
+        return sendSuccess(res, {
+            subscription: sub,
+            endDate,
+            durationDays: trialPkg.durationDays
+        }, 'Dùng thử kích hoạt thành công! Email xác nhận đã được gửi.');
+
     } catch (err) {
-        return sendError(res, 500, err.message);
+        console.error("Lỗi startTrial:", err);
+        return sendError(res, 500, 'Đã có lỗi xảy ra');
     }
 };
 
@@ -380,7 +403,23 @@ const paymentCallback = async (req, res) => {
         );
 
         const action = isRenew ? 'Gia hạn gói' : 'Kích hoạt gói mới';
+        const landlord = await Account.findOne({ _id: sub.landlordId }).populate('userInfo');
+        const fullName = landlord?.userInfo?.fullName || "Quý khách";
+        const packageName = sub.packageId?.name || "Gói dịch vụ";
 
+        sendPaymentSuccessEmail({
+            to: landlord.email,
+            fullName,
+            action,
+            packageName,
+            durationDays: sub.packageId.durationDays,
+            amount: sub.amount,
+            startDate: sub.startDate,
+            endDate: sub.endDate,
+            transactionNo: vnp_Params.vnp_TransactionNo,
+        }).catch(err => {
+            console.error("Gửi email thanh toán thành công thất bại:", err);
+        });
         return sendSuccess(res, { subscription: sub, action }, `${action} thành công!`);
 
     } catch (err) {
