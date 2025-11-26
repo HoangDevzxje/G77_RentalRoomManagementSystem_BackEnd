@@ -1,12 +1,14 @@
 const Account = require("../../models/Account");
+const UserInformation = require("../../models/UserInformation");
 
 // GET /landlords/bank-info
 exports.getMyBankInfo = async (req, res) => {
   try {
     const landlordId = req.user?._id;
 
+    // Lấy account để check role + link sang userInfo
     const account = await Account.findById(landlordId)
-      .select("role bankInfo")
+      .select("role userInfo")
       .lean();
 
     if (!account) {
@@ -19,12 +21,22 @@ exports.getMyBankInfo = async (req, res) => {
         .json({ message: "Chỉ chủ trọ mới được xem thông tin ngân hàng" });
     }
 
-    const bankInfo = account.bankInfo || {
+    let bankInfo = {
       bankName: "",
       accountNumber: "",
       accountName: "",
       qrImageUrl: "",
     };
+
+    if (account.userInfo) {
+      const userInfo = await UserInformation.findById(account.userInfo)
+        .select("bankInfo")
+        .lean();
+
+      if (userInfo && userInfo.bankInfo) {
+        bankInfo = userInfo.bankInfo;
+      }
+    }
 
     return res.json({
       message: "Lấy thông tin ngân hàng thành công",
@@ -42,7 +54,7 @@ exports.updateMyBankInfo = async (req, res) => {
     const landlordId = req.user?._id;
     const { bankName, accountNumber, accountName, qrImageUrl } = req.body || {};
 
-    const account = await Account.findById(landlordId);
+    const account = await Account.findById(landlordId).select("role userInfo");
 
     if (!account) {
       return res.status(404).json({ message: "Không tìm thấy tài khoản" });
@@ -54,29 +66,47 @@ exports.updateMyBankInfo = async (req, res) => {
         .json({ message: "Chỉ chủ trọ mới được cập nhật thông tin ngân hàng" });
     }
 
-    // Đảm bảo luôn có object bankInfo
-    if (!account.bankInfo) {
-      account.bankInfo = {};
+    let userInfoDoc;
+
+    // Nếu chưa có userInfo, tạo mới
+    if (!account.userInfo) {
+      userInfoDoc = new UserInformation({});
+      await userInfoDoc.save();
+
+      account.userInfo = userInfoDoc._id;
+      await account.save();
+    } else {
+      userInfoDoc = await UserInformation.findById(account.userInfo);
+      if (!userInfoDoc) {
+        userInfoDoc = new UserInformation({});
+        await userInfoDoc.save();
+        account.userInfo = userInfoDoc._id;
+        await account.save();
+      }
+    }
+
+    if (!userInfoDoc.bankInfo) {
+      userInfoDoc.bankInfo = {};
     }
 
     if (typeof bankName === "string") {
-      account.bankInfo.bankName = bankName.trim();
+      userInfoDoc.bankInfo.bankName = bankName.trim();
     }
     if (typeof accountNumber === "string") {
-      account.bankInfo.accountNumber = accountNumber.trim();
+      userInfoDoc.bankInfo.accountNumber = accountNumber.trim();
     }
     if (typeof accountName === "string") {
-      account.bankInfo.accountName = accountName.trim();
+      userInfoDoc.bankInfo.accountName = accountName.trim();
     }
     if (typeof qrImageUrl === "string") {
-      account.bankInfo.qrImageUrl = qrImageUrl.trim();
+      userInfoDoc.bankInfo.qrImageUrl = qrImageUrl.trim();
     }
 
-    await account.save();
+    await userInfoDoc.save();
 
     return res.json({
       message: "Cập nhật thông tin ngân hàng thành công",
-      bankInfo: account.bankInfo,
+      bankInfo: userInfoDoc.bankInfo,
     });
   } catch (e) {
     console.error("updateMyBankInfo error:", e);
@@ -93,7 +123,8 @@ exports.uploadBankQr = async (req, res) => {
     }
 
     const qrUrl = req.file.path;
-    const account = await Account.findById(landlordId);
+
+    const account = await Account.findById(landlordId).select("role userInfo");
     if (!account) {
       return res.status(404).json({ message: "Không tìm thấy tài khoản" });
     }
@@ -104,17 +135,34 @@ exports.uploadBankQr = async (req, res) => {
         .json({ message: "Chỉ chủ trọ mới được cập nhật QR ngân hàng" });
     }
 
-    if (!account.bankInfo) {
-      account.bankInfo = {};
+    let userInfoDoc;
+
+    if (!account.userInfo) {
+      userInfoDoc = new UserInformation({});
+      await userInfoDoc.save();
+
+      account.userInfo = userInfoDoc._id;
+      await account.save();
+    } else {
+      userInfoDoc = await UserInformation.findById(account.userInfo);
+      if (!userInfoDoc) {
+        userInfoDoc = new UserInformation({});
+        await userInfoDoc.save();
+        account.userInfo = userInfoDoc._id;
+        await account.save();
+      }
     }
 
-    account.bankInfo.qrImageUrl = qrUrl;
-    await account.save();
+    if (!userInfoDoc.bankInfo) {
+      userInfoDoc.bankInfo = {};
+    }
+
+    userInfoDoc.bankInfo.qrImageUrl = qrUrl;
+    await userInfoDoc.save();
 
     return res.json({
       message: "Upload QR thành công",
-      qrImageUrl: qrUrl,
-      bankInfo: account.bankInfo,
+      bankInfo: userInfoDoc.bankInfo,
     });
   } catch (e) {
     console.error("uploadBankQr error:", e);
