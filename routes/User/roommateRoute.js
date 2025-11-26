@@ -206,7 +206,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: email
+ *         name: q
  *         required: true
  *         description: Từ khóa tìm kiếm email
  *         schema:
