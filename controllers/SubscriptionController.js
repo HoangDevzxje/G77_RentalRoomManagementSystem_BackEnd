@@ -242,41 +242,43 @@ const renewPackage = async (req, res) => {
             return sendError(res, 400, `Còn ${daysLeft} ngày. Chỉ gia hạn khi còn ≤ 30 ngày.`);
         }
 
-        const pendingRenew = await Subscription.findOne({
+        
+        const existingRenewal = await Subscription.findOne({
             landlordId,
-            status: 'pending_payment',
+            renewedFrom: currentSub._id,                  
             isRenewal: true,
-            packageId: pkg._id,
-            renewedFrom: currentSub._id,
+            status: { $in: ['pending_payment', 'upcoming'] }
         });
 
-        if (pendingRenew) {
-            const now = new Date();
+        if (existingRenewal) {
+            if (existingRenewal.status === 'pending_payment' && existingRenewal.paymentUrl) {
+                const now = new Date();
+                if (!existingRenewal.vnp_ExpireDate || now > existingRenewal.vnp_ExpireDate) {
+                    const { url, expireAt } = generateVnpUrl(
+                        existingRenewal._id.toString(),
+                        pkg.price,
+                        'renew_subscription',
+                        req
+                    );
+                    existingRenewal.paymentUrl = url;
+                    existingRenewal.vnp_ExpireDate = expireAt;
+                    await existingRenewal.save();
 
-            if (!pendingRenew.vnp_ExpireDate || now > pendingRenew.vnp_ExpireDate) {
-                const { url, expireAt } = generateVnpUrl(
-                    pendingRenew._id.toString(),
-                    pkg.price,
-                    'renew_subscription',
-                    req
-                );
-
-                pendingRenew.paymentUrl = url;
-                pendingRenew.vnp_ExpireDate = expireAt;
-                await pendingRenew.save();
+                    return sendSuccess(res, {
+                        paymentUrl: url,
+                        subscriptionId: existingRenewal._id,
+                        message: 'URL cũ hết hạn – đã tạo link thanh toán mới.',
+                    });
+                }
 
                 return sendSuccess(res, {
-                    paymentUrl: url,
-                    subscriptionId: pendingRenew._id,
-                    message: 'URL cũ đã hết hạn – đã tạo URL thanh toán mới.',
+                    paymentUrl: existingRenewal.paymentUrl,
+                    subscriptionId: existingRenewal._id,
+                    message: 'Bạn đã có yêu cầu gia hạn đang chờ thanh toán.',
                 });
             }
 
-            return sendSuccess(res, {
-                paymentUrl: pendingRenew.paymentUrl,
-                subscriptionId: pendingRenew._id,
-                message: 'Yêu cầu gia hạn đã tồn tại.',
-            });
+            return sendError(res, 400, 'Bạn đã có gói gia hạn sắp kích hoạt. Không thể gia hạn thêm.');
         }
 
         const newStartDate = moment(currentSub.endDate).add(1, 'day').toDate();
@@ -313,11 +315,12 @@ const renewPackage = async (req, res) => {
             paymentUrl: url,
             subscriptionId: newSub._id,
             oldSubscriptionId: currentSub._id,
-            message: 'Đã tạo yêu cầu gia hạn.',
+            message: 'Đã tạo yêu cầu gia hạn thành công.',
         });
 
     } catch (err) {
-        return sendError(res, 500, err.message);
+        console.error('Lỗi renewPackage:', err);
+        return sendError(res, 500, err.message || 'Lỗi server');
     }
 };
 
@@ -629,7 +632,7 @@ const cancelledSubscription = async (req, res) => {
 
         const sub = await Subscription.findOne({
             landlordId,
-            status: 'active',
+            status: { $in: ['active', 'upcoming'] },
             endDate: { $gt: new Date() }
         }).populate('packageId');
 
