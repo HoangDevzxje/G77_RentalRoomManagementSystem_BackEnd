@@ -43,11 +43,7 @@ const { uploadBankQr } = require("../../configs/cloudinary.js");
  *                       type: string
  *
  */
-router.get(
-  "/bank-info",
-  checkAuthorize("landlord"),
-  bankInfoController.getMyBankInfo
-);
+router.get("/", checkAuthorize("landlord"), bankInfoController.getMyBankInfo);
 
 /**
  * @swagger
