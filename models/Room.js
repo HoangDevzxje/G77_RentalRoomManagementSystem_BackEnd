@@ -40,7 +40,6 @@ const roomSchema = new mongoose.Schema(
 
     eStart: { type: Number, default: 0, min: 0 }, // chỉ số điện bắt đầu
     wStart: { type: Number, default: 0, min: 0 }, // chỉ số nước bắt đầu
-
     description: String,
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },

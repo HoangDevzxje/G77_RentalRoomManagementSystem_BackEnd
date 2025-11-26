@@ -11,15 +11,15 @@ const buildingSchema = new mongoose.Schema(
     }, // Chủ trọ sở hữu
     eIndexType: {
       type: String,
-      enum: ["byNumber", "included"],
+      enum: ["byNumber"],
       default: "byNumber",
-      description: "byNumber: theo chỉ số, included: đã bao gồm trong giá thuê",
+      description: "byNumber: theo chỉ số công tơ",
     },
     ePrice: { type: Number, default: 0 }, // giá điện trên 1kWh hoặc 1 người
 
     wIndexType: {
       type: String,
-      enum: ["byNumber", "byPerson", "included"],
+      enum: ["byNumber"],
       default: "byNumber",
     },
     wPrice: { type: Number, default: 0 }, // giá nước trên 1m3 hoặc 1 người

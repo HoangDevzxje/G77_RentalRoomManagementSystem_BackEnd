@@ -8,15 +8,15 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *   - name: Utility Readings
  *     description: Quản lý chỉ số điện / nước theo phòng
  */
+
 /**
  * @swagger
  * /landlords/utility-readings/rooms:
  *   get:
  *     summary: Lấy danh sách phòng để nhập chỉ số điện nước theo kỳ
  *     description: >
- *       Trả về danh sách phòng thuộc landlord hiện tại, đang được thuê và có hợp đồng completed,
- *       hiệu lực trong kỳ periodMonth/periodYear. Kèm trạng thái đã nhập điện/nước và template
- *       để FE bind form nhập nhanh.
+ *       Trả về danh sách phòng đang có hợp đồng hiệu lực trong kỳ (tháng/năm) để nhập chỉ số điện nước.
+ *       Mỗi phòng bao gồm thông tin tòa nhà, trạng thái chỉ số hiện tại trong kỳ và template để FE bind form nhập.
  *     tags: [Utility Readings]
  *     security:
  *       - bearerAuth: []
@@ -30,6 +30,8 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *         name: periodMonth
  *         schema:
  *           type: integer
+ *           minimum: 1
+ *           maximum: 12
  *         description: Tháng kỳ cần nhập chỉ số (mặc định = tháng hiện tại)
  *       - in: query
  *         name: periodYear
@@ -40,20 +42,23 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *         name: q
  *         schema:
  *           type: string
- *         description: Tìm theo số phòng (roomNumber)
+ *         description: Tìm theo số phòng (roomNumber, contains, không phân biệt hoa thường)
  *       - in: query
  *         name: page
  *         schema:
  *           type: integer
- *           default: 1
+ *           minimum: 1
+ *         description: Trang hiện tại (mặc định = 1)
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
- *           default: 20
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Số phòng trên mỗi trang (mặc định = 20)
  *     responses:
  *       200:
- *         description: Danh sách phòng đủ điều kiện nhập chỉ số trong kỳ
+ *         description: Danh sách phòng và trạng thái chỉ số trong kỳ
  *         content:
  *           application/json:
  *             schema:
@@ -65,6 +70,7 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                   type: array
  *                   items:
  *                     type: object
+ *                     description: Thông tin phòng + trạng thái chỉ số tiện ích
  *                     properties:
  *                       _id:
  *                         type: string
@@ -72,8 +78,10 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                         type: string
  *                       status:
  *                         type: string
+ *                         description: Trạng thái phòng (vd: rented, available, ...)
  *                       buildingId:
  *                         type: object
+ *                         description: Tòa nhà chứa phòng
  *                         properties:
  *                           _id:
  *                             type: string
@@ -83,33 +91,25 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                             type: string
  *                       floorId:
  *                         type: object
+ *                         nullable: true
  *                         properties:
  *                           _id:
  *                             type: string
  *                           floorNumber:
  *                             type: integer
+ *                           level:
+ *                             type: integer
  *                       meterStatus:
  *                         type: object
- *                         description: Trạng thái đã nhập chỉ số điện/nước trong kỳ
+ *                         description: Trạng thái chỉ số trong kỳ
  *                         properties:
- *                           electricity:
- *                             type: object
- *                             properties:
- *                               hasReading:
- *                                 type: boolean
- *                               status:
- *                                 type: string
- *                                 nullable: true
- *                                 description: Trạng thái reading (draft, confirmed, billed)
- *                           water:
- *                             type: object
- *                             properties:
- *                               hasReading:
- *                                 type: boolean
- *                               status:
- *                                 type: string
- *                                 nullable: true
- *                                 description: Trạng thái reading (draft, confirmed, billed)
+ *                           hasReading:
+ *                             type: boolean
+ *                             description: Đã có record UtilityReading cho kỳ này hay chưa
+ *                           status:
+ *                             type: string
+ *                             nullable: true
+ *                             description: Trạng thái reading (draft, confirmed, billed)
  *                       readingTemplate:
  *                         type: object
  *                         description: Template để FE bind form nhập chỉ số
@@ -120,38 +120,14 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                             type: integer
  *                           periodYear:
  *                             type: integer
- *                           electricity:
- *                             type: object
- *                             properties:
- *                               type:
- *                                 type: string
- *                                 enum: [electricity]
- *                               currentIndex:
- *                                 type: number
- *                                 nullable: true
- *                               unitPrice:
- *                                 type: number
- *                                 nullable: true
- *                               readingDate:
- *                                 type: string
- *                                 format: date-time
- *                                 nullable: true
- *                           water:
- *                             type: object
- *                             properties:
- *                               type:
- *                                 type: string
- *                                 enum: [water]
- *                               currentIndex:
- *                                 type: number
- *                                 nullable: true
- *                               unitPrice:
- *                                 type: number
- *                                 nullable: true
- *                               readingDate:
- *                                 type: string
- *                                 format: date-time
- *                                 nullable: true
+ *                           eCurrentIndex:
+ *                             type: number
+ *                             nullable: true
+ *                             description: Chỉ số điện hiện tại (FE nhập)
+ *                           wCurrentIndex:
+ *                             type: number
+ *                             nullable: true
+ *                             description: Chỉ số nước hiện tại (FE nhập)
  *                 total:
  *                   type: integer
  *                 page:
@@ -162,15 +138,13 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                   type: integer
  *                 periodYear:
  *                   type: integer
- *       401:
- *         description: Không có quyền truy cập
  */
 
 /**
  * @swagger
  * /landlords/utility-readings:
  *   get:
- *     summary: Lấy danh sách chỉ số điện/nước
+ *     summary: Danh sách các kỳ chỉ số tiện ích
  *     tags: [Utility Readings]
  *     security:
  *       - bearerAuth: []
@@ -184,11 +158,6 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *         schema:
  *           type: string
  *       - in: query
- *         name: type
- *         schema:
- *           type: string
- *           enum: [electricity, water]
- *       - in: query
  *         name: status
  *         schema:
  *           type: string
@@ -197,6 +166,8 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *         name: periodMonth
  *         schema:
  *           type: integer
+ *           minimum: 1
+ *           maximum: 12
  *       - in: query
  *         name: periodYear
  *         schema:
@@ -205,12 +176,13 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *         name: page
  *         schema:
  *           type: integer
- *           default: 1
+ *           minimum: 1
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
- *           default: 20
+ *           minimum: 1
+ *           maximum: 100
  *     responses:
  *       200:
  *         description: Danh sách chỉ số
@@ -224,25 +196,57 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                   items:
  *                     type: object
  *                     properties:
- *                       _id: { type: string }
- *                       buildingId: { type: string }
- *                       roomId: { type: string }
- *                       type:
+ *                       _id:
  *                         type: string
- *                         enum: [electricity, water]
- *                       periodMonth: { type: integer }
- *                       periodYear: { type: integer }
+ *                       landlordId:
+ *                         type: string
+ *                       buildingId:
+ *                         type: string
+ *                       roomId:
+ *                         type: string
+ *                       periodMonth:
+ *                         type: integer
+ *                       periodYear:
+ *                         type: integer
  *                       readingDate:
  *                         type: string
  *                         format: date-time
- *                       previousIndex: { type: number }
- *                       currentIndex: { type: number }
- *                       consumption: { type: number }
- *                       unitPrice: { type: number }
- *                       amount: { type: number }
+ *                       ePreviousIndex:
+ *                         type: number
+ *                       eCurrentIndex:
+ *                         type: number
+ *                         nullable: true
+ *                       eConsumption:
+ *                         type: number
+ *                       eUnitPrice:
+ *                         type: number
+ *                       eAmount:
+ *                         type: number
+ *                       wPreviousIndex:
+ *                         type: number
+ *                       wCurrentIndex:
+ *                         type: number
+ *                         nullable: true
+ *                       wConsumption:
+ *                         type: number
+ *                       wUnitPrice:
+ *                         type: number
+ *                       wAmount:
+ *                         type: number
  *                       status:
  *                         type: string
  *                         enum: [draft, confirmed, billed]
+ *                       note:
+ *                         type: string
+ *                       invoiceId:
+ *                         type: string
+ *                         nullable: true
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
  *                 total:
  *                   type: integer
  *                 page:
@@ -257,7 +261,7 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  * @swagger
  * /landlords/utility-readings:
  *   post:
- *     summary: Tạo kỳ đọc chỉ số điện/nước cho một phòng
+ *     summary: Tạo mới một kỳ chỉ số tiện ích cho 1 phòng (cả điện + nước)
  *     tags: [Utility Readings]
  *     security:
  *       - bearerAuth: []
@@ -267,42 +271,44 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *         application/json:
  *           schema:
  *             type: object
- *             required: [roomId, type, periodMonth, periodYear, currentIndex]
+ *             required:
+ *               - roomId
+ *               - periodMonth
+ *               - periodYear
  *             properties:
  *               roomId:
  *                 type: string
- *               type:
- *                 type: string
- *                 enum: [electricity, water]
  *               periodMonth:
  *                 type: integer
- *                 example: 11
+ *                 minimum: 1
+ *                 maximum: 12
  *               periodYear:
  *                 type: integer
- *                 example: 2025
- *               currentIndex:
+ *               eCurrentIndex:
  *                 type: number
- *                 example: 150
- *               unitPrice:
+ *                 nullable: true
+ *                 minimum: 0
+ *                 description: Chỉ số điện hiện tại
+ *               wCurrentIndex:
  *                 type: number
- *                 example: 3500
- *               readingDate:
- *                 type: string
- *                 format: date-time
+ *                 nullable: true
+ *                 minimum: 0
+ *                 description: Chỉ số nước hiện tại
  *     responses:
  *       201:
- *         description: Tạo thành công
+ *         description: Tạo chỉ số thành công
+ *       400:
+ *         description: Lỗi validate hoặc trùng kỳ
  */
 
 /**
  * @swagger
  * /landlords/utility-readings/bulk:
  *   post:
- *     summary: Tạo hàng loạt chỉ số điện/nước cho nhiều phòng trong một kỳ
+ *     summary: Tạo nhiều kỳ chỉ số tiện ích hàng loạt (cả điện + nước)
  *     description: >
- *       Cho phép landlord nhập chỉ số điện/nước cho nhiều phòng trong cùng một kỳ.
- *       Mỗi object trong mảng readings tương ứng với một chỉ số (1 phòng, 1 loại, 1 kỳ).
- *       Mỗi phần tử được xử lý độc lập: phòng nào lỗi sẽ có error riêng, không chặn các phòng khác.
+ *       Dùng để import nhanh chỉ số cho nhiều phòng. Mỗi phần tử trong `readings` là
+ *       một record tương ứng với 1 phòng - 1 kỳ.
  *     tags: [Utility Readings]
  *     security:
  *       - bearerAuth: []
@@ -312,6 +318,8 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - readings
  *             properties:
  *               readings:
  *                 type: array
@@ -319,32 +327,25 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                   type: object
  *                   required:
  *                     - roomId
- *                     - type
  *                     - periodMonth
  *                     - periodYear
- *                     - currentIndex
  *                   properties:
  *                     roomId:
  *                       type: string
- *                     type:
- *                       type: string
- *                       enum: [electricity, water]
  *                     periodMonth:
  *                       type: integer
  *                       minimum: 1
  *                       maximum: 12
  *                     periodYear:
  *                       type: integer
- *                     currentIndex:
+ *                     eCurrentIndex:
  *                       type: number
+ *                       nullable: true
  *                       minimum: 0
- *                     unitPrice:
+ *                     wCurrentIndex:
  *                       type: number
- *                       description: Đơn giá trên mỗi đơn vị tiêu thụ (tuỳ loại điện/nước)
- *                     readingDate:
- *                       type: string
- *                       format: date-time
- *                       description: Ngày ghi nhận chỉ số (mặc định = thời điểm hiện tại nếu không truyền)
+ *                       nullable: true
+ *                       minimum: 0
  *     responses:
  *       200:
  *         description: Xử lý thành công (có thể có một số phòng lỗi, xem chi tiết trong data)
@@ -363,105 +364,31 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                     properties:
  *                       index:
  *                         type: integer
- *                         description: Vị trí trong mảng readings gốc
  *                       roomId:
  *                         type: string
- *                       type:
- *                         type: string
- *                         enum: [electricity, water]
- *                       periodMonth:
- *                         type: integer
- *                       periodYear:
- *                         type: integer
  *                       success:
  *                         type: boolean
  *                       error:
  *                         type: string
  *                         nullable: true
- *                       data:
- *                         type: object
+ *                       readingId:
+ *                         type: string
  *                         nullable: true
- *                         description: Document UtilityReading đã tạo (nếu success = true)
  *                 total:
  *                   type: integer
- *                   description: Tổng số phần tử readings đã xử lý
  *                 successCount:
  *                   type: integer
  *                 failCount:
  *                   type: integer
  *       400:
- *         description: Dữ liệu không hợp lệ hoặc toàn bộ readings đều lỗi
- *       401:
- *         description: Không có quyền truy cập
- *       500:
- *         description: Lỗi server
- */
-
-/**
- * @swagger
- * /landlords/utility-readings/{id}:
- *   get:
- *     summary: Xem chi tiết một kỳ chỉ số
- *     tags: [Utility Readings]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Thông tin chỉ số
- *       404:
- *         description: Không tìm thấy
- */
-
-/**
- * @swagger
- * /landlords/utility-readings/{id}:
- *   patch:
- *     summary: Cập nhật chỉ số khi còn draft
- *     tags: [Utility Readings]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               currentIndex:
- *                 type: number
- *               unitPrice:
- *                 type: number
- *               readingDate:
- *                 type: string
- *                 format: date-time
- *               periodMonth:
- *                 type: integer
- *               periodYear:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Cập nhật thành công
- *       400:
- *         description: Không cho sửa vì đã confirmed/billed
+ *         description: Tất cả phần tử đều lỗi
  */
 
 /**
  * @swagger
  * /landlords/utility-readings/{id}/confirm:
  *   post:
- *     summary: Xác nhận và khóa chỉ số
+ *     summary: Xác nhận chỉ số tiện ích (chuyển từ draft sang confirmed)
  *     tags: [Utility Readings]
  *     security:
  *       - bearerAuth: []
@@ -498,6 +425,82 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *       400:
  *         description: Không thể xóa (đã billed)
  */
+
+/**
+ * @swagger
+ * /landlords/utility-readings/{id}:
+ *   patch:
+ *     summary: Cập nhật thông tin một kỳ chỉ số
+ *     description: >
+ *       Không cho phép thay đổi phòng / tòa / kỳ qua API update. Nếu record đã được
+ *       lập hoá đơn (status = billed hoặc có invoiceId) thì chỉ được sửa note / status.
+ *     tags: [Utility Readings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               ePreviousIndex:
+ *                 type: number
+ *                 minimum: 0
+ *               eCurrentIndex:
+ *                 type: number
+ *                 minimum: 0
+ *               eUnitPrice:
+ *                 type: number
+ *                 minimum: 0
+ *               wPreviousIndex:
+ *                 type: number
+ *                 minimum: 0
+ *               wCurrentIndex:
+ *                 type: number
+ *                 minimum: 0
+ *               wUnitPrice:
+ *                 type: number
+ *                 minimum: 0
+ *               status:
+ *                 type: string
+ *                 enum: [draft, confirmed, billed]
+ *               note:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       400:
+ *         description: Lỗi validate hoặc đã bị lock
+ */
+
+/**
+ * @swagger
+ * /landlords/utility-readings/{id}:
+ *   get:
+ *     summary: Xem chi tiết một kỳ chỉ số
+ *     tags: [Utility Readings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Thông tin chỉ số
+ *       404:
+ *         description: Không tìm thấy
+ */
+
 router.get(
   "/rooms",
   checkAuthorize("landlord"),

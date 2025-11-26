@@ -277,14 +277,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
 
     invoice.recalculateTotals();
     await invoice.save();
-    try {
-      await sendInvoiceEmailCore(invoice._id, landlordId);
-    } catch (err) {
-      console.error(
-        "Auto send invoice email error (generateMonthlyInvoice):",
-        err.message
-      );
-    }
+
     // Gắn invoiceId vào utilityReadings + chuyển trạng thái sang 'billed'
     if (utilityReadings.length) {
       await UtilityReading.updateMany(

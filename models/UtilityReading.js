@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-const UTILITY_TYPES = ["electricity", "water"];
 const READING_STATUS = ["draft", "confirmed", "billed"];
 
 const utilityReadingSchema = new mongoose.Schema(
@@ -33,26 +32,28 @@ const utilityReadingSchema = new mongoose.Schema(
       index: true,
     },
 
-    type: {
-      type: String,
-      enum: UTILITY_TYPES, // 'electricity' | 'water'
-      required: true,
-      index: true,
-    },
-
-    // Tháng/năm dùng để nhóm kỳ tính tiền
+    // Kỳ tính
     periodMonth: { type: Number, min: 1, max: 12, required: true, index: true },
     periodYear: { type: Number, min: 2000, required: true, index: true },
 
-    // Ngày thực tế đọc số
+    // Ngày thực tế đọc số (auto = lúc nhập)
     readingDate: { type: Date, default: Date.now, index: true },
 
-    previousIndex: { type: Number, min: 0, default: 0 },
-    currentIndex: { type: Number, min: 0, required: true },
-    consumption: { type: Number, min: 0, default: 0 },
+    // --- Điện ---
+    ePreviousIndex: { type: Number, min: 0, default: 0 },
+    eCurrentIndex: { type: Number, min: 0 },
+    eConsumption: { type: Number, min: 0, default: 0 },
 
-    unitPrice: { type: Number, min: 0, default: 0 },
-    amount: { type: Number, min: 0, default: 0 },
+    eUnitPrice: { type: Number, min: 0, default: 0 },
+    eAmount: { type: Number, min: 0, default: 0 },
+
+    // --- Nước ---
+    wPreviousIndex: { type: Number, min: 0, default: 0 },
+    wCurrentIndex: { type: Number, min: 0 },
+    wConsumption: { type: Number, min: 0, default: 0 },
+
+    wUnitPrice: { type: Number, min: 0, default: 0 },
+    wAmount: { type: Number, min: 0, default: 0 },
 
     status: {
       type: String,
@@ -84,12 +85,11 @@ const utilityReadingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Không cho trùng 1 phòng – 1 loại – 1 kỳ (khi chưa bị soft delete)
+// Không cho trùng 1 phòng – 1 kỳ (khi chưa bị soft delete)
 utilityReadingSchema.index(
   {
     landlordId: 1,
     roomId: 1,
-    type: 1,
     periodYear: 1,
     periodMonth: 1,
     isDeleted: 1,
@@ -98,13 +98,32 @@ utilityReadingSchema.index(
 );
 
 utilityReadingSchema.pre("validate", function (next) {
-  if (this.currentIndex < this.previousIndex) {
-    return next(new Error("currentIndex phải lớn hơn hoặc bằng previousIndex"));
+  // Điện
+  if (this.eCurrentIndex != null && this.ePreviousIndex != null) {
+    if (this.eCurrentIndex < this.ePreviousIndex) {
+      return next(
+        new Error("eCurrentIndex phải >= ePreviousIndex (chỉ số điện kỳ trước)")
+      );
+    }
+    this.eConsumption = this.eCurrentIndex - this.ePreviousIndex;
+    if (this.eUnitPrice != null) {
+      this.eAmount = this.eConsumption * this.eUnitPrice;
+    }
   }
-  this.consumption = this.currentIndex - this.previousIndex;
-  if (this.unitPrice != null) {
-    this.amount = this.consumption * this.unitPrice;
+
+  // Nước
+  if (this.wCurrentIndex != null && this.wPreviousIndex != null) {
+    if (this.wCurrentIndex < this.wPreviousIndex) {
+      return next(
+        new Error("wCurrentIndex phải >= wPreviousIndex (chỉ số nước kỳ trước)")
+      );
+    }
+    this.wConsumption = this.wCurrentIndex - this.wPreviousIndex;
+    if (this.wUnitPrice != null) {
+      this.wAmount = this.wConsumption * this.wUnitPrice;
+    }
   }
+
   next();
 });
 
