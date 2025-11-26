@@ -1,6 +1,7 @@
 const axios = require("axios");
 const crypto = require("crypto");
 const Invoice = require("../../models/Invoice");
+const Account = require("../../models/Account");
 const UserInformation = require("../../models/UserInformation");
 
 exports.listMyInvoices = async (req, res) => {
@@ -119,6 +120,12 @@ exports.payMyInvoice = async (req, res) => {
     const tenantId = req.user?._id;
     const { id } = req.params;
 
+    if (!tenantId) {
+      return res
+        .status(401)
+        .json({ message: "Không xác định được người dùng" });
+    }
+
     const invoice = await Invoice.findOne({
       _id: id,
       tenantId,
@@ -132,27 +139,66 @@ exports.payMyInvoice = async (req, res) => {
     if (invoice.status === "paid") {
       return res
         .status(400)
-        .json({ message: "Hóa đơn đã thanh toán trước đó" });
+        .json({ message: "Hóa đơn này đã được thanh toán trước đó" });
+    }
+
+    // Chỉ cho phép thanh toán khi hóa đơn đã gửi cho khách
+    if (!["sent", "overdue"].includes(invoice.status)) {
+      return res.status(400).json({
+        message:
+          "Chỉ thanh toán được hóa đơn ở trạng thái 'sent' hoặc 'overdue'",
+      });
     }
 
     const amount = Number(invoice.totalAmount || 0);
     if (!amount || amount <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Tổng tiền hóa đơn không hợp lệ" });
+      return res.status(400).json({
+        message: "Tổng tiền hóa đơn không hợp lệ",
+      });
     }
 
-    const landlord = await Account.findById(invoice.landlordId)
-      .select("bankInfo")
+    // Lấy tài khoản chủ trọ để map sang UserInformation
+    const landlordAccount = await Account.findById(invoice.landlordId)
+      .select("role userInfo")
       .lean();
 
-    if (!landlord || !landlord.bankInfo || !landlord.bankInfo.accountNumber) {
+    if (!landlordAccount) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy tài khoản chủ trọ" });
+    }
+
+    if (landlordAccount.role !== "landlord") {
+      return res.status(400).json({
+        message: "Tài khoản gắn với hóa đơn không phải chủ trọ hợp lệ",
+      });
+    }
+
+    if (!landlordAccount.userInfo) {
       return res.status(400).json({
         message:
           "Chủ trọ chưa cấu hình thông tin ngân hàng. Vui lòng liên hệ chủ trọ.",
       });
     }
 
+    const userInfo = await UserInformation.findById(landlordAccount.userInfo)
+      .select("bankInfo")
+      .lean();
+
+    const bankInfo = userInfo?.bankInfo || {};
+
+    if (
+      !bankInfo.accountNumber ||
+      !bankInfo.accountName ||
+      !bankInfo.bankName
+    ) {
+      return res.status(400).json({
+        message:
+          "Chủ trọ chưa cấu hình đầy đủ thông tin ngân hàng. Vui lòng liên hệ chủ trọ.",
+      });
+    }
+
+    // Gợi ý nội dung chuyển khoản
     const transferNote = invoice.invoiceNumber
       ? invoice.invoiceNumber
       : `INVOICE-${invoice._id.toString().slice(-6)}`;
@@ -165,11 +211,16 @@ exports.payMyInvoice = async (req, res) => {
       periodMonth: invoice.periodMonth,
       periodYear: invoice.periodYear,
       amount,
-      bankInfo: landlord.bankInfo,
+      bankInfo: {
+        bankName: bankInfo.bankName,
+        accountNumber: bankInfo.accountNumber,
+        accountName: bankInfo.accountName,
+        qrImageUrl: bankInfo.qrImageUrl || "",
+      },
       transferNote,
     });
   } catch (e) {
-    console.error("payMyInvoice (bank) error:", e);
+    console.error("payMyInvoice (bank transfer) error:", e);
     return res.status(500).json({ message: e.message || "Server error" });
   }
 };
