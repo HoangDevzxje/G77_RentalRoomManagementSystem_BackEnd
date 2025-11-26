@@ -8,12 +8,7 @@ const INVOICE_STATUS = [
   "cancelled", // hủy hóa đơn
 ];
 
-const PAYMENT_METHODS = [
-  "cash",
-  "bank_transfer",
-  "online_gateway", // VNPay
-  null,
-];
+const PAYMENT_METHODS = ["cash", "online_gateway", null];
 const paymentLogSchema = new mongoose.Schema(
   {
     gateway: { type: String }, // "momo"

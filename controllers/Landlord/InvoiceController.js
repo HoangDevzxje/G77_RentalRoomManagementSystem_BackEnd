@@ -3,6 +3,7 @@ const UtilityReading = require("../../models/UtilityReading");
 const Room = require("../../models/Room");
 const Contract = require("../../models/Contract");
 const Building = require("../../models/Building");
+const BuildingService = require("../../models/BuildingService");
 const sendEmail = require("../../utils/sendMail");
 
 function getPeriodRange(periodMonth, periodYear) {
@@ -29,6 +30,7 @@ async function findActiveContractForRoom(roomId, { periodMonth, periodYear }) {
 
   return contract;
 }
+
 async function sendInvoiceEmailCore(invoiceId, landlordId) {
   const invoice = await Invoice.findOne({
     _id: invoiceId,
@@ -41,6 +43,7 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
       populate: { path: "userInfo", select: "fullName" },
     })
     .populate("roomId", "roomNumber")
+    .populate("buildingId", "name address")
     .lean();
 
   if (!invoice) {
@@ -55,61 +58,78 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
   }
 
   const tenant = invoice.tenantId;
-  const emailTo = invoice.emailToOverride || tenant?.email || null;
-
-  if (!emailTo) {
-    throw new Error("Không tìm thấy email người thuê để gửi hóa đơn");
+  if (!tenant || !tenant.email) {
+    throw new Error(
+      "Người thuê chưa có email, không thể gửi hóa đơn qua email"
+    );
   }
 
-  const tenantName = tenant?.userInfo?.fullName || tenant?.email || "Anh/Chị";
-  const periodStr = `${invoice.periodMonth}/${invoice.periodYear}`;
-  const amountStr = new Intl.NumberFormat("vi-VN").format(
-    invoice.totalAmount || 0
-  );
-  const currency = invoice.currency || "VND";
-  const dueDateStr = invoice.dueDate
+  const to = tenant.email;
+  const subject = `Hóa đơn tiền phòng - ${invoice.invoiceNumber}`;
+  const roomNumber = invoice.roomId?.roomNumber || "";
+  const buildingName = invoice.buildingId?.name || "";
+  const total = invoice.totalAmount || 0;
+  const due = invoice.dueDate
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
-    : "";
+    : "N/A";
 
-  const emailPayload = {
-    tenantName,
-    invoiceNumber: invoice.invoiceNumber || "",
-    period: periodStr,
-    roomNumber: invoice.roomId?.roomNumber || "",
-    totalAmount: amountStr,
-    currency,
-    dueDate: dueDateStr,
-    note: invoice.note || "",
-    appUrl: process.env.APP_URL || "https://example.com",
+  let html = `<p>Chào ${
+    tenant.userInfo?.fullName || "Anh/Chị"
+  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
+  html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
+  html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
+  html += `<p><b>Kỳ:</b> ${invoice.periodMonth}/${invoice.periodYear}</p>`;
+  html += `<p><b>Hạn thanh toán:</b> ${due}</p>`;
+  html += `<p><b>Tổng tiền:</b> ${total.toLocaleString("vi-VN")} VND</p>`;
+
+  if (Array.isArray(invoice.items) && invoice.items.length > 0) {
+    html += "<p><b>Chi tiết:</b></p><ul>";
+    for (const item of invoice.items) {
+      const label = item.label || item.type || "Khoản thu";
+      const q = item.quantity || 1;
+      const price = item.unitPrice || 0;
+      const amount = item.amount || 0;
+      html += `<li>${label}: ${q} x ${price.toLocaleString(
+        "vi-VN"
+      )} = ${amount.toLocaleString("vi-VN")} VND</li>`;
+    }
+    html += "</ul>";
+  }
+
+  html += "<p>Vui lòng thanh toán đúng hạn. Xin cảm ơn!</p>";
+
+  const text = html.replace(/<[^>]+>/g, " ");
+
+  const emailResult = await sendEmail({
+    email: to,
+    subject,
+    html,
+    text,
+  });
+
+  const update = {
+    $set: {
+      emailStatus: emailResult ? "sent" : "failed",
+      emailSentAt: new Date(),
+    },
   };
 
-  const emailResult = await sendEmail(emailTo, emailPayload, "invoice");
+  const updatedInvoice = await Invoice.findByIdAndUpdate(invoiceId, update, {
+    new: true,
+  });
 
-  const now = new Date();
-  const update = {};
-
-  if (emailResult.success) {
-    update.emailStatus = "sent";
-    update.emailSentAt = now;
-    update.emailLastError = null;
-
-    // Nếu đang draft thì sau khi gửi mail chuyển sang sent
-    if (invoice.status === "draft") {
-      update.status = "sent";
-      update.sentAt = now;
-    }
-  } else {
-    update.emailStatus = "failed";
-    update.emailLastError = emailResult.error || "Unknown error";
-  }
-
-  await Invoice.updateOne({ _id: invoiceId }, { $set: update });
-
-  return { invoice, emailResult, update };
+  return {
+    invoice: updatedInvoice,
+    update: {
+      status: updatedInvoice.status,
+      emailStatus: updatedInvoice.emailStatus,
+    },
+  };
 }
 
 // POST /landlords/invoices/generate-monthly
-// body: { roomId, periodMonth, periodYear, includeRent? }
+// body: { roomId, periodMonth, periodYear, includeRent?, extraItems? }
 exports.generateMonthlyInvoice = async (req, res) => {
   try {
     const landlordId = req.user?._id;
@@ -118,6 +138,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       periodMonth,
       periodYear,
       includeRent = true,
+      extraItems = [],
     } = req.body || {};
 
     if (!roomId || !periodMonth || !periodYear) {
@@ -140,19 +161,25 @@ exports.generateMonthlyInvoice = async (req, res) => {
         .json({ message: "periodMonth/periodYear không hợp lệ" });
     }
 
+    // 1. Kiểm tra phòng + quyền landlord
     const room = await Room.findById(roomId).lean();
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
 
     const building = await Building.findById(room.buildingId)
-      .select("landlordId")
+      .select("landlordId ePrice wPrice status isDeleted")
       .lean();
     if (!building || String(building.landlordId) !== String(landlordId)) {
       return res.status(403).json({ message: "Bạn không quản lý phòng này" });
     }
+    if (building.isDeleted || building.status === "inactive") {
+      return res
+        .status(400)
+        .json({ message: "Tòa nhà đã bị khóa / không còn hoạt động" });
+    }
 
-    // Tìm contract active trong kỳ
+    // 2. Tìm contract active trong kỳ
     const contract = await findActiveContractForRoom(roomId, {
       periodMonth: month,
       periodYear: year,
@@ -165,7 +192,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       });
     }
 
-    // Check đã có hóa đơn kỳ này chưa
+    // 3. Check đã có hóa đơn kỳ này chưa
     const existed = await Invoice.findOne({
       landlordId,
       tenantId: contract.tenantId,
@@ -174,18 +201,19 @@ exports.generateMonthlyInvoice = async (req, res) => {
       periodMonth: month,
       periodYear: year,
       isDeleted: false,
-      status: { $ne: "cancelled" },
     }).lean();
 
     if (existed) {
-      return res.status(400).json({
+      return res.status(409).json({
         message: "Đã tồn tại hóa đơn cho phòng/hợp đồng/kỳ này",
         invoiceId: existed._id,
       });
     }
 
-    // Lấy utility readings confirmed, chưa gắn invoice
-    const utilityReadings = await UtilityReading.find({
+    // 4. Lấy bản ghi điện nước đã xác nhận (một bản cho cả điện + nước)
+    const utilityReading = await UtilityReading.findOne({
+      landlordId,
+      buildingId: room.buildingId,
       roomId,
       periodMonth: month,
       periodYear: year,
@@ -194,9 +222,16 @@ exports.generateMonthlyInvoice = async (req, res) => {
       invoiceId: null,
     }).lean();
 
+    // 5. Lấy danh sách dịch vụ tòa nhà
+    const buildingServices = await BuildingService.find({
+      landlordId,
+      buildingId: room.buildingId,
+      isDeleted: false,
+    }).lean();
+
     const items = [];
 
-    // 1) Tiền phòng
+    // 5.1. Tiền phòng (tuỳ chọn)
     if (includeRent && contract.contract?.price) {
       items.push({
         type: "rent",
@@ -208,51 +243,152 @@ exports.generateMonthlyInvoice = async (req, res) => {
       });
     }
 
-    // 2) Line item điện/nước
-    for (const r of utilityReadings) {
+    // 5.2. Tiền điện / nước từ UtilityReading + giá ở tòa
+    if (utilityReading) {
+      const eConsumption = utilityReading.eConsumption || 0;
+      const wConsumption = utilityReading.wConsumption || 0;
+      const ePrice = building.ePrice || 0;
+      const wPrice = building.wPrice || 0;
+
+      if (eConsumption > 0 && ePrice >= 0) {
+        const quantity = eConsumption;
+        const unitPrice = ePrice;
+        const amount = Math.max(0, quantity * unitPrice);
+
+        items.push({
+          type: "electric",
+          label: "Tiền điện",
+          description: `Tiền điện tháng ${month}/${year}`,
+          quantity,
+          unitPrice,
+          amount,
+          utilityReadingId: utilityReading._id,
+          meta: {
+            previousIndex: utilityReading.ePreviousIndex,
+            currentIndex: utilityReading.eCurrentIndex,
+          },
+        });
+      }
+
+      if (wConsumption > 0 && wPrice >= 0) {
+        const quantity = wConsumption;
+        const unitPrice = wPrice;
+        const amount = Math.max(0, quantity * unitPrice);
+
+        items.push({
+          type: "water",
+          label: "Tiền nước",
+          description: `Tiền nước tháng ${month}/${year}`,
+          quantity,
+          unitPrice,
+          amount,
+          utilityReadingId: utilityReading._id,
+          meta: {
+            previousIndex: utilityReading.wPreviousIndex,
+            currentIndex: utilityReading.wCurrentIndex,
+          },
+        });
+      }
+    }
+
+    // 5.3. Dịch vụ tòa nhà (internet, gửi xe, vệ sinh...)
+    const occupantCount = 1 + (contract.roommates?.length || 0);
+
+    for (const sv of buildingServices) {
+      // included: vẫn cho hiện 1 line với amount = 0 để minh bạch
+      let quantity = 1;
+      if (sv.chargeType === "perPerson") {
+        quantity = occupantCount;
+      }
+
+      const unitPrice = sv.fee || 0;
+      const amount = Math.max(0, quantity * unitPrice);
+
       const label =
-        r.type === "electricity"
-          ? "Tiền điện"
-          : r.type === "water"
-          ? "Tiền nước"
-          : "Tiện ích khác";
-
-      const itemType = r.type === "electricity" ? "electric" : r.type; // 🔧 D
-
-      const quantity = r.consumption || 0;
-      const unitPrice = r.unitPrice || 0;
-      const amount =
-        r.amount != null ? r.amount : Math.max(0, quantity * unitPrice);
+        sv.label ||
+        (sv.name === "internet"
+          ? "Internet"
+          : sv.name === "parking"
+          ? "Gửi xe"
+          : sv.name === "cleaning"
+          ? "Phí vệ sinh"
+          : sv.name === "security"
+          ? "Bảo vệ"
+          : "Dịch vụ khác");
 
       items.push({
-        type: itemType,
+        type: "service",
         label,
-        description: `${label} tháng ${r.periodMonth}/${r.periodYear}`,
+        description:
+          sv.description ||
+          `Dịch vụ ${label.toLowerCase()} tháng ${month}/${year}`,
         quantity,
         unitPrice,
         amount,
-        utilityReadingId: r._id,
+        meta: {
+          buildingServiceId: sv._id,
+          chargeType: sv.chargeType,
+        },
       });
+    }
+
+    // 5.4. Chi phí phát sinh (extraItems) – cho chủ trọ nhập tay
+    if (Array.isArray(extraItems)) {
+      for (const raw of extraItems) {
+        if (!raw) continue;
+        const label = String(raw.label || "").trim();
+        if (!label) continue;
+
+        const description = raw.description
+          ? String(raw.description)
+          : `Chi phí phát sinh tháng ${month}/${year}`;
+
+        const quantity = Number.isFinite(Number(raw.quantity))
+          ? Number(raw.quantity)
+          : 1;
+        const unitPrice = Number.isFinite(Number(raw.unitPrice))
+          ? Number(raw.unitPrice)
+          : 0;
+        const amountRaw = Number(raw.amount);
+        const amount =
+          Number.isFinite(amountRaw) && amountRaw >= 0
+            ? amountRaw
+            : Math.max(0, quantity * unitPrice);
+
+        if (amount <= 0 && unitPrice <= 0) continue;
+
+        items.push({
+          type: "other",
+          label,
+          description,
+          quantity,
+          unitPrice,
+          amount,
+        });
+      }
     }
 
     if (!items.length) {
       return res.status(400).json({
         message:
-          "Không có dữ liệu để tạo hóa đơn (không có tiền phòng hoặc utility readings)",
+          "Không có dữ liệu để tạo hóa đơn (không có tiền phòng, điện/nước, dịch vụ hay chi phí phát sinh)",
       });
     }
 
-    // Tính dueDate mặc định = ngày 10 của tháng kế tiếp
-    let dueDate;
-    {
-      // month ở đây đã là 1–12
-      const d = new Date(year, month - 1, 1); // ngày 1 của kỳ hoá đơn
-      d.setMonth(d.getMonth() + 1); // sang tháng kế tiếp
-      d.setDate(10); // hạn ngày 10
-      d.setHours(23, 59, 59, 999); // cuối ngày
+    // 6. Tính dueDate mặc định nếu chưa truyền
+    let dueDate = null;
+    if (req.body.dueDate) {
+      dueDate = new Date(req.body.dueDate);
+    } else {
+      // mặc định: ngày 10 của tháng kế tiếp
+      const d = new Date(year, month - 1, 1);
+      d.setMonth(d.getMonth() + 1);
+      d.setDate(10);
+      d.setHours(23, 59, 59, 999);
       dueDate = d;
     }
-    // Sinh số hóa đơn
+
+    // 7. Sinh số hoá đơn
     const invoiceNumber = await Invoice.generateInvoiceNumber({
       landlordId,
       periodMonth: month,
@@ -262,8 +398,8 @@ exports.generateMonthlyInvoice = async (req, res) => {
     const invoice = new Invoice({
       landlordId,
       tenantId: contract.tenantId,
-      buildingId: room.buildingId,
       roomId,
+      buildingId: room.buildingId,
       contractId: contract._id,
       periodMonth: month,
       periodYear: year,
@@ -278,21 +414,17 @@ exports.generateMonthlyInvoice = async (req, res) => {
     invoice.recalculateTotals();
     await invoice.save();
 
-    // Gắn invoiceId vào utilityReadings + chuyển trạng thái sang 'billed'
-    if (utilityReadings.length) {
-      await UtilityReading.updateMany(
-        { _id: { $in: utilityReadings.map((u) => u._id) } },
-        {
-          $set: {
-            invoiceId: invoice._id,
-            status: "billed",
-          },
-        }
+    // Gắn invoiceId + cập nhật trạng thái UtilityReading nếu có
+    if (utilityReading) {
+      await UtilityReading.updateOne(
+        { _id: utilityReading._id },
+        { $set: { invoiceId: invoice._id, status: "billed" } }
       );
     }
 
     return res.status(201).json({
-      message: "Đã tạo hóa đơn tháng (bao gồm tiền phòng + điện/nước)",
+      message:
+        "Đã tạo hoá đơn tháng (tiền phòng, điện/nước, dịch vụ toà + chi phí phát sinh)",
       data: invoice,
     });
   } catch (e) {
@@ -305,19 +437,23 @@ exports.generateMonthlyInvoice = async (req, res) => {
 };
 
 // GET /landlords/invoices
-exports.listInvoices = async (req, res) => {
+// Lấy danh sách hóa đơn
+exports.getInvoices = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
-    let {
+    const landlordId = req.user._id;
+
+    const {
       status,
       buildingId,
       roomId,
-      tenantId,
+      contractId,
       periodMonth,
       periodYear,
-      search,
+      q,
       page = 1,
       limit = 20,
+      sortBy = "issuedAt",
+      sortOrder = "desc",
     } = req.query;
 
     const filter = {
@@ -328,73 +464,62 @@ exports.listInvoices = async (req, res) => {
     if (status) filter.status = status;
     if (buildingId) filter.buildingId = buildingId;
     if (roomId) filter.roomId = roomId;
-    if (tenantId) filter.tenantId = tenantId;
+    if (contractId) filter.contractId = contractId;
     if (periodMonth) filter.periodMonth = Number(periodMonth);
     if (periodYear) filter.periodYear = Number(periodYear);
 
-    if (search) {
-      const keyword = String(search).trim();
-      if (keyword) {
-        filter.invoiceNumber = { $regex: keyword, $options: "i" };
-      }
+    if (q) {
+      filter.$or = [
+        { invoiceNumber: { $regex: q, $options: "i" } },
+        { "searchMeta.roomNumber": { $regex: q, $options: "i" } },
+        { "searchMeta.buildingName": { $regex: q, $options: "i" } },
+        { "searchMeta.tenantName": { $regex: q, $options: "i" } },
+      ];
     }
 
-    const pageNumber = Number(page) || 1;
-    const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
-    const skip = (pageNumber - 1) * pageSize;
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const sort = {};
+    sort[sortBy] = sortOrder === "asc" ? 1 : -1;
 
     const [items, total] = await Promise.all([
       Invoice.find(filter)
-        .select(
-          [
-            "_id",
-            "invoiceNumber",
-            "status",
-            "periodMonth",
-            "periodYear",
-            "issuedAt",
-            "dueDate",
-            "totalAmount",
-            "paidAt",
-            "buildingId",
-            "roomId",
-            "tenantId",
-            "contractId",
-            "createdAt",
-            "updatedAt",
-          ].join(" ")
-        )
-        .populate("buildingId", "name address")
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNum)
         .populate("roomId", "roomNumber")
+        .populate("buildingId", "name")
         .populate({
           path: "tenantId",
-          select: "email userInfo",
-          populate: { path: "userInfo", select: "fullName phoneNumber" },
+          select: "userInfo",
+          populate: {
+            path: "userInfo",
+            select: "fullName",
+          },
         })
-        .sort({ issuedAt: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(pageSize)
         .lean(),
       Invoice.countDocuments(filter),
     ]);
 
-    res.json({
-      items,
+    return res.json({
+      data: items,
       total,
-      page: pageNumber,
-      limit: pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: pageNum,
+      limit: limitNum,
     });
   } catch (e) {
-    console.error("listInvoices error:", e);
-    res.status(500).json({ message: e.message });
+    console.error("getInvoices error:", e);
+    return res.status(500).json({ message: "Server error", error: e.message });
   }
 };
 
 // GET /landlords/invoices/:id
+// Chi tiết hoá đơn
 exports.getInvoiceDetail = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const landlordId = req.user._id;
     const { id } = req.params;
 
     const invoice = await Invoice.findOne({
@@ -402,18 +527,15 @@ exports.getInvoiceDetail = async (req, res) => {
       landlordId,
       isDeleted: false,
     })
-      .populate("buildingId", "name address")
       .populate("roomId", "roomNumber")
+      .populate("buildingId", "name address")
       .populate({
         path: "tenantId",
-        select: "email userInfo",
-        populate: { path: "userInfo", select: "fullName phoneNumber address" },
-      })
-      .populate("contractId", "contract.no contract.startDate contract.endDate")
-      .populate({
-        path: "items.utilityReadingId",
-        select:
-          "type periodMonth periodYear previousIndex currentIndex consumption unitPrice amount status",
+        select: "userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber",
+        },
       })
       .lean();
 
@@ -421,22 +543,36 @@ exports.getInvoiceDetail = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
 
-    res.json(invoice);
+    return res.json({ data: invoice });
   } catch (e) {
     console.error("getInvoiceDetail error:", e);
-    res.status(500).json({ message: e.message });
+    return res.status(500).json({ message: "Server error", error: e.message });
   }
 };
 
-// POST /landlords/invoices/:id/pay
-// body: { paymentMethod, paidAt, note, paidAmount }
-exports.markInvoicePaid = async (req, res) => {
+// PATCH /landlords/invoices/:id
+// Cập nhật hoá đơn (chỉ cho phép sửa một số field)
+exports.updateInvoice = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const landlordId = req.user._id;
     const { id } = req.params;
-    const { paymentMethod, paidAt, note, paidAmount } = req.body || {};
 
-    const invoice = await Invoice.findOne({
+    const allowedFields = [
+      "items",
+      "note",
+      "discountAmount",
+      "lateFee",
+      "status",
+    ];
+
+    const update = {};
+    for (const field of allowedFields) {
+      if (field in req.body) {
+        update[field] = req.body[field];
+      }
+    }
+
+    let invoice = await Invoice.findOne({
       _id: id,
       landlordId,
       isDeleted: false,
@@ -446,142 +582,73 @@ exports.markInvoicePaid = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
 
-    if (!["draft", "sent", "overdue"].includes(invoice.status)) {
-      return res.status(400).json({
-        message: `Không thể thanh toán hóa đơn ở trạng thái hiện tại: ${invoice.status}`,
-      });
+    Object.assign(invoice, update);
+
+    invoice.recalculateTotals();
+    await invoice.save();
+
+    return res.json({
+      message: "Cập nhật hoá đơn thành công",
+      data: invoice,
+    });
+  } catch (e) {
+    console.error("updateInvoice error:", e);
+    return res.status(500).json({ message: "Server error", error: e.message });
+  }
+};
+
+// PATCH /landlords/invoices/:id/pay
+// Đánh dấu đã thanh toán
+exports.markInvoicePaid = async (req, res) => {
+  try {
+    const landlordId = req.user._id;
+    const { id } = req.params;
+
+    let invoice = await Invoice.findOne({
+      _id: id,
+      landlordId,
+      isDeleted: false,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+    }
+
+    if (invoice.status === "paid") {
+      return res
+        .status(400)
+        .json({ message: "Hoá đơn đã ở trạng thái đã thanh toán" });
     }
 
     invoice.status = "paid";
-    invoice.paidAt = paidAt ? new Date(paidAt) : new Date();
-    if (paymentMethod) invoice.paymentMethod = paymentMethod;
+    invoice.paidAt = new Date();
+    invoice.paymentStatus = "paid";
 
-    const amountToSet =
-      paidAmount != null ? Number(paidAmount) : invoice.totalAmount;
-
-    invoice.paidAmount = amountToSet;
-
-    if (note) {
-      invoice.paymentNote = note;
-    }
-
+    invoice.recalculateTotals();
     await invoice.save();
 
-    res.json({
-      message: "Đã ghi nhận thanh toán hóa đơn",
+    return res.json({
+      message: "Đã cập nhật hoá đơn sang trạng thái đã thanh toán",
       data: invoice,
     });
   } catch (e) {
     console.error("markInvoicePaid error:", e);
-    res.status(500).json({ message: e.message });
-  }
-};
-
-// PATCH /landlords/invoices/:id
-exports.updateInvoice = async (req, res) => {
-  try {
-    const landlordId = req.user._id;
-    const { id } = req.params;
-    const {
-      items,
-      subtotal,
-      discountAmount,
-      lateFee,
-      totalAmount,
-      periodMonth,
-      periodYear,
-      roomId,
-      tenantId,
-      buildingId,
-      contractId,
-      status,
-      note,
-      internalNote,
-      paymentRef,
-    } = req.body || {};
-
-    const invoice = await Invoice.findOne({ _id: id, landlordId });
-
-    if (!invoice) {
-      return res.status(404).json({ message: "Không tìm thấy hoá đơn" });
-    }
-
-    const isPaid = invoice.status === "paid";
-
-    if (isPaid) {
-      if (
-        items != null ||
-        subtotal != null ||
-        discountAmount != null ||
-        lateFee != null ||
-        totalAmount != null ||
-        periodMonth != null ||
-        periodYear != null ||
-        roomId != null ||
-        tenantId != null ||
-        buildingId != null ||
-        contractId != null
-      ) {
-        return res.status(400).json({
-          message:
-            "Hoá đơn đã thanh toán, không thể chỉnh sửa các trường số tiền/phòng/kỳ. Chỉ được cập nhật ghi chú hoặc tham chiếu thanh toán.",
-        });
-      }
-    }
-
-    if (!isPaid) {
-      if (items) invoice.items = items;
-      if (subtotal != null) invoice.subtotal = subtotal;
-      if (discountAmount != null) invoice.discountAmount = discountAmount;
-      if (lateFee != null) invoice.lateFee = lateFee;
-      if (totalAmount != null) invoice.totalAmount = totalAmount;
-      if (periodMonth != null) invoice.periodMonth = periodMonth;
-      if (periodYear != null) invoice.periodYear = periodYear;
-      if (roomId != null) invoice.roomId = roomId;
-      if (tenantId != null) invoice.tenantId = tenantId;
-      if (buildingId != null) invoice.buildingId = buildingId;
-      if (contractId != null) invoice.contractId = contractId;
-
-      if (status) {
-        const allowed = ["draft", "sent", "cancelled", "overdue", "paid"];
-        if (!allowed.includes(status)) {
-          return res.status(400).json({ message: "Trạng thái không hợp lệ" });
-        }
-        invoice.status = status;
-      }
-
-      invoice.recalculateTotals();
-    }
-
-    if (note != null) invoice.note = note;
-    if (internalNote != null) invoice.internalNote = internalNote;
-    if (paymentRef != null) invoice.paymentRef = paymentRef;
-
-    await invoice.save();
-
-    return res.json({ message: "Cập nhật hoá đơn thành công", data: invoice });
-  } catch (err) {
-    console.error("updateInvoice error:", err);
-    return res.status(500).json({ message: "Lỗi cập nhật hoá đơn" });
+    return res.status(500).json({ message: "Server error", error: e.message });
   }
 };
 
 // POST /landlords/invoices/:id/send-email
 exports.sendInvoiceEmail = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const landlordId = req.user._id;
     const { id } = req.params;
 
     const result = await sendInvoiceEmailCore(id, landlordId);
 
     if (result.skipped) {
-      return res.status(400).json({ message: result.reason });
-    }
-
-    if (!result.emailResult.success) {
-      return res.status(500).json({
-        message: "Gửi email hóa đơn thất bại",
-        error: result.emailResult.error,
+      return res.status(400).json({
+        message: result.reason,
+        skipped: true,
       });
     }
 
@@ -597,7 +664,7 @@ exports.sendInvoiceEmail = async (req, res) => {
 };
 
 // POST /landlords/invoices/generate
-// body: { roomId, periodMonth, periodYear, dueDate?, includeRent? }
+// body: { roomId, periodMonth, periodYear, dueDate?, includeRent?, extraItems? }
 exports.generateInvoice = async (req, res) => {
   try {
     const landlordId = req.user._id;
@@ -607,6 +674,7 @@ exports.generateInvoice = async (req, res) => {
       periodYear,
       dueDate, // optional, ISO string
       includeRent = true,
+      extraItems = [],
     } = req.body || {};
 
     if (!roomId || !periodMonth || !periodYear) {
@@ -629,40 +697,36 @@ exports.generateInvoice = async (req, res) => {
         .json({ message: "periodMonth/periodYear không hợp lệ" });
     }
 
-    // 1. Kiểm tra phòng + tòa thuộc landlord
+    // 1. Kiểm tra room + building thuộc landlord
     const room = await Room.findById(roomId).lean();
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
 
     const building = await Building.findById(room.buildingId)
-      .select("landlordId")
+      .select("landlordId ePrice wPrice status isDeleted")
       .lean();
     if (!building || String(building.landlordId) !== String(landlordId)) {
       return res.status(403).json({ message: "Bạn không quản lý phòng này" });
     }
-
-    // 2. Check trùng invoice cho cùng phòng + tháng/năm
-    const existed = await Invoice.findOne({
-      landlordId,
-      buildingId: room.buildingId,
-      roomId,
-      periodMonth: month,
-      periodYear: year,
-      isDeleted: false,
-      status: { $ne: "cancelled" },
-    }).lean();
-
-    if (existed) {
-      return res.status(400).json({
-        message: "Đã tồn tại hoá đơn cho phòng này và kỳ này",
-        invoiceId: existed._id,
-      });
+    if (building.isDeleted || building.status === "inactive") {
+      return res
+        .status(400)
+        .json({ message: "Tòa nhà đã bị khóa / không còn hoạt động" });
     }
 
-    // 3. Lấy hợp đồng completed hiện tại
+    // 2. Check HĐ hiện tại của phòng
+    const roomWithContract = await Room.findById(roomId)
+      .select("currentContractId")
+      .lean();
+    if (!roomWithContract || !roomWithContract.currentContractId) {
+      return res
+        .status(400)
+        .json({ message: "Phòng chưa có hợp đồng để tạo hóa đơn" });
+    }
+
     const contract = await Contract.findOne({
-      _id: room.currentContractId,
+      _id: roomWithContract.currentContractId,
       landlordId,
       status: "completed",
       isDeleted: false,
@@ -674,302 +738,398 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    const tenantId = contract.tenantId;
-    const rentPrice = Number(contract.contract?.price || 0);
+    // 3. Check đã có hoá đơn kỳ này chưa
+    const existed = await Invoice.findOne({
+      landlordId,
+      tenantId: contract.tenantId,
+      buildingId: room.buildingId,
+      roomId,
+      contractId: contract._id,
+      periodMonth: month,
+      periodYear: year,
+      isDeleted: false,
+    }).lean();
 
-    // 4. Lấy utility readings cho tháng/năm đó
-    const readings = await UtilityReading.find({
+    if (existed) {
+      return res.status(409).json({
+        message: "Đã tồn tại hoá đơn cho phòng/hợp đồng/kỳ này",
+        invoiceId: existed._id,
+      });
+    }
+
+    // 4. Lấy utilityReading confirmed của kỳ này (nếu có)
+    const utilityReading = await UtilityReading.findOne({
+      landlordId,
       buildingId: room.buildingId,
       roomId,
       periodMonth: month,
       periodYear: year,
-      status: "confirmed", // chỉ lấy bản đã confirm
+      status: "confirmed",
       isDeleted: false,
-      invoiceId: null, // chưa gắn hóa đơn
+      invoiceId: null,
+    }).lean();
+
+    // 5. Dịch vụ tòa nhà
+    const buildingServices = await BuildingService.find({
+      landlordId,
+      buildingId: room.buildingId,
+      isDeleted: false,
     }).lean();
 
     const items = [];
 
-    // 4.1. Tiền phòng
-    if (includeRent && rentPrice > 0) {
+    // 5.1 Tiền phòng
+    if (includeRent && contract.contract?.price) {
       items.push({
         type: "rent",
         label: "Tiền phòng",
-        description: `Tiền phòng ${room.roomNumber} tháng ${month}/${year}`,
+        description: `Tiền phòng tháng ${month}/${year}`,
         quantity: 1,
-        unitPrice: rentPrice,
-        amount: rentPrice,
+        unitPrice: contract.contract.price,
+        amount: Number(contract.contract.price),
       });
     }
 
-    // 4.2. Điện / nước
-    for (const r of readings) {
+    // 5.2 Tiền điện / nước nếu có đọc số
+    if (utilityReading) {
+      const eConsumption = utilityReading.eConsumption || 0;
+      const wConsumption = utilityReading.wConsumption || 0;
+      const ePrice = building.ePrice || 0;
+      const wPrice = building.wPrice || 0;
+
+      if (eConsumption > 0 && ePrice >= 0) {
+        const quantity = eConsumption;
+        const unitPrice = ePrice;
+        const amount = Math.max(0, quantity * unitPrice);
+
+        items.push({
+          type: "electric",
+          label: "Tiền điện",
+          description: `Tiền điện tháng ${month}/${year}`,
+          quantity,
+          unitPrice,
+          amount,
+          utilityReadingId: utilityReading._id,
+          meta: {
+            previousIndex: utilityReading.ePreviousIndex,
+            currentIndex: utilityReading.eCurrentIndex,
+          },
+        });
+      }
+
+      if (wConsumption > 0 && wPrice >= 0) {
+        const quantity = wConsumption;
+        const unitPrice = wPrice;
+        const amount = Math.max(0, quantity * unitPrice);
+
+        items.push({
+          type: "water",
+          label: "Tiền nước",
+          description: `Tiền nước tháng ${month}/${year}`,
+          quantity,
+          unitPrice,
+          amount,
+          utilityReadingId: utilityReading._id,
+          meta: {
+            previousIndex: utilityReading.wPreviousIndex,
+            currentIndex: utilityReading.wCurrentIndex,
+          },
+        });
+      }
+    }
+
+    // 5.3 Dịch vụ tòa nhà
+    const occupantCount = 1 + (contract.roommates?.length || 0);
+    for (const sv of buildingServices) {
+      let quantity = 1;
+      if (sv.chargeType === "perPerson") {
+        quantity = occupantCount;
+      }
+
+      const unitPrice = sv.fee || 0;
+      const amount = Math.max(0, quantity * unitPrice);
+
       const label =
-        r.type === "electricity"
-          ? "Tiền điện"
-          : r.type === "water"
-          ? "Tiền nước"
-          : "Tiện ích khác";
-
-      const itemType = r.type === "electricity" ? "electric" : r.type; // 🔧 D – map type
-
-      const quantity = r.consumption || 0;
-      const unitPrice = r.unitPrice || 0;
-      const amount =
-        r.amount != null ? r.amount : Math.max(0, quantity * unitPrice);
+        sv.label ||
+        (sv.name === "internet"
+          ? "Internet"
+          : sv.name === "parking"
+          ? "Gửi xe"
+          : sv.name === "cleaning"
+          ? "Phí vệ sinh"
+          : sv.name === "security"
+          ? "Bảo vệ"
+          : "Dịch vụ khác");
 
       items.push({
-        type: itemType,
+        type: "service",
         label,
-        description: `${label} tháng ${r.periodMonth}/${r.periodYear}`,
+        description:
+          sv.description ||
+          `Dịch vụ ${label.toLowerCase()} tháng ${month}/${year}`,
         quantity,
         unitPrice,
         amount,
-        utilityReadingId: r._id,
+        meta: {
+          buildingServiceId: sv._id,
+          chargeType: sv.chargeType,
+        },
       });
+    }
+
+    // 5.4 Chi phí phát sinh extraItems
+    if (Array.isArray(extraItems)) {
+      for (const raw of extraItems) {
+        if (!raw) continue;
+        const label = String(raw.label || "").trim();
+        if (!label) continue;
+
+        const description = raw.description
+          ? String(raw.description)
+          : `Chi phí phát sinh tháng ${month}/${year}`;
+
+        const quantity = Number.isFinite(Number(raw.quantity))
+          ? Number(raw.quantity)
+          : 1;
+        const unitPrice = Number.isFinite(Number(raw.unitPrice))
+          ? Number(raw.unitPrice)
+          : 0;
+        const amountRaw = Number(raw.amount);
+        const amount =
+          Number.isFinite(amountRaw) && amountRaw >= 0
+            ? amountRaw
+            : Math.max(0, quantity * unitPrice);
+
+        if (amount <= 0 && unitPrice <= 0) continue;
+
+        items.push({
+          type: "other",
+          label,
+          description,
+          quantity,
+          unitPrice,
+          amount,
+        });
+      }
     }
 
     if (!items.length) {
       return res.status(400).json({
         message:
-          "Không có dữ liệu để tạo hoá đơn (không có tiền phòng hoặc utility readings)",
+          "Không có dữ liệu để tạo hoá đơn (không có tiền phòng, điện/nước, dịch vụ hay chi phí phát sinh)",
       });
     }
 
-    // 5. Tổng tiền
-    const discountAmount = 0;
-    const lateFee = 0;
-
-    // 6. Tính dueDate (nếu không truyền → mặc định ngày 10 tháng kế tiếp)
-    let due = dueDate ? new Date(dueDate) : null;
-    if (!due || Number.isNaN(due.getTime())) {
-      const d = new Date(year, month - 1, 1); // ngày 1 của tháng hiện tại
-      d.setMonth(d.getMonth() + 1); // chuyển sang tháng kế
+    // 6. Xử lý dueDate (nếu truyền thì dùng, không thì default ngày 10 tháng sau)
+    let finalDueDate = null;
+    if (dueDate) {
+      const d = new Date(dueDate);
+      if (Number.isNaN(d.getTime())) {
+        return res
+          .status(400)
+          .json({ message: "dueDate không hợp lệ (không parse được)" });
+      }
+      finalDueDate = d;
+    } else {
+      const d = new Date(year, month - 1, 1);
+      d.setMonth(d.getMonth() + 1);
       d.setDate(10);
       d.setHours(23, 59, 59, 999);
-      due = d;
+      finalDueDate = d;
     }
 
-    // 7. Sinh số hóa đơn
+    // 7. Sinh invoiceNumber
     const invoiceNumber = await Invoice.generateInvoiceNumber({
       landlordId,
       periodMonth: month,
       periodYear: year,
     });
 
-    // 8. Tạo invoice
     const invoice = new Invoice({
       landlordId,
-      tenantId,
-      buildingId: room.buildingId,
+      tenantId: contract.tenantId,
       roomId,
+      buildingId: room.buildingId,
       contractId: contract._id,
       periodMonth: month,
       periodYear: year,
       invoiceNumber,
-      items,
-      discountAmount,
-      lateFee,
-      paidAmount: 0,
-      currency: "VND",
       issuedAt: new Date(),
-      dueDate: due,
-      status: "draft", // landlord có thể xem rồi /send để gửi email
+      dueDate: finalDueDate,
+      items,
+      status: "draft",
       createdBy: landlordId,
     });
 
     invoice.recalculateTotals();
     await invoice.save();
-    try {
-      await sendInvoiceEmailCore(invoice._id, landlordId);
-    } catch (err) {
-      console.error(
-        "Auto send invoice email error (generateInvoice):",
-        err.message
-      );
-    }
-    // 9. Cập nhật readings -> billed
-    if (readings.length) {
-      await UtilityReading.updateMany(
-        {
-          _id: { $in: readings.map((r) => r._id) },
-        },
-        { $set: { status: "billed", invoiceId: invoice._id } }
+
+    if (utilityReading) {
+      await UtilityReading.updateOne(
+        { _id: utilityReading._id },
+        { $set: { invoiceId: invoice._id, status: "billed" } }
       );
     }
 
     return res.status(201).json({
-      message: "Đã tạo hoá đơn (tiền phòng + điện/nước) cho phòng/kỳ này",
+      message:
+        "Đã tạo hoá đơn kỳ này (tiền phòng, điện/nước, dịch vụ toà + chi phí phát sinh)",
       data: invoice,
     });
   } catch (e) {
     console.error("generateInvoice error:", e);
-    return res
-      .status(500)
-      .json({ message: "Lỗi tạo hoá đơn", error: e.message });
+    return res.status(500).json({
+      message: "Lỗi tạo hoá đơn",
+      error: e.message,
+    });
   }
 };
 
 // POST /landlords/invoices/generate-monthly-bulk
-// body: { periodMonth, periodYear, buildingId?, includeRent? }
+// body: { buildingId, periodMonth, periodYear, includeRent? }
 exports.generateMonthlyInvoicesBulk = async (req, res) => {
   try {
     const landlordId = req.user?._id;
-    let {
+    const {
+      buildingId,
       periodMonth,
       periodYear,
-      buildingId,
       includeRent = true,
     } = req.body || {};
 
+    if (!buildingId || !periodMonth || !periodYear) {
+      return res.status(400).json({
+        message: "Thiếu buildingId hoặc periodMonth/periodYear",
+      });
+    }
+
     const month = Number(periodMonth);
     const year = Number(periodYear);
-
-    // 1) Validate input
     if (
-      !month ||
-      !year ||
-      !Number.isInteger(month) ||
+      Number.isNaN(month) ||
+      Number.isNaN(year) ||
       month < 1 ||
       month > 12 ||
-      !Number.isInteger(year) ||
       year < 2000
     ) {
-      return res.status(400).json({
-        message: "periodMonth/periodYear không hợp lệ",
-        data: [],
-        total: 0,
-        successCount: 0,
-        failCount: 0,
-      });
+      return res
+        .status(400)
+        .json({ message: "periodMonth/periodYear không hợp lệ" });
     }
 
-    // 2) Lấy danh sách phòng rented (optional filter theo building)
-    const roomFilter = {
-      status: "rented",
+    const building = await Building.findOne({
+      _id: buildingId,
+      landlordId,
       isDeleted: false,
-    };
-    if (buildingId) {
-      roomFilter.buildingId = buildingId;
+    }).lean();
+
+    if (!building) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy tòa nhà hoặc không thuộc quyền" });
     }
 
-    const rooms = await Room.find(roomFilter)
-      .populate("buildingId", "landlordId status isDeleted name")
+    // 1) Lấy tất cả phòng "rented" thuộc building
+    const rooms = await Room.find({
+      buildingId,
+      isDeleted: false,
+      status: "rented",
+    })
+      .select("_id roomNumber")
       .lean();
 
-    // Chỉ giữ phòng thuộc landlord hiện tại + tòa active, not deleted
-    const filteredRooms = rooms.filter(
-      (r) =>
-        r.buildingId &&
-        !r.buildingId.isDeleted &&
-        r.buildingId.status === "active" &&
-        String(r.buildingId.landlordId) === String(landlordId)
-    );
-
-    if (!filteredRooms.length) {
-      return res.status(200).json({
-        message: "Không có phòng nào phù hợp để tạo hóa đơn",
-        data: [],
-        total: 0,
-        successCount: 0,
-        failCount: 0,
+    if (!rooms.length) {
+      return res.status(400).json({
+        message: "Không có phòng đang cho thuê để tạo hóa đơn",
       });
     }
 
-    const results = [];
-    let successCount = 0;
-    let failCount = 0;
+    const summary = {
+      success: 0,
+      failed: 0,
+      details: [],
+    };
 
     // 3) Loop từng phòng và gọi lại generateMonthlyInvoice
-    for (const room of filteredRooms) {
-      const summary = {
-        roomId: room._id,
-        roomNumber: room.roomNumber,
-        success: false,
-        statusCode: null,
-        message: null,
-        invoiceId: null,
-      };
-
+    for (const room of rooms) {
       const fakeReq = {
         user: { _id: landlordId },
         body: {
-          roomId: room._id.toString(),
+          roomId: room._id,
           periodMonth: month,
           periodYear: year,
           includeRent,
         },
       };
 
-      // fake res để capture status + json
-      const out = { status: 500, body: null };
       const fakeRes = {
         status(code) {
-          out.status = code;
+          this.statusCode = code;
           return this;
         },
         json(payload) {
-          out.body = payload;
+          this.payload = payload;
           return this;
         },
       };
 
       try {
-        // Gọi lại function đơn lẻ
         await exports.generateMonthlyInvoice(fakeReq, fakeRes);
 
-        summary.statusCode = out.status;
-        summary.message = out.body?.message || null;
-
         // Nếu generateMonthlyInvoice trả 201 + có data._id → success
-        if (out.status === 201 && out.body?.data?._id) {
-          summary.success = true;
-          summary.invoiceId = out.body.data._id;
-          successCount++;
+        if (
+          fakeRes.statusCode === 201 &&
+          fakeRes.payload &&
+          fakeRes.payload.data &&
+          fakeRes.payload.data._id
+        ) {
+          summary.success += 1;
+          summary.details.push({
+            roomId: room._id,
+            roomNumber: room.roomNumber,
+            invoiceId: fakeRes.payload.data._id,
+            message: fakeRes.payload.message,
+          });
         } else {
-          summary.success = false;
-          failCount++;
+          summary.failed += 1;
+          summary.details.push({
+            roomId: room._id,
+            roomNumber: room.roomNumber,
+            error:
+              fakeRes.payload?.message ||
+              "Không rõ lỗi khi tạo hoá đơn cho phòng",
+          });
         }
       } catch (err) {
         console.error(
           "generateMonthlyInvoicesBulk - error creating invoice for room",
-          {
-            roomId: room._id,
-            error: err.message,
-          }
+          room._id,
+          err
         );
-        summary.statusCode = 500;
-        summary.message =
-          err.message || "Lỗi không xác định khi tạo hóa đơn cho phòng";
-        summary.success = false;
-        failCount++;
+        summary.failed += 1;
+        summary.details.push({
+          roomId: room._id,
+          roomNumber: room.roomNumber,
+          error: err.message || "Lỗi không xác định",
+        });
       }
-
-      results.push(summary);
     }
 
-    const total = results.length;
-    const httpStatus = successCount > 0 ? 201 : 400;
-
-    return res.status(httpStatus).json({
-      message: `Đã xử lý ${total} phòng: thành công ${successCount}, lỗi ${failCount}`,
-      data: results,
-      total,
-      successCount,
-      failCount,
+    return res.json({
+      message: "Đã xử lý tạo hóa đơn hàng loạt",
+      ...summary,
     });
   } catch (e) {
     console.error("generateMonthlyInvoicesBulk error:", e);
     return res.status(500).json({
-      message: e.message || "Server error",
-      data: [],
-      total: 0,
-      successCount: 0,
-      failCount: 0,
+      message: "Lỗi tạo hoá đơn hàng loạt",
+      error: e.message,
     });
   }
 };
-// Lấy danh sách phòng có hợp đồng completed, hợp lệ trong kỳ để tạo hoá đơn
+
+// GET /landlords/invoices/rooms
+// Liệt kê phòng + hợp đồng phù hợp để tạo hóa đơn
 exports.listRoomsForInvoice = async (req, res) => {
   try {
     const landlordId = req.user?._id;
@@ -1103,7 +1263,6 @@ exports.listRoomsForInvoice = async (req, res) => {
     });
 
     return res.json({
-      message: "Danh sách phòng có hợp đồng completed trong kỳ",
       data: pageItems,
       total,
       page: pageNum,
@@ -1117,6 +1276,123 @@ exports.listRoomsForInvoice = async (req, res) => {
       message: e.message || "Server error",
       data: [],
       total: 0,
+    });
+  }
+};
+// POST /landlords/invoices/send-drafts
+// body: { buildingId?, periodMonth?, periodYear? }
+exports.sendAllDraftInvoices = async (req, res) => {
+  try {
+    const landlordId = req.user._id;
+    const { buildingId, periodMonth, periodYear } = req.body || {};
+
+    if (!landlordId) {
+      return res.status(401).json({ message: "Không xác định landlord" });
+    }
+
+    const filter = {
+      landlordId,
+      isDeleted: false,
+      status: "draft", // chỉ gửi các hóa đơn đang draft
+    };
+
+    if (buildingId) {
+      filter.buildingId = buildingId;
+    }
+    if (periodMonth) {
+      const m = Number(periodMonth);
+      if (!Number.isInteger(m) || m < 1 || m > 12) {
+        return res
+          .status(400)
+          .json({ message: "periodMonth không hợp lệ (1–12)" });
+      }
+      filter.periodMonth = m;
+    }
+    if (periodYear) {
+      const y = Number(periodYear);
+      if (!Number.isInteger(y) || y < 2000) {
+        return res.status(400).json({ message: "periodYear không hợp lệ" });
+      }
+      filter.periodYear = y;
+    }
+
+    const invoices = await Invoice.find(filter)
+      .select(
+        "_id invoiceNumber roomId buildingId tenantId periodMonth periodYear status"
+      )
+      .lean();
+
+    if (!invoices.length) {
+      return res.status(200).json({
+        message: "Không có hóa đơn ở trạng thái draft phù hợp để gửi",
+        total: 0,
+        successCount: 0,
+        failCount: 0,
+        data: [],
+      });
+    }
+
+    const results = [];
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const inv of invoices) {
+      const row = {
+        invoiceId: inv._id,
+        invoiceNumber: inv.invoiceNumber,
+        success: false,
+        skipped: false,
+        reason: null,
+        error: null,
+        emailStatus: null,
+      };
+
+      try {
+        const result = await sendInvoiceEmailCore(inv._id, landlordId);
+
+        if (result.skipped) {
+          // ví dụ: paid/cancelled (dù filter của mình không lấy, nhưng để phòng khi đổi logic sau này)
+          row.skipped = true;
+          row.reason = result.reason;
+          failCount++;
+          results.push(row);
+          continue;
+        }
+
+        // Sau khi gửi email thành công, chuyển trạng thái hóa đơn sang "sent"
+        await Invoice.updateOne({ _id: inv._id }, { $set: { status: "sent" } });
+
+        row.success = true;
+        row.emailStatus =
+          result.update?.emailStatus || result.invoice?.emailStatus || "sent";
+        successCount++;
+        results.push(row);
+      } catch (err) {
+        console.error(
+          "sendAllDraftInvoices - error sending invoice",
+          inv._id,
+          err
+        );
+        row.error = err.message || "Lỗi không xác định khi gửi hóa đơn";
+        failCount++;
+        results.push(row);
+      }
+    }
+
+    const total = results.length;
+    const message = `Đã xử lý gửi ${total} hóa đơn draft: thành công ${successCount}, lỗi/skipped ${failCount}`;
+
+    return res.status(200).json({
+      message,
+      total,
+      successCount,
+      failCount,
+      data: results,
+    });
+  } catch (e) {
+    console.error("sendAllDraftInvoices error:", e);
+    return res.status(500).json({
+      message: e.message || "Server error",
     });
   }
 };

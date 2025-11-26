@@ -78,7 +78,6 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
  *                         type: string
  *                       status:
  *                         type: string
- *                         description: Trạng thái phòng (vd: rented, available, ...)
  *                       buildingId:
  *                         type: object
  *                         description: Tòa nhà chứa phòng

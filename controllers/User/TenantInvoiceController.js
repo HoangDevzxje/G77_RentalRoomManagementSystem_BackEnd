@@ -27,6 +27,7 @@ exports.listMyInvoices = async (req, res) => {
     const filter = {
       tenantId,
       isDeleted: false,
+      status: { $in: ["sent", "paid", "overdue"] },
     };
 
     if (status) filter.status = status;
@@ -134,9 +135,25 @@ exports.payMyInvoice = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
 
-    if (!["sent", "overdue", "draft"].includes(invoice.status)) {
+    // Không cho thanh toán nếu đã huỷ
+    if (invoice.status === "cancelled") {
       return res.status(400).json({
-        message: "Hóa đơn không ở trạng thái có thể thanh toán",
+        message: "Hóa đơn đã bị hủy, không thể thanh toán",
+      });
+    }
+
+    // Không cho thanh toán lại hóa đơn đã trả
+    if (invoice.status === "paid") {
+      return res.status(400).json({
+        message: "Hóa đơn đã được thanh toán trước đó",
+      });
+    }
+
+    // Flow “đúng bài” là: landlord tạo → draft → gửi → sent → tenant trả
+    // => chỉ cho thanh toán khi status là sent hoặc overdue
+    if (!["sent", "overdue"].includes(invoice.status)) {
+      return res.status(400).json({
+        message: "Hóa đơn chưa được gửi chính thức, không thể thanh toán",
       });
     }
 

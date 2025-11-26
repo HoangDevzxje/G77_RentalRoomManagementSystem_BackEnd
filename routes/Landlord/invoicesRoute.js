@@ -5,133 +5,16 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
 /**
  * @swagger
  * tags:
- *   - name: /landlords/invoices
- *     description: Quản lý hóa đơn tiền phòng + điện/nước
+ *   - name: Invoices
+ *     description: Quản lý hóa đơn tiền phòng, điện/nước và dịch vụ
  */
-
-/**
- * @swagger
- * /landlords/invoices/rooms:
- *   get:
- *     summary: Lấy danh sách phòng đang có hợp đồng completed trong kỳ để tạo hoá đơn
- *     description: >
- *       Trả về danh sách phòng thuộc landlord hiện tại, có hợp đồng ở trạng thái completed
- *       và còn hiệu lực trong kỳ periodMonth/periodYear. Dùng để FE hiển thị list phòng có
- *       thể tạo hoá đơn tiền phòng + điện/nước.
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: buildingId
- *         schema:
- *           type: string
- *         description: Lọc theo tòa nhà
- *       - in: query
- *         name: roomId
- *         schema:
- *           type: string
- *         description: Lọc theo một phòng cụ thể (dùng ở màn chi tiết phòng)
- *       - in: query
- *         name: periodMonth
- *         schema:
- *           type: integer
- *         description: Tháng kỳ cần tạo hoá đơn (mặc định = tháng hiện tại)
- *       - in: query
- *         name: periodYear
- *         schema:
- *           type: integer
- *         description: Năm kỳ cần tạo hoá đơn (mặc định = năm hiện tại)
- *       - in: query
- *         name: q
- *         schema:
- *           type: string
- *         description: Tìm theo số phòng (roomNumber)
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *     responses:
- *       200:
- *         description: Danh sách phòng đủ điều kiện tạo hoá đơn trong kỳ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       contractId:
- *                         type: string
- *                       contractStatus:
- *                         type: string
- *                         example: completed
- *                       contract:
- *                         type: object
- *                         properties:
- *                           no: { type: string }
- *                           startDate:
- *                             type: string
- *                             format: date-time
- *                           endDate:
- *                             type: string
- *                             format: date-time
- *                           price:
- *                             type: number
- *                       room:
- *                         type: object
- *                         properties:
- *                           _id: { type: string }
- *                           roomNumber: { type: string }
- *                           status: { type: string }
- *                           floorId: { type: string }
- *                       building:
- *                         type: object
- *                         properties:
- *                           _id: { type: string }
- *                           name: { type: string }
- *                           address: { type: string }
- *                       tenant:
- *                         type: object
- *                         properties:
- *                           _id: { type: string }
- *                           email: { type: string }
- *                           fullName: { type: string }
- *                           phoneNumber: { type: string }
- *                 total:
- *                   type: integer
- *                 page:
- *                   type: integer
- *                 limit:
- *                   type: integer
- *                 periodMonth:
- *                   type: integer
- *                 periodYear:
- *                   type: integer
- */
-router.get(
-  "/rooms",
-  checkAuthorize("landlord"),
-  invoiceController.listRoomsForInvoice
-);
 
 /**
  * @swagger
  * /landlords/invoices:
  *   get:
- *     summary: Lấy danh sách hóa đơn của chủ trọ
- *     description: Phân trang + filter theo trạng thái, phòng, tòa nhà, kỳ tháng/năm, search theo invoiceNumber.
+ *     summary: Lấy danh sách hóa đơn
+ *     description: Phân trang + filter theo trạng thái, tòa nhà, phòng, kỳ và search.
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -141,7 +24,6 @@ router.get(
  *         schema:
  *           type: string
  *           enum: [draft, sent, paid, overdue, cancelled]
- *         description: Lọc theo trạng thái hóa đơn
  *       - in: query
  *         name: buildingId
  *         schema:
@@ -151,24 +33,83 @@ router.get(
  *         schema:
  *           type: string
  *       - in: query
- *         name: tenantId
+ *         name: contractId
  *         schema:
  *           type: string
  *       - in: query
  *         name: periodMonth
  *         schema:
  *           type: integer
- *           example: 11
+ *           minimum: 1
+ *           maximum: 12
  *       - in: query
  *         name: periodYear
  *         schema:
  *           type: integer
- *           example: 2025
  *       - in: query
- *         name: search
+ *         name: q
  *         schema:
  *           type: string
- *         description: Tìm kiếm theo invoiceNumber
+ *         description: Tìm theo số hóa đơn / phòng / tòa / tên người thuê
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           default: issuedAt
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *     responses:
+ *       200:
+ *         description: Danh sách hóa đơn
+ */
+router.get("/", checkAuthorize("landlord"), invoiceController.getInvoices);
+
+/**
+ * @swagger
+ * /landlords/invoices/rooms:
+ *   get:
+ *     summary: Danh sách phòng + hợp đồng đang active để tạo hóa đơn
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: buildingId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: roomId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: periodMonth
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 12
+ *       - in: query
+ *         name: periodYear
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *           description: Tìm theo số phòng
  *       - in: query
  *         name: page
  *         schema:
@@ -181,166 +122,22 @@ router.get(
  *           default: 20
  *     responses:
  *       200:
- *         description: Danh sách hóa đơn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 items:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       _id: { type: string }
- *                       invoiceNumber: { type: string }
- *                       status: { type: string }
- *                       periodMonth: { type: integer }
- *                       periodYear: { type: integer }
- *                       issuedAt: { type: string, format: date-time }
- *                       dueDate: { type: string, format: date-time }
- *                       totalAmount: { type: number }
- *                       paidAt: { type: string, format: date-time }
- *                       buildingId:
- *                         type: object
- *                         properties:
- *                           _id: { type: string }
- *                           name: { type: string }
- *                       roomId:
- *                         type: object
- *                         properties:
- *                           _id: { type: string }
- *                           roomNumber: { type: string }
- *                       tenantId:
- *                         type: object
- *                         properties:
- *                           _id: { type: string }
- *                           email: { type: string }
- *                           userInfo:
- *                             type: object
- *                             properties:
- *                               fullName: { type: string }
- *                               phoneNumber: { type: string }
- *                 total:
- *                   type: integer
- *                 page:
- *                   type: integer
- *                 limit:
- *                   type: integer
- *                 totalPages:
- *                   type: integer
- *       400:
- *         description: Lỗi truy vấn
+ *         description: Danh sách phòng và hợp đồng phù hợp
  */
-
-/**
- * @swagger
- * /landlords/invoices/{id}:
- *   get:
- *     summary: Lấy chi tiết một hóa đơn
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Thông tin chi tiết hóa đơn
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 _id: { type: string }
- *                 invoiceNumber: { type: string }
- *                 status: { type: string }
- *                 periodMonth: { type: integer }
- *                 periodYear: { type: integer }
- *                 issuedAt: { type: string, format: date-time }
- *                 dueDate: { type: string, format: date-time }
- *                 subtotal: { type: number }
- *                 discountAmount: { type: number }
- *                 lateFee: { type: number }
- *                 totalAmount: { type: number }
- *                 currency: { type: string }
- *                 paidAt: { type: string, format: date-time }
- *                 paymentMethod: { type: string }
- *                 paymentRef: { type: string }
- *                 note: { type: string }
- *                 internalNote: { type: string }
- *                 buildingId:
- *                   type: object
- *                   properties:
- *                     _id: { type: string }
- *                     name: { type: string }
- *                     address: { type: string }
- *                 roomId:
- *                   type: object
- *                   properties:
- *                     _id: { type: string }
- *                     roomNumber: { type: string }
- *                 tenantId:
- *                   type: object
- *                   properties:
- *                     _id: { type: string }
- *                     email: { type: string }
- *                     userInfo:
- *                       type: object
- *                       properties:
- *                         fullName: { type: string }
- *                         phoneNumber: { type: string }
- *                         address: { type: string }
- *                 contractId:
- *                   type: object
- *                   properties:
- *                     _id: { type: string }
- *                     contract:
- *                       type: object
- *                       properties:
- *                         no: { type: string }
- *                         startDate: { type: string, format: date }
- *                         endDate: { type: string, format: date }
- *                 items:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       type: { type: string }
- *                       label: { type: string }
- *                       description: { type: string }
- *                       quantity: { type: number }
- *                       unitPrice: { type: number }
- *                       amount: { type: number }
- *                       utilityReadingId:
- *                         type: object
- *                         properties:
- *                           _id: { type: string }
- *                           type: { type: string }
- *                           periodMonth: { type: integer }
- *                           periodYear: { type: integer }
- *                           previousIndex: { type: number }
- *                           currentIndex: { type: number }
- *                           consumption: { type: number }
- *                           unitPrice: { type: number }
- *                           amount: { type: number }
- *       404:
- *         description: Không tìm thấy hóa đơn
- */
+router.get(
+  "/rooms",
+  checkAuthorize("landlord"),
+  invoiceController.listRoomsForInvoice
+);
 
 /**
  * @swagger
  * /landlords/invoices/generate:
  *   post:
- *     summary: Tạo hoá đơn tiền phòng + điện/nước cho một phòng (auto từ hợp đồng & chỉ số)
+ *     summary: Tạo 1 hóa đơn cho 1 phòng / 1 kỳ
  *     description: >
- *       Tạo hoá đơn dựa trên:
- *       - Hợp đồng completed hiện tại của phòng
- *       - Tiền phòng (tuỳ chọn includeRent)
- *       - Chỉ số điện/nước (UtilityReading) đã được xác nhận trong kỳ periodMonth/periodYear
+ *       Tự động lấy tiền phòng (nếu includeRent), điện/nước từ UtilityReading đã xác nhận,
+ *       dịch vụ tòa, và chi phí phát sinh.
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -359,34 +156,49 @@ router.get(
  *                 type: string
  *               periodMonth:
  *                 type: integer
- *                 example: 11
+ *                 minimum: 1
+ *                 maximum: 12
  *               periodYear:
  *                 type: integer
- *                 example: 2025
- *               includeRent:
- *                 type: boolean
- *                 default: true
- *                 description: Có tính tiền phòng vào hóa đơn hay không
  *               dueDate:
  *                 type: string
  *                 format: date-time
- *                 description: >
- *                   Ngày đến hạn thanh toán. Nếu không truyền, hệ thống sẽ tự tính:
- *                   ngày 10 của tháng kế tiếp.
+ *                 description: Hạn thanh toán (optional, mặc định = ngày 10 tháng sau)
+ *               includeRent:
+ *                 type: boolean
+ *                 default: true
+ *               extraItems:
+ *                 type: array
+ *                 description: Các chi phí phát sinh
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     label:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     quantity:
+ *                       type: number
+ *                     unitPrice:
+ *                       type: number
+ *                     amount:
+ *                       type: number
  *     responses:
  *       201:
- *         description: Tạo hoá đơn thành công
- *       400:
- *         description: Thiếu dữ liệu hoặc đã tồn tại hoá đơn cho phòng/kỳ này
- *       404:
- *         description: Không tìm thấy phòng hoặc hợp đồng hợp lệ
+ *         description: Tạo hóa đơn thành công
  */
+router.post(
+  "/generate",
+  checkAuthorize("landlord"),
+  invoiceController.generateInvoice
+);
 
 /**
  * @swagger
- * /landlords/invoices/generate:
+ * /landlords/invoices/generate-monthly:
  *   post:
- *     summary: Tạo hóa đơn tùy chỉnh từ danh sách items (tiền phòng, dịch vụ, điện/nước...)
+ *     summary: Tạo hóa đơn tháng cho 1 phòng
+ *     description: API này tương tự /generate nhưng dùng cho luồng "tạo theo tháng".
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -397,56 +209,172 @@ router.get(
  *           schema:
  *             type: object
  *             required:
- *               - tenantId
  *               - roomId
- *               - contractId
  *               - periodMonth
  *               - periodYear
- *               - items
  *             properties:
- *               tenantId: { type: string }
- *               roomId: { type: string }
- *               contractId: { type: string }
+ *               roomId:
+ *                 type: string
  *               periodMonth:
  *                 type: integer
- *                 example: 11
  *               periodYear:
  *                 type: integer
- *                 example: 2025
- *               invoiceNumber:
- *                 type: string
- *                 description: Nếu không truyền sẽ tự generate
- *               dueDate:
- *                 type: string
- *                 format: date-time
- *               items:
+ *               includeRent:
+ *                 type: boolean
+ *                 default: true
+ *               extraItems:
  *                 type: array
- *                 items:
- *                   type: object
- *                   required: [type, label, amount]
- *                   properties:
- *                     type:
- *                       type: string
- *                       enum: [rent, electric, water, service, other]
- *                     label:
- *                       type: string
- *                     description:
- *                       type: string
- *                     quantity:
- *                       type: number
- *                       default: 1
- *                     unitPrice:
- *                       type: number
- *                     amount:
- *                       type: number
- *                     utilityReadingId:
- *                       type: string
  *     responses:
  *       201:
  *         description: Tạo hóa đơn thành công
- *       400:
- *         description: Lỗi dữ liệu đầu vào
  */
+router.post(
+  "/generate-monthly",
+  checkAuthorize("landlord"),
+  invoiceController.generateMonthlyInvoice
+);
+
+/**
+ * @swagger
+ * /landlords/invoices/generate-monthly-bulk:
+ *   post:
+ *     summary: Tạo hóa đơn tháng hàng loạt cho toàn bộ phòng đang rented trong 1 tòa
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - buildingId
+ *               - periodMonth
+ *               - periodYear
+ *             properties:
+ *               buildingId:
+ *                 type: string
+ *               periodMonth:
+ *                 type: integer
+ *               periodYear:
+ *                 type: integer
+ *               includeRent:
+ *                 type: boolean
+ *                 default: true
+ *     responses:
+ *       200:
+ *         description: Kết quả xử lý từng phòng
+ */
+router.post(
+  "/generate-monthly-bulk",
+  checkAuthorize("landlord"),
+  invoiceController.generateMonthlyInvoicesBulk
+);
+
+/**
+ * @swagger
+ * /landlords/invoices/send-drafts:
+ *   post:
+ *     summary: Gửi email tất cả hóa đơn đang draft
+ *     description: >
+ *       Gửi email cho tất cả hóa đơn ở trạng thái draft của landlord hiện tại.
+ *       Có thể lọc theo tòa nhà và kỳ tháng/năm.
+ *       Sau khi gửi thành công sẽ tự chuyển trạng thái hóa đơn sang "sent".
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               buildingId:
+ *                 type: string
+ *                 description: Lọc theo tòa (optional)
+ *               periodMonth:
+ *                 type: integer
+ *                 description: Lọc theo tháng (1–12, optional)
+ *               periodYear:
+ *                 type: integer
+ *                 description: Lọc theo năm (>= 2000, optional)
+ *     responses:
+ *       200:
+ *         description: Kết quả gửi email cho từng hóa đơn
+ */
+router.post(
+  "/send-drafts",
+  checkAuthorize("landlord"),
+  invoiceController.sendAllDraftInvoices
+);
+
+/**
+ * @swagger
+ * /landlords/invoices/{id}:
+ *   get:
+ *     summary: Xem chi tiết hóa đơn
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Chi tiết hóa đơn
+ */
+router.get(
+  "/:id",
+  checkAuthorize("landlord"),
+  invoiceController.getInvoiceDetail
+);
+
+/**
+ * @swagger
+ * /landlords/invoices/{id}:
+ *   patch:
+ *     summary: Cập nhật một số thông tin hóa đơn
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               items:
+ *                 type: array
+ *               note:
+ *                 type: string
+ *               discountAmount:
+ *                 type: number
+ *               lateFee:
+ *                 type: number
+ *               status:
+ *                 type: string
+ *                 enum: [draft, sent, paid, overdue, cancelled]
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ */
+router.patch(
+  "/:id",
+  checkAuthorize("landlord"),
+  invoiceController.updateInvoice
+);
 
 /**
  * @swagger
@@ -462,49 +390,21 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               paymentMethod:
- *                 type: string
- *                 enum: [cash, bank_transfer, online_gateway]
- *                 example: bank_transfer
- *               paidAt:
- *                 type: string
- *                 format: date-time
- *                 description: Thời điểm thanh toán (nếu không truyền sẽ lấy thời điểm hiện tại)
- *               paidAmount:
- *                 type: number
- *                 description: >
- *                   Số tiền thực tế đã thu. Nếu không truyền, hệ thống mặc định = totalAmount của hoá đơn.
- *               note:
- *                 type: string
- *                 example: "Thanh toán tiền mặt tại quầy"
-
  *     responses:
  *       200:
- *         description: Đã ghi nhận thanh toán hóa đơn
- *       400:
- *         description: Lỗi trạng thái hoặc dữ liệu
- *       404:
- *         description: Không tìm thấy hóa đơn
+ *         description: Cập nhật trạng thái thành công
  */
+router.post(
+  "/:id/pay",
+  checkAuthorize("landlord"),
+  invoiceController.markInvoicePaid
+);
 
 /**
  * @swagger
  * /landlords/invoices/{id}/send:
  *   post:
- *     summary: Gửi hóa đơn cho người thuê qua email
- *     description: |
- *       Gửi email hóa đơn cho tenant dựa trên template HTML.
- *       - Nếu gửi thành công:
- *         - Cập nhật emailStatus = "sent", emailSentAt.
- *         - Nếu invoice đang ở trạng thái "draft" thì chuyển sang "sent".
- *       - Không cho gửi nếu hóa đơn đã ở trạng thái "paid" hoặc "cancelled".
+ *     summary: Gửi hóa đơn cho tenant qua email
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -516,129 +416,8 @@ router.get(
  *           type: string
  *     responses:
  *       200:
- *         description: Đã gửi email hóa đơn cho người thuê
- *       400:
- *         description: Hóa đơn không hợp lệ hoặc không thể gửi
- *       404:
- *         description: Không tìm thấy hóa đơn
- *       500:
- *         description: Lỗi khi gửi email
+ *         description: Đã gửi email
  */
-/**
- * @swagger
- * /landlords/invoices/generate-monthly-bulk:
- *   post:
- *     summary: Tạo hóa đơn tháng hàng loạt cho các phòng đang được thuê
- *     description: >
- *       Dùng để chủ trọ tạo hóa đơn tháng cho nhiều phòng cùng lúc dựa trên:
- *       - Kỳ periodMonth/periodYear
- *       - Phòng đang ở trạng thái rented
- *       - Thuộc các tòa active của landlord hiện tại
- *       - Có thể lọc theo buildingId
- *
- *       Mỗi phòng sẽ gọi lại logic generateMonthlyInvoice hiện có.
- *     tags: [Invoices]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [periodMonth, periodYear]
- *             properties:
- *               periodMonth:
- *                 type: integer
- *                 example: 10
- *               periodYear:
- *                 type: integer
- *                 example: 2025
- *               buildingId:
- *                 type: string
- *                 nullable: true
- *                 description: Nếu truyền, chỉ tạo hóa đơn cho các phòng thuộc tòa này
- *               includeRent:
- *                 type: boolean
- *                 default: true
- *                 description: Có tính tiền phòng vào hóa đơn hay không
- *     responses:
- *       201:
- *         description: Đã xử lý và có ít nhất một phòng tạo hóa đơn thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       roomId:
- *                         type: string
- *                       roomNumber:
- *                         type: string
- *                       success:
- *                         type: boolean
- *                       statusCode:
- *                         type: integer
- *                       message:
- *                         type: string
- *                       invoiceId:
- *                         type: string
- *                         nullable: true
- *                 total:
- *                   type: integer
- *                 successCount:
- *                   type: integer
- *                 failCount:
- *                   type: integer
- *       400:
- *         description: Dữ liệu vào không hợp lệ hoặc tất cả phòng đều lỗi
- *       401:
- *         description: Không có quyền truy cập
- */
-
-// Tạo hóa đơn tháng auto từ UtilityReading + tiền phòng
-router.post(
-  "/generate-monthly",
-  checkAuthorize("landlord"),
-  invoiceController.generateMonthlyInvoice
-);
-
-// Tạo hóa đơn custom (truyền items)
-router.post(
-  "/generate",
-  checkAuthorize("landlord"),
-  invoiceController.generateInvoice
-);
-router.post(
-  "/generate-monthly-bulk",
-  checkAuthorize("landlord"),
-  invoiceController.generateMonthlyInvoicesBulk
-);
-
-// Danh sách hóa đơn
-router.get("/", checkAuthorize("landlord"), invoiceController.listInvoices);
-
-// Chi tiết hóa đơn
-router.get(
-  "/:id",
-  checkAuthorize("landlord"),
-  invoiceController.getInvoiceDetail
-);
-
-// Đánh dấu đã thanh toán
-router.post(
-  "/:id/pay",
-  checkAuthorize("landlord"),
-  invoiceController.markInvoicePaid
-);
-
-// Gửi hóa đơn cho tenant qua email
 router.post(
   "/:id/send",
   checkAuthorize("landlord"),
