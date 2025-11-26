@@ -4,6 +4,7 @@ const Room = require("../../models/Room");
 const Contract = require("../../models/Contract");
 const Building = require("../../models/Building");
 const BuildingService = require("../../models/BuildingService");
+const RevenueExpenditure = require("../../models/RevenueExpenditures");
 const sendEmail = require("../../utils/sendMail");
 
 function getPeriodRange(periodMonth, periodYear) {
@@ -126,6 +127,65 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
       emailStatus: updatedInvoice.emailStatus,
     },
   };
+}
+async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
+  try {
+    if (!invoice) return;
+
+    // Chỉ log cho hóa đơn đã thanh toán và còn hiệu lực
+    if (invoice.isDeleted) return;
+    if (invoice.status !== "paid") return;
+
+    // Tránh tạo trùng nếu đã có log cho hóa đơn này
+    const existed = await RevenueExpenditure.findOne({
+      invoiceId: invoice._id,
+      isDeleted: false,
+    }).lean();
+
+    if (existed) {
+      return existed;
+    }
+
+    // Nếu không có buildingId/landlordId thì thôi (không tạo log)
+    if (!invoice.buildingId || !invoice.landlordId) return;
+
+    const amount = Number(invoice.totalAmount) || 0;
+    if (amount <= 0) return;
+
+    const title = `Thu tiền hóa đơn ${
+      invoice.invoiceNumber || String(invoice._id)
+    }`;
+
+    const descParts = [];
+    if (invoice.roomSnapshot?.roomNumber) {
+      descParts.push(`Phòng: ${invoice.roomSnapshot.roomNumber}`);
+    }
+    if (invoice.periodMonth && invoice.periodYear) {
+      descParts.push(`Kỳ: ${invoice.periodMonth}/${invoice.periodYear}`);
+    }
+    descParts.push(`InvoiceId: ${invoice._id.toString()}`);
+
+    const description = descParts.join(" | ");
+
+    const record = await RevenueExpenditure.create({
+      createBy: actorId || invoice.landlordId,
+      landlordId: invoice.landlordId,
+      buildingId: invoice.buildingId,
+      invoiceId: invoice._id,
+      title,
+      description,
+      type: "revenue",
+      amount,
+      recordedAt: invoice.paidAt || new Date(),
+      images: [], // auto log từ hóa đơn -> không cần ảnh
+    });
+
+    return record;
+  } catch (err) {
+    console.error("ensureRevenueLogForInvoicePaid error:", err);
+    // Không throw để tránh làm fail API thanh toán
+    return null;
+  }
 }
 
 // POST /landlords/invoices/generate-monthly
@@ -601,10 +661,11 @@ exports.updateInvoice = async (req, res) => {
 // Đánh dấu đã thanh toán
 exports.markInvoicePaid = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const landlordId = req.user?._id;
     const { id } = req.params;
+    const { paymentMethod, paidAt, note, paidAmount } = req.body || {};
 
-    let invoice = await Invoice.findOne({
+    const invoice = await Invoice.findOne({
       _id: id,
       landlordId,
       isDeleted: false,
@@ -614,26 +675,69 @@ exports.markInvoicePaid = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
 
-    if (invoice.status === "paid") {
+    // Không cho mark paid nếu đã hủy
+    if (invoice.status === "cancelled") {
       return res
         .status(400)
-        .json({ message: "Hoá đơn đã ở trạng thái đã thanh toán" });
+        .json({ message: "Hóa đơn đã bị hủy, không thể ghi nhận thanh toán" });
     }
 
-    invoice.status = "paid";
-    invoice.paidAt = new Date();
-    invoice.paymentStatus = "paid";
+    // Nếu đã paid trước đó: đảm bảo đã có log thu, rồi trả về luôn
+    if (invoice.status === "paid") {
+      await ensureRevenueLogForInvoicePaid(invoice, {
+        actorId: req.user?._id,
+      });
+      return res.json({
+        message: "Hóa đơn đã được ghi nhận thanh toán trước đó",
+        data: invoice,
+      });
+    }
 
-    invoice.recalculateTotals();
+    // Validate số tiền
+    const total = Number(invoice.totalAmount) || 0;
+    if (!total || total <= 0) {
+      return res.status(400).json({
+        message: "Số tiền hóa đơn không hợp lệ",
+      });
+    }
+
+    let finalPaidAmount =
+      typeof paidAmount === "number" && paidAmount > 0 ? paidAmount : total;
+
+    // Nếu muốn sau này hỗ trợ thanh toán một phần thì ở đây sẽ khác.
+    // Hiện tại: coi như thanh toán đủ 100%.
+    invoice.paidAmount = finalPaidAmount;
+    invoice.status = "paid";
+
+    if (paymentMethod) {
+      const allowed = ["cash", "online_gateway", null];
+      if (!allowed.includes(paymentMethod)) {
+        return res.status(400).json({ message: "paymentMethod không hợp lệ" });
+      }
+      invoice.paymentMethod = paymentMethod;
+    } else if (!invoice.paymentMethod) {
+      // default nếu landlord không truyền: coi như tiền mặt
+      invoice.paymentMethod = "cash";
+    }
+
+    invoice.paidAt = paidAt ? new Date(paidAt) : new Date();
+
+    if (note) {
+      invoice.paymentNote = note;
+    }
+
     await invoice.save();
 
+    // 🔗 Sau khi hóa đơn đã "paid" → tự động ghi log thu
+    await ensureRevenueLogForInvoicePaid(invoice, { actorId: req.user?._id });
+
     return res.json({
-      message: "Đã cập nhật hoá đơn sang trạng thái đã thanh toán",
+      message: "Đã ghi nhận thanh toán hóa đơn",
       data: invoice,
     });
   } catch (e) {
     console.error("markInvoicePaid error:", e);
-    return res.status(500).json({ message: "Server error", error: e.message });
+    return res.status(500).json({ message: e.message });
   }
 };
 
@@ -995,6 +1099,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       periodMonth,
       periodYear,
       includeRent = true,
+      extraItems = [],
     } = req.body || {};
 
     if (!buildingId || !periodMonth || !periodYear) {
@@ -1059,6 +1164,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
           periodMonth: month,
           periodYear: year,
           includeRent,
+          extraItems,
         },
       };
 

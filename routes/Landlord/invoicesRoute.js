@@ -262,6 +262,22 @@ router.post(
  *               includeRent:
  *                 type: boolean
  *                 default: true
+ *               extraItems:
+ *                 type: array
+ *                 description: Các chi phí phát sinh giống nhau áp dụng cho mọi phòng
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     label:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     quantity:
+ *                       type: number
+ *                     unitPrice:
+ *                       type: number
+ *                     amount:
+ *                       type: number
  *     responses:
  *       200:
  *         description: Kết quả xử lý từng phòng
