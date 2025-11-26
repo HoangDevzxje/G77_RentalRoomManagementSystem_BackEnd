@@ -35,6 +35,7 @@ const invoiceLandlordRoute = require("./Landlord/invoicesRoute");
 const tenantInvoiceRoute = require("././User/tenantInvoicesRoute");
 const notification = require("././User/notificationRoute");
 const utilityReadingsRoute = require("././Landlord/utilityReadingsRoute");
+const bankInfoRoute = require("././Landlord/bankInfoRoute");
 
 const paymentRoute = require("./paymentRoute");
 const routes = (app) => {
@@ -64,6 +65,7 @@ const routes = (app) => {
   app.use("/landlords/residents", residentRoute);
   app.use("/landlords/invoices", invoiceLandlordRoute);
   app.use("/landlords/utility-readings", utilityReadingsRoute);
+  app.use("/landlords/bank-info", bankInfoRoute);
   app.use("/posts", postUser);
   app.use("/ratings", buildingRatingRoute);
   app.use("/roommates", roommateRoute);

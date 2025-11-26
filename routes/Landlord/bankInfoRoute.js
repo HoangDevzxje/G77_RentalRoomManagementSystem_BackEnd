@@ -99,7 +99,7 @@ router.get(
  *                       type: string
  */
 router.patch(
-  "/bank-info",
+  "/",
   checkAuthorize("landlord"),
   bankInfoController.updateMyBankInfo
 );
@@ -148,7 +148,7 @@ router.patch(
  *                       type: string
  */
 router.post(
-  "/bank-info/qr-upload",
+  "/qr-upload",
   checkAuthorize("landlord"),
   uploadBankQr,
   bankInfoController.uploadBankQr
