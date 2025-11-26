@@ -1,6 +1,7 @@
 require("dotenv").config();
 require("./jobs/contractReminderJob");
 require("./jobs/autoGenerateInvoices")();
+require("./jobs/autoConfirmMoveIn");
 
 const https = require("https");
 const dns = require("dns");

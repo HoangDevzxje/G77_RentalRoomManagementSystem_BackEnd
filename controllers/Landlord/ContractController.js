@@ -6,6 +6,7 @@ const Term = require("../../models/Term");
 const Regulation = require("../../models/Regulation");
 const Account = require("../../models/Account");
 const RoomFurniture = require("../../models/RoomFurniture");
+const Notification = require("../../models/Notification");
 const Furniture = require("../../models/Furniture");
 const he = require("he");
 const PDFDocument = require("pdfkit");
@@ -85,6 +86,139 @@ function mapAccountToPerson(acc) {
     bankAccount: "",
     bankName: "",
   };
+}
+
+async function confirmMoveInCore(contractId, { io, mode = "manual" } = {}) {
+  const contract = await Contract.findById(contractId);
+  if (!contract) throw new Error("Không tìm thấy hợp đồng");
+
+  if (contract.moveInConfirmedAt) {
+    // đã confirm rồi thì bỏ qua, để job không crash
+    return { skipped: true, reason: "already_confirmed" };
+  }
+
+  if (contract.status !== "completed") {
+    throw new Error("Chỉ xác nhận vào ở khi hợp đồng đã hoàn tất");
+  }
+
+  const startDate = contract.contract?.startDate;
+  const endDate = contract.contract?.endDate;
+
+  if (!startDate || !endDate) {
+    throw new Error("Thiếu ngày bắt đầu/kết thúc hợp đồng");
+  }
+
+  const now = new Date();
+  if (now < startDate || now > endDate) {
+    throw new Error("Chỉ được xác nhận vào ở trong khoảng thời gian hợp đồng");
+  }
+
+  const room = await Room.findById(contract.roomId);
+  if (!room) throw new Error("Không tìm thấy phòng");
+
+  if (
+    room.currentContractId &&
+    String(room.currentContractId) !== String(contract._id)
+  ) {
+    throw new Error("Phòng đang gán với hợp đồng khác, không thể xác nhận");
+  }
+
+  const roommateCount = (contract.roommates || []).length;
+  const totalTenant = 1 + roommateCount;
+  if (room.maxTenants && totalTenant > room.maxTenants) {
+    throw new Error(
+      `Số người ở (${totalTenant}) vượt quá giới hạn (${room.maxTenants})`
+    );
+  }
+
+  // Cập nhật phòng & hợp đồng
+  room.status = "rented";
+  room.currentTenantIds = [contract.tenantId];
+  room.currentContractId = contract._id;
+  await room.save();
+
+  contract.moveInConfirmedAt = now;
+  await contract.save();
+
+  // Gửi notification (system)
+  await createMoveInNotifications(contract, { io, mode });
+
+  return { success: true };
+}
+async function createMoveInNotifications(contract, { io, mode }) {
+  const landlordId = contract.landlordId;
+  const tenantId = contract.tenantId;
+  const buildingId = contract.buildingId;
+  const roomId = contract.roomId;
+
+  const titleForLandlord =
+    mode === "auto"
+      ? "Hệ thống đã xác nhận người thuê vào ở"
+      : "Đã xác nhận người thuê vào ở";
+  const contentForLandlord = `Hợp đồng ${
+    contract.contract?.no || ""
+  } cho phòng ${contract.roomNumber || roomId} đã được xác nhận vào ở.`;
+
+  const titleForTenant =
+    mode === "auto"
+      ? "Hệ thống đã xác nhận bạn vào ở"
+      : "Bạn đã được xác nhận vào ở";
+  const contentForTenant = `Hợp đồng thuê phòng ${
+    contract.roomNumber || roomId
+  } đã được xác nhận vào ở. Chúc bạn ở vui vẻ!`;
+
+  // Thông báo cho landlord (và staff qua building)
+  const notiLandlord = await Notification.create({
+    landlordId,
+    createBy: null,
+    createByRole: "system",
+    title: titleForLandlord,
+    content: contentForLandlord,
+    type: "reminder",
+    target: { buildings: [buildingId] },
+    link: `/landlords/contracts`,
+  });
+
+  // Thông báo cho tenant
+  const notiTenant = await Notification.create({
+    landlordId,
+    createBy: null,
+    createByRole: "system",
+    title: titleForTenant,
+    content: contentForTenant,
+    type: "reminder",
+    target: { residents: [tenantId], rooms: [roomId] },
+    link: `/tenants/contracts`,
+  });
+
+  if (io) {
+    const payloadLandlord = {
+      id: notiLandlord._id.toString(),
+      title: notiLandlord.title,
+      content: notiLandlord.content,
+      type: notiLandlord.type,
+      link: notiLandlord.link,
+      createdAt: notiLandlord.createdAt,
+      createBy: { id: null, name: "System", role: "system" },
+    };
+
+    io.to(`user:${landlordId}`).emit("new_notification", payloadLandlord);
+    io.to(`user:${landlordId}`).emit("unread_count_increment", {
+      increment: 1,
+    });
+
+    const payloadTenant = {
+      id: notiTenant._id.toString(),
+      title: notiTenant.title,
+      content: notiTenant.content,
+      type: notiTenant.type,
+      link: notiTenant.link,
+      createdAt: notiTenant.createdAt,
+      createBy: { id: null, name: "System", role: "system" },
+    };
+    io.to(`user:${tenantId}`).emit("new_notification", payloadTenant);
+    io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+  }
 }
 
 // POST /landlords/contracts/from-contact
@@ -563,12 +697,6 @@ exports.confirmMoveIn = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
 
-    if (contract.status !== "completed") {
-      return res.status(400).json({
-        message: "Chỉ xác nhận vào ở khi hợp đồng đã hoàn tất",
-      });
-    }
-
     if (isStaff) {
       if (
         !contract.createBy ||
@@ -582,47 +710,24 @@ exports.confirmMoveIn = async (req, res) => {
       }
     }
 
-    const room = await Room.findById(contract.roomId);
-    if (!room) {
-      return res.status(404).json({ message: "Không tìm thấy phòng" });
-    }
+    // Giao toàn bộ validate + cập nhật phòng + noti cho core xử lý
+    const result = await confirmMoveInCore(contract._id, {
+      io: req.app?.get("io"),
+      mode: "manual",
+    });
 
-    // Nếu phòng đang gắn với hợp đồng khác → chặn
-    if (
-      room.currentContractId &&
-      String(room.currentContractId) !== String(contract._id)
-    ) {
+    // Nếu core báo đã confirm rồi thì trả 400 cho trường hợp landlord bấm lại
+    if (result.skipped && result.reason === "already_confirmed") {
       return res.status(400).json({
-        message:
-          "Phòng này đang được gán cho một hợp đồng khác. Vui lòng kiểm tra lại trước khi xác nhận vào ở.",
-        currentContractId: room.currentContractId,
+        message: "Hợp đồng này đã được xác nhận vào ở trước đó",
       });
     }
 
-    // Số người ở: 1 (Bên B) + roommates
-    const roommateCount = (contract.roommates || []).length;
-    const totalTenant = 1 + roommateCount;
-
-    if (room.maxTenants && totalTenant > room.maxTenants) {
-      return res.status(400).json({
-        message: `Số người ở (${totalTenant}) vượt quá giới hạn cho phép (${room.maxTenants})`,
-      });
-    }
-
-    room.status = "rented";
-    room.currentTenantIds = [contract.tenantId];
-    room.currentContractId = contract._id;
-    await room.save();
-
-    contract.moveInConfirmedAt = new Date();
-    await contract.save();
-    res.json({
+    return res.json({
       message: "Đã xác nhận người thuê vào ở",
-      roomStatus: room.status,
-      currentTenantIds: room.currentTenantIds,
     });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    return res.status(400).json({ message: e.message });
   }
 };
 
@@ -1735,3 +1840,4 @@ exports.downloadContractPdf = async (req, res) => {
     } catch {}
   }
 };
+exports.confirmMoveInCore = confirmMoveInCore;
