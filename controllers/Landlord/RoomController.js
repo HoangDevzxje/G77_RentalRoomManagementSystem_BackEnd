@@ -7,15 +7,12 @@ const renderRoomNumber = require("../../utils/renderRoomNumber");
 
 //helper: lấy public_id từ Cloudinary URL
 function getCloudinaryPublicId(url) {
-  // Ví dụ URL:
-  // https://res.cloudinary.com/<cloud>/image/upload/v1699999999/rooms/123/169...-abc.webp
-  // public_id cần là: rooms/123/169...-abc
   try {
     const u = new URL(url);
-    const afterUpload = u.pathname.split("/upload/")[1]; // v169.../rooms/123/169...-abc.webp
+    const afterUpload = u.pathname.split("/upload/")[1]; 
     if (!afterUpload) return null;
-    const noVersion = afterUpload.replace(/^v\d+\//, ""); // rooms/123/169...-abc.webp
-    return noVersion.replace(/\.[^/.]+$/, ""); // bỏ .webp
+    const noVersion = afterUpload.replace(/^v\d+\//, ""); 
+    return noVersion.replace(/\.[^/.]+$/, ""); 
   } catch (_) {
     return null;
   }

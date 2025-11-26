@@ -34,8 +34,36 @@ const storage = new CloudinaryStorage({
 const uploadMultiple = multer({ storage }).array("images", 10);
 const uploadSingle = multer({ storage }).single("image");
 
+// Storage riêng cho QR ngân hàng của landlord
+const bankQrStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    // Lấy landlordId từ req.user (bạn nhớ đặt checkAuthorize("landlord") TRƯỚC middleware upload)
+    const landlordId = req.user?._id?.toString() || "unknown-landlord";
+
+    const folder = `bank_qr/${landlordId}`;
+
+    const safeName = (file.originalname || "qr")
+      .toLowerCase()
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-z0-9-_]+/g, "-");
+
+    return {
+      folder,
+      allowed_formats: ["jpg", "jpeg", "png", "webp"],
+      format: "webp",
+      public_id: `${Date.now()}-${safeName}`,
+      transformation: [{ width: 800, crop: "scale" }],
+    };
+  },
+});
+
+// field name: "qrImage"
+const uploadBankQr = multer({ storage: bankQrStorage }).single("qrImage");
+
 module.exports = {
   cloudinary,
   uploadMultiple,
   uploadSingle,
+  uploadBankQr,
 };

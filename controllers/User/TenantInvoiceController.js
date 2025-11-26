@@ -1,14 +1,7 @@
 const axios = require("axios");
 const crypto = require("crypto");
 const Invoice = require("../../models/Invoice");
-const {
-  MOMO_ENDPOINT,
-  MOMO_PARTNER_CODE,
-  MOMO_ACCESS_KEY,
-  MOMO_SECRET_KEY,
-  MOMO_REDIRECT_URL,
-  MOMO_IPN_URL,
-} = require("../../configs/momo");
+const UserInformation = require("../../models/UserInformation");
 
 exports.listMyInvoices = async (req, res) => {
   try {
@@ -120,6 +113,7 @@ exports.getMyInvoiceDetail = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
+// POST /tenants/invoices/:id/pay
 exports.payMyInvoice = async (req, res) => {
   try {
     const tenantId = req.user?._id;
@@ -129,113 +123,53 @@ exports.payMyInvoice = async (req, res) => {
       _id: id,
       tenantId,
       isDeleted: false,
-    });
+    }).lean();
 
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
 
-    // Không cho thanh toán nếu đã huỷ
-    if (invoice.status === "cancelled") {
-      return res.status(400).json({
-        message: "Hóa đơn đã bị hủy, không thể thanh toán",
-      });
-    }
-
-    // Không cho thanh toán lại hóa đơn đã trả
     if (invoice.status === "paid") {
+      return res
+        .status(400)
+        .json({ message: "Hóa đơn đã thanh toán trước đó" });
+    }
+
+    const amount = Number(invoice.totalAmount || 0);
+    if (!amount || amount <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Tổng tiền hóa đơn không hợp lệ" });
+    }
+
+    const landlord = await Account.findById(invoice.landlordId)
+      .select("bankInfo")
+      .lean();
+
+    if (!landlord || !landlord.bankInfo || !landlord.bankInfo.accountNumber) {
       return res.status(400).json({
-        message: "Hóa đơn đã được thanh toán trước đó",
+        message:
+          "Chủ trọ chưa cấu hình thông tin ngân hàng. Vui lòng liên hệ chủ trọ.",
       });
     }
 
-    // Flow “đúng bài” là: landlord tạo → draft → gửi → sent → tenant trả
-    // => chỉ cho thanh toán khi status là sent hoặc overdue
-    if (!["sent", "overdue"].includes(invoice.status)) {
-      return res.status(400).json({
-        message: "Hóa đơn chưa được gửi chính thức, không thể thanh toán",
-      });
-    }
-
-    if (!invoice.totalAmount || invoice.totalAmount <= 0) {
-      return res.status(400).json({
-        message: "Số tiền hóa đơn không hợp lệ",
-      });
-    }
-
-    const amount = Math.round(invoice.totalAmount);
-    const orderId = `${MOMO_PARTNER_CODE}_${invoice._id}_${Date.now()}`;
-    const requestId = orderId;
-    const orderInfo = `Thanh toán hóa đơn ${
-      invoice.invoiceNumber || invoice._id
-    }`;
-    const requestType = "captureWallet";
-
-    const extraDataObj = { invoiceId: invoice._id.toString() };
-    const extraData = Buffer.from(JSON.stringify(extraDataObj)).toString(
-      "base64"
-    );
-
-    const rawSignature =
-      "accessKey=" +
-      MOMO_ACCESS_KEY +
-      "&amount=" +
-      amount +
-      "&extraData=" +
-      extraData +
-      "&ipnUrl=" +
-      MOMO_IPN_URL +
-      "&orderId=" +
-      orderId +
-      "&orderInfo=" +
-      orderInfo +
-      "&partnerCode=" +
-      MOMO_PARTNER_CODE +
-      "&redirectUrl=" +
-      MOMO_REDIRECT_URL +
-      "&requestId=" +
-      requestId +
-      "&requestType=" +
-      requestType;
-
-    const signature = crypto
-      .createHmac("sha256", MOMO_SECRET_KEY)
-      .update(rawSignature)
-      .digest("hex");
-
-    const body = {
-      partnerCode: MOMO_PARTNER_CODE,
-      accessKey: MOMO_ACCESS_KEY,
-      requestId,
-      amount,
-      orderId,
-      orderInfo,
-      redirectUrl: MOMO_REDIRECT_URL,
-      ipnUrl: MOMO_IPN_URL,
-      requestType,
-      extraData,
-      signature,
-      lang: "vi",
-    };
-
-    const momoRes = await axios.post(MOMO_ENDPOINT, body, {
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (momoRes.data?.resultCode !== 0) {
-      return res.status(400).json({
-        message: "Tạo yêu cầu thanh toán MoMo thất bại",
-        momo: momoRes.data,
-      });
-    }
+    const transferNote = invoice.invoiceNumber
+      ? invoice.invoiceNumber
+      : `INVOICE-${invoice._id.toString().slice(-6)}`;
 
     return res.json({
-      message: "Tạo link thanh toán MoMo thành công",
-      payUrl: momoRes.data.payUrl,
-      momo: momoRes.data,
+      message:
+        "Vui lòng chuyển khoản theo thông tin bên dưới và chờ chủ trọ xác nhận hóa đơn đã thanh toán.",
+      invoiceId: invoice._id,
+      invoiceNumber: invoice.invoiceNumber,
+      periodMonth: invoice.periodMonth,
+      periodYear: invoice.periodYear,
+      amount,
+      bankInfo: landlord.bankInfo,
+      transferNote,
     });
   } catch (e) {
-    console.error("payMyInvoice MoMo error:", e);
+    console.error("payMyInvoice (bank) error:", e);
     return res.status(500).json({ message: e.message || "Server error" });
   }
 };
