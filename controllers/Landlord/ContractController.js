@@ -545,7 +545,6 @@ exports.sendToTenant = async (req, res) => {
     const contract = await Contract.findOne({ _id: id, landlordId })
       .populate("buildingId", "name")
       .populate("roomId", "roomNumber");
-    console.log(contract);
     if (!contract) {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
@@ -612,7 +611,6 @@ exports.sendToTenant = async (req, res) => {
         });
 
         io.to(`user:${contract.tenantId}`).emit("unread_count_increment", { increment: 1 });
-        console.log(`[CRON] Sent reminder to resident ${contract.tenantId}`);
       }
     }
     res.json({
@@ -1232,7 +1230,6 @@ exports.approveExtension = async (req, res) => {
         });
 
         io.to(`user:${contract.tenantId}`).emit("unread_count_increment", { increment: 1 });
-        console.log(`[CRON] Sent reminder to resident ${contract.tenantId}`);
       }
     }
     return res.json({
@@ -1307,7 +1304,6 @@ exports.rejectExtension = async (req, res) => {
         });
 
         io.to(`user:${contract.tenantId}`).emit("unread_count_increment", { increment: 1 });
-        console.log(`[CRON] Sent reminder to resident ${contract.tenantId}`);
       }
     }
     return res.json({
