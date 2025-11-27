@@ -597,6 +597,10 @@ exports.getInvoiceDetail = async (req, res) => {
           select: "fullName phoneNumber",
         },
       })
+      .populate({
+        path: "contractId",
+        select: "contract.no contract.startDate contract.endDate",
+      })
       .lean();
 
     if (!invoice) {
