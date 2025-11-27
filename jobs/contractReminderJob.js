@@ -83,8 +83,8 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
       title: "Hợp đồng sắp hết hạn",
       content: `Hợp đồng của ${tenantName} (phòng ${room?.roomNumber || "N/A"}) sẽ hết hạn vào ngày <strong>${endDateStr}</strong>.`,
       type: "reminder",
-      target: { accounts: receivers }, // hoặc target.users tùy backend của bạn
-      readBy: [], // quan trọng cho landlord
+      target: { accounts: receivers },
+      readBy: [],
       link: "/landlords/contracts",
       createdAt: new Date(),
     });
@@ -152,9 +152,9 @@ cron.schedule("0 9 * * *", async () => {
   }
 },
 
-{
-  scheduled: true,
-  timezone: "Asia/Ho_Chi_Minh", // Quan trọng: đảm bảo đúng múi giờ Việt Nam
-});
+  {
+    scheduled: true,
+    timezone: "Asia/Ho_Chi_Minh", // Quan trọng: đảm bảo đúng múi giờ Việt Nam
+  });
 
 console.log("[CRON] Đã khởi động job nhắc nhở hợp đồng sắp hết hạn (mỗi 9h sáng)");

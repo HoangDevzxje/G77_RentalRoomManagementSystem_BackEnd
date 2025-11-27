@@ -2,6 +2,23 @@ const mongoose = require("mongoose");
 
 const STATUS = ["open", "in_progress", "resolved", "rejected"];
 
+const CATEGORY = [
+  "furniture",        // đồ nội thất
+  "electrical",       // điện, ổ cắm, đèn
+  "plumbing",         // nước, vòi, bồn rửa, toilet
+  "air_conditioning", // điều hòa
+  "door_lock",        // khóa cửa, chìa khóa
+  "wall_ceiling",     // tường, trần nhà, sơn, nứt
+  "flooring",         // sàn gỗ, gạch
+  "windows",          // cửa sổ, kính
+  "appliances",       // tủ lạnh, máy giặt, lò vi sóng...
+  "internet_wifi",    // mạng internet
+  "pest_control",     // diệt côn trùng
+  "cleaning",         // vệ sinh (ổng thoát nước, bồn cầu bẩn...)
+  "safety",           // bình chữa cháy, chuông báo khói
+  "other"             // khác
+];
+
 const maintenanceRequestSchema = new mongoose.Schema(
   {
     buildingId: {
@@ -17,6 +34,10 @@ const maintenanceRequestSchema = new mongoose.Schema(
     furnitureId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Furniture",
+    },
+    category: {
+      type: String,
+      enum: CATEGORY,
       required: true,
     },
 
@@ -31,11 +52,6 @@ const maintenanceRequestSchema = new mongoose.Schema(
     description: String,
     photos: [{ url: String, note: String }],
 
-    priority: {
-      type: String,
-      enum: ["low", "medium", "high", "urgent"],
-      default: "medium",
-    },
     status: { type: String, enum: STATUS, default: "open" },
 
     affectedQuantity: { type: Number, default: 1, min: 1 },
@@ -49,10 +65,12 @@ const maintenanceRequestSchema = new mongoose.Schema(
       },
     ],
 
-    estimatedCost: { type: Number, min: 0 },
-    actualCost: { type: Number, min: 0 },
-
-    scheduledAt: Date,
+    repairCost: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+    images: [{ type: String }],
     resolvedAt: Date,
   },
   { timestamps: true }
@@ -69,7 +87,8 @@ maintenanceRequestSchema.index({
 maintenanceRequestSchema.methods.pushEvent = function (by, action, note = "") {
   this.timeline.push({ by, action, note });
 };
-
+maintenanceRequestSchema.index({ buildingId: 1, roomId: 1, category: 1, status: 1, createdAt: -1 });
+maintenanceRequestSchema.index({ reporterAccountId: 1, createdAt: -1 });
 maintenanceRequestSchema.statics.isFinal = function (st) {
   return ["resolved", "rejected"].includes(st);
 };

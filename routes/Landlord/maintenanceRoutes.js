@@ -4,7 +4,7 @@ const ctrl = require("../../controllers/Landlord/MaintenanceController");
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
-
+const { uploadMultiple } = require("../../configs/cloudinary");
 // === MIDDLEWARE: chỉ validate buildingId nếu có gửi ===
 const checkBuildingIfProvided = (req, res, next) => {
   const buildingId = req.query.buildingId;
@@ -18,8 +18,8 @@ const checkBuildingIfProvided = (req, res, next) => {
 /**
  * @swagger
  * tags:
- *   name: Landlord - Maintenance
- *   description: Quản lý yêu cầu bảo trì của tòa nhà
+ *   name: Landlord Maintenance Management
+ *   description: Quản lý yêu cầu bảo trì tòa nhà (Landlord & Staff)
  */
 
 /**
@@ -27,134 +27,69 @@ const checkBuildingIfProvided = (req, res, next) => {
  * /landlords/maintenance:
  *   get:
  *     summary: Lấy danh sách yêu cầu bảo trì
- *     tags: [Landlord - Maintenance]
+ *     tags: [Landlord Maintenance Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - name: buildingId
  *         in: query
- *         schema:
- *           type: string
- *         description: ID của tòa nhà
+ *         schema: { type: string }
+ *         description: Lọc theo tòa nhà
  *       - name: roomId
  *         in: query
- *         schema:
- *           type: string
- *         description: ID của phòng
- *       - name: furnitureId
- *         in: query
- *         schema:
- *           type: string
- *         description: ID của đồ nội thất
+ *         schema: { type: string }
  *       - name: status
  *         in: query
  *         schema:
  *           type: string
  *           enum: [open, in_progress, resolved, rejected]
- *         description: Trạng thái yêu cầu
- *       - name: priority
+ *       - name: category
  *         in: query
- *         schema:
- *           type: string
- *           enum: [low, medium, high, urgent]
- *         description: Mức độ ưu tiên
+ *         schema: { type: string }
  *       - name: q
  *         in: query
- *         schema:
- *           type: string
- *         description: Tìm kiếm theo tiêu đề hoặc mô tả
+ *         schema: { type: string }
+ *         description: Tìm kiếm tiêu đề/mô tả
  *       - name: page
  *         in: query
- *         schema:
- *           type: integer
- *           default: 1
- *         description: Số trang
+ *         schema: { type: integer, default: 1 }
  *       - name: limit
  *         in: query
- *         schema:
- *           type: integer
- *           default: 10
- *         description: Số lượng mỗi trang
+ *         schema: { type: integer, default: 15 }
+ *       - name: sort
+ *         in: query
+ *         schema: { type: string, default: "-createdAt" }
  *     responses:
  *       200:
- *         description: Danh sách yêu cầu bảo trì
+ *         description: Danh sách phiếu bảo trì
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
+ *                 success: { type: boolean }
  *                 data:
  *                   type: array
  *                   items:
  *                     type: object
  *                     properties:
- *                       _id:
- *                         type: string
- *                       buildingId:
- *                         type: string
- *                       roomId:
- *                         type: object
- *                       furnitureId:
- *                         type: object
- *                       reporterAccountId:
- *                         type: object
- *                       assigneeAccountId:
- *                         type: object
- *                       title:
- *                         type: string
- *                       description:
- *                         type: string
- *                       photos:
- *                         type: array
- *                         items:
- *                           type: object
- *                           properties:
- *                             url:
- *                               type: string
- *                             note:
- *                               type: string
- *                       priority:
- *                         type: string
- *                         enum: [low, medium, high, urgent]
- *                       status:
- *                         type: string
- *                         enum: [open, in_progress, resolved, rejected]
- *                       affectedQuantity:
- *                         type: number
- *                       estimatedCost:
- *                         type: number
- *                       actualCost:
- *                         type: number
- *                       scheduledAt:
- *                         type: string
- *                         format: date-time
- *                       resolvedAt:
- *                         type: string
- *                         format: date-time
- *                       timeline:
- *                         type: array
- *                         items:
- *                           type: object
- *                       createdAt:
- *                         type: string
- *                         format: date-time
- *                       updatedAt:
- *                         type: string
- *                         format: date-time
- *                 total:
- *                   type: integer
- *                 page:
- *                   type: integer
- *                 limit:
- *                   type: integer
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *       500:
- *         description: Lỗi server
+ *                       _id: { type: string }
+ *                       title: { type: string }
+ *                       category: { type: string }
+ *                       status: { type: string, enum: [open, in_progress, resolved, rejected] }
+ *                       roomNumber: { type: string }
+ *                       reportedBy: { type: string }
+ *                       assignee: { type: object, nullable: true }
+ *                       photoCount: { type: integer }
+ *                       proofImageCount: { type: integer }
+ *                       repairCost: { type: number, nullable: true }
+ *                       mustPay: { type: boolean }
+ *                       resolvedAt: { type: string, format: date-time, nullable: true }
+ *                       createdAt: { type: string, format: date-time }
  */
 router.get(
   "/",
-  checkAuthorize(["resident", "landlord", "admin", "staff"]),
+  checkAuthorize(["resident", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_VIEW),
   checkBuildingIfProvided,
   ctrl.listRequests
@@ -164,86 +99,24 @@ router.get(
  * @swagger
  * /landlords/maintenance/{id}:
  *   get:
- *     summary: Lấy chi tiết yêu cầu bảo trì
- *     tags: [Landlord - Maintenance]
+ *     summary: Lấy chi tiết một phiếu bảo trì
+ *     tags: [Landlord Maintenance Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - name: id
  *         in: path
  *         required: true
- *         schema:
- *           type: string
- *         description: ID của yêu cầu bảo trì
+ *         schema: { type: string }
  *     responses:
  *       200:
- *         description: Chi tiết yêu cầu bảo trì
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                     buildingId:
- *                       type: object
- *                     roomId:
- *                       type: object
- *                     furnitureId:
- *                       type: object
- *                     reporterAccountId:
- *                       type: object
- *                     assigneeAccountId:
- *                       type: object
- *                     title:
- *                       type: string
- *                     description:
- *                       type: string
- *                     photos:
- *                       type: array
- *                       items:
- *                         type: object
- *                     priority:
- *                       type: string
- *                       enum: [low, medium, high, urgent]
- *                     status:
- *                       type: string
- *                       enum: [open, in_progress, resolved, rejected]
- *                     affectedQuantity:
- *                       type: number
- *                     estimatedCost:
- *                       type: number
- *                     actualCost:
- *                       type: number
- *                     scheduledAt:
- *                       type: string
- *                       format: date-time
- *                     resolvedAt:
- *                       type: string
- *                       format: date-time
- *                     timeline:
- *                       type: array
- *                       items:
- *                         type: object
- *                     createdAt:
- *                       type: string
- *                       format: date-time
- *                     updatedAt:
- *                       type: string
- *                       format: date-time
+ *         description: Chi tiết phiếu bảo trì
  *       404:
- *         description: Không tìm thấy yêu cầu bảo trì
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
- *       500:
- *         description: Lỗi server
+ *         description: Không tìm thấy
  */
 router.get(
   "/:id",
-  checkAuthorize(["resident", "landlord", "admin", "staff"]),
+  checkAuthorize(["resident", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_VIEW),
   ctrl.getRequest
 );
@@ -252,103 +125,55 @@ router.get(
  * @swagger
  * /landlords/maintenance/{id}:
  *   patch:
- *     summary: Cập nhật yêu cầu bảo trì
- *     description: Cập nhật trạng thái, người được giao, lịch hẹn, chi phí của yêu cầu bảo trì (chỉ landlord và admin)
- *     tags: [Landlord - Maintenance]
+ *     summary: Cập nhật phiếu bảo trì (trạng thái, phân công, chi phí)
+ *     description: |
+ *       - Nếu chưa có người xử lý → người cập nhật đầu tiên sẽ tự động được gán
+ *       - Nếu có `repairCost > 0` → bắt buộc upload ảnh hóa đơn
+ *       - Mọi cập nhật đều gửi thông báo realtime cho người thuê
+ *     tags: [Landlord Maintenance Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - name: id
  *         in: path
  *         required: true
- *         schema:
- *           type: string
- *         description: ID của yêu cầu bảo trì
+ *         schema: { type: string }
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
  *               status:
  *                 type: string
  *                 enum: [open, in_progress, resolved, rejected]
- *                 description: Trạng thái mới của yêu cầu
- *                 example: in_progress
- *               assigneeAccountId:
- *                 type: string
- *                 description: ID tài khoản người được giao xử lý
- *                 example: 68d7dad6cadcf51ed611e121
- *               scheduledAt:
- *                 type: string
- *                 format: date-time
- *                 description: Thời gian lên lịch xử lý
- *                 example: 2024-01-20T10:00:00.000Z
- *               estimatedCost:
+ *                 description: Trạng thái mới
+ *               repairCost:
  *                 type: number
- *                 description: Chi phí ước tính
- *                 example: 500000
- *               actualCost:
- *                 type: number
- *                 description: Chi phí thực tế
- *                 example: 450000
+ *                 description: Điền chi phí nếu người thuê phải trả còn nếu là landlord thì thôi
  *               note:
  *                 type: string
  *                 description: Ghi chú khi cập nhật
- *                 example: Đã kiểm tra và sửa chữa
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Ảnh hóa đơn/chuyển khoản (bắt buộc nếu repairCost > 0)
  *     responses:
  *       200:
- *         description: Cập nhật thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Đã cập nhật
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                     buildingId:
- *                       type: string
- *                     roomId:
- *                       type: string
- *                     furnitureId:
- *                       type: string
- *                     title:
- *                       type: string
- *                     status:
- *                       type: string
- *                       enum: [open, in_progress, resolved, rejected]
- *                     assigneeAccountId:
- *                       type: string
- *                     scheduledAt:
- *                       type: string
- *                       format: date-time
- *                     estimatedCost:
- *                       type: number
- *                     actualCost:
- *                       type: number
- *                     resolvedAt:
- *                       type: string
- *                       format: date-time
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
+ *         description: Cập nhật thành công + gửi thông báo realtime
+ *       400:
+ *         description: Thiếu ảnh khi yêu cầu thanh toán
  *       403:
- *         description: Không có quyền cập nhật yêu cầu này
- *       404:
- *         description: Không tìm thấy yêu cầu bảo trì
- *       500:
- *         description: Lỗi server
+ *         description: Không có quyền
  */
 router.patch(
   "/:id",
-  checkAuthorize(["landlord", "admin", "staff"]),
+  checkAuthorize(["landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_EDIT),
+  uploadMultiple,
   ctrl.updateRequest
 );
 
@@ -356,9 +181,8 @@ router.patch(
  * @swagger
  * /landlords/maintenance/{id}/comment:
  *   post:
- *     summary: Thêm bình luận/ghi chú vào yêu cầu bảo trì
- *     description: Thêm bình luận hoặc ghi chú vào timeline của yêu cầu bảo trì
- *     tags: [Landlord - Maintenance]
+ *     summary: Thêm bình luận vào phiếu bảo trì
+ *     tags: [Landlord Maintenance Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -367,7 +191,7 @@ router.patch(
  *         required: true
  *         schema:
  *           type: string
- *         description: ID của yêu cầu bảo trì
+ *         description: ID phiếu bảo trì
  *     requestBody:
  *       required: true
  *       content:
@@ -379,53 +203,128 @@ router.patch(
  *             properties:
  *               note:
  *                 type: string
- *                 description: Nội dung bình luận/ghi chú
- *                 example: Đã kiểm tra, cần thay thế linh kiện mới
+ *                 example: "Đã gọi thợ, mai 9h sáng sẽ qua sửa điều hòa"
  *     responses:
  *       200:
- *         description: Thêm bình luận thành công
+ *         description: Thêm bình luận thành công + gửi thông báo realtime cho tất cả người thuê trong phòng
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 message:
- *                   type: string
- *                   example: Đã thêm ghi chú
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                     timeline:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           at:
- *                             type: string
- *                             format: date-time
- *                           by:
- *                             type: string
- *                           action:
- *                             type: string
- *                             example: comment
- *                           note:
- *                             type: string
- *       401:
- *         description: Token không hợp lệ hoặc đã hết hạn
+ *                 success: { type: boolean, example: true }
+ *                 message: { type: string, example: "Đã thêm bình luận" }
+ *                 data: { type: object, properties: { commentId: { type: string } } }
+ *       400:
+ *         description: Nội dung bình luận trống
  *       403:
- *         description: Không có quyền thêm bình luận cho yêu cầu này
+ *         description: Không có quyền bình luận
  *       404:
- *         description: Không tìm thấy yêu cầu bảo trì
- *       500:
- *         description: Lỗi server
+ *         description: Không tìm thấy phiếu bảo trì
  */
 router.post(
   "/:id/comment",
-  checkAuthorize(["resident", "landlord", "admin"]),
+  checkAuthorize(["landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_CREATE),
   ctrl.comment
 );
+/**
+ * @swagger
+ * /landlords/maintenance/{id}/comment/{commentId}:
+ *   put:
+ *     summary: Sửa bình luận trong phiếu bảo trì
+ *     tags: [Landlord Maintenance Management]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID phiếu bảo trì
+ *       - name: commentId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID bình luận (trong timeline)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - note
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 example: "Sửa lại: thợ sẽ qua vào 10h sáng"
+ *     responses:
+ *       200:
+ *         description: Sửa bình luận thành công + gửi thông báo realtime
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string, example: "Đã sửa bình luận" }
+ *       400:
+ *         description: Nội dung trống hoặc đã quá thời gian cho phép sửa
+ *       403:
+ *         description: Không phải chủ bình luận
+ *       404:
+ *         description: Không tìm thấy phiếu hoặc bình luận
+ */
+router.put(
+  "/:id/comment/:commentId",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.MAINTENANCE_EDIT),
+  ctrl.updateComment
+);
 
+/**
+ * @swagger
+ * /landlords/maintenance/{id}/comment/{commentId}:
+ *   delete:
+ *     summary: Xóa bình luận trong phiếu bảo trì
+ *     tags: [Landlord Maintenance Management]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID phiếu bảo trì
+ *       - name: commentId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID bình luận cần xóa
+ *     responses:
+ *       200:
+ *         description: Xóa bình luận thành công + gửi thông báo realtime
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string, example: "Đã xóa bình luận" }
+ *       403:
+ *         description: Không có quyền xóa (chỉ chủ bình luận hoặc landlord/staff)
+ *       404:
+ *         description: Không tìm thấy phiếu hoặc bình luận
+ */
+router.delete(
+  "/:id/comment/:commentId",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.MAINTENANCE_DELETE),
+  ctrl.deleteComment
+);
 module.exports = router;

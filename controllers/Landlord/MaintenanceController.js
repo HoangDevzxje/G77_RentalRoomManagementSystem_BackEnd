@@ -1,196 +1,147 @@
 const MaintenanceRequest = require("../../models/MaintenanceRequest");
-const RoomFurniture = require("../../models/RoomFurniture");
+const Notification = require("../../models/Notification");
 const Room = require("../../models/Room");
-
-const isAdmin = (u) => u?.role === "admin";
-const isLandlord = (u) => u?.role === "landlord";
-const isResident = (u) => u?.role === "resident";
-
-const isFinal = (st) => ["resolved", "rejected"].includes(st);
-
-// Danh sách phiếu
-const toInt = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+const Building = require("../../models/Building");
+const mongoose = require("mongoose");
+const Account = require("../../models/Account");
 
 exports.listRequests = async (req, res) => {
   try {
     let {
       buildingId,
       roomId,
-      furnitureId,
       status,
-      priority,
+      category,
       q,
       page = 1,
-      limit = 10,
+      limit = 15,
       sort = "-createdAt",
-      includeTimeline = "false",
-      scheduledFrom,
-      scheduledTo,
-      estCostMin, // number
-      estCostMax, // number
-      actCostMin, // number
-      actCostMax, // number
     } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 15));
+    const skip = (pageNum - 1) * limitNum;
 
     const filter = {};
-    if (buildingId) filter.buildingId = buildingId;
-    if (roomId) filter.roomId = roomId;
-    if (furnitureId) filter.furnitureId = furnitureId;
-    if (status) filter.status = status;
-    if (priority) filter.priority = priority;
 
-    // resident: chỉ xem phiếu thuộc phòng họ
-    if (req.user?.role === "resident") {
-      const roomIds = req.user?.roomIds || [];
-      if (!roomIds.length) {
-        return res.json({
-          data: [],
-          total: 0,
-          page: 1,
-          limit: toInt(limit, 10),
-        });
-      }
-      filter.roomId = { $in: roomIds };
-    }
-    // staff: chỉ xem phiếu thuộc tòa được giao ===
+    // Quyền theo role
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds?.length) {
-        return res.json({ data: [], total: 0, page: 1, limit: toInt(limit, 10) });
+        return res.json({ success: true, data: [], total: 0, pagination: { page: pageNum, limit: limitNum } });
       }
       filter.buildingId = { $in: req.staff.assignedBuildingIds };
     }
-    // landlord: nếu không truyền buildingId thì auto lọc tòa thuộc landlord
-    if (
-      req.user?.role === "landlord" &&
-      !buildingId &&
-      Array.isArray(req.user.buildingIds) &&
-      req.user.buildingIds.length
-    ) {
-      filter.buildingId = { $in: req.user.buildingIds };
+    if (req.user.role === "landlord") {
+      const ownedBuildings = await Building.find({
+        landlordId: req.user._id,
+        isDeleted: false
+      }).select("_id");
+
+      const ownedIds = ownedBuildings.map(b => b._id);
+
+      if (!ownedIds.length)
+        return res.json({ success: true, data: [], total: 0 });
+
+      // Nếu có truyền buildingId thì chỉ filter theo building đó
+      filter.buildingId = buildingId ? buildingId : { $in: ownedIds };
     }
 
-    // search text
+    if (buildingId) filter.buildingId = buildingId;
+    if (roomId) filter.roomId = roomId;
+    if (status) filter.status = status;
+    if (category) filter.category = category;
+
     if (q) {
       filter.$or = [
         { title: { $regex: q, $options: "i" } },
         { description: { $regex: q, $options: "i" } },
       ];
     }
+    const [data, total] = await Promise.all([
+      MaintenanceRequest.find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNum)
+        .select("_id title category status repairCost images photos affectedQuantity roomId reporterAccountId assigneeAccountId resolvedAt createdAt")
+        .populate("roomId", "roomNumber")
+        .populate({
+          path: "reporterAccountId",
+          select: "email role userInfo",
+          populate: {
+            path: "userInfo",
+            select: "fullName phoneNumber",
+          },
+        })
+        .populate({
+          path: "assigneeAccountId",
+          select: "email role userInfo",
+          populate: {
+            path: "userInfo",
+            select: "fullName phoneNumber",
+          },
+        })
+        .lean(),
 
-    if (scheduledFrom || scheduledTo) {
-      filter.scheduledAt = {};
-      if (scheduledFrom) filter.scheduledAt.$gte = new Date(scheduledFrom);
-      if (scheduledTo) filter.scheduledAt.$lte = new Date(scheduledTo);
-    }
+      MaintenanceRequest.countDocuments(filter),
+    ]);
+    const requests = data.map(r => ({
+      _id: r._id,
+      title: r.title,
+      category: r.category,
+      status: r.status,
+      roomNumber: r.roomId?.roomNumber || "—",
+      reportedBy: r.reporterAccountId?.userInfo?.fullName || "Người thuê",
+      assignee: r.assigneeAccountId ? {
+        name: r.assigneeAccountId?.userInfo?.fullName,
+        phone: r.assigneeAccountId?.userInfo?.phoneNumber,
+      } : null,
+      photoCount: r.photos?.length || 0,
+      proofImageCount: r.images?.length || 0,
+      repairCost: r.repairCost,
+      mustPay: !!(r.repairCost && r.images?.length > 0),
+      affectedQuantity: r.affectedQuantity,
+      resolvedAt: r.resolvedAt,
+      createdAt: r.createdAt,
+    }));
 
-    const n = (x) => (x != null && x !== "" ? Number(x) : undefined);
-    const estMin = n(estCostMin),
-      estMax = n(estCostMax);
-    const actMin = n(actCostMin),
-      actMax = n(actCostMax);
-    if (estMin != null || estMax != null) {
-      filter.estimatedCost = {};
-      if (estMin != null) filter.estimatedCost.$gte = estMin;
-      if (estMax != null) filter.estimatedCost.$lte = estMax;
-    }
-    if (actMin != null || actMax != null) {
-      filter.actualCost = {};
-      if (actMin != null) filter.actualCost.$gte = actMin;
-      if (actMax != null) filter.actualCost.$lte = actMax;
-    }
+    return res.json({
+      success: true,
+      data: requests,
+      total,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+        hasNext: pageNum < Math.ceil(total / limitNum),
+      },
+    });
 
-    page = toInt(page, 1);
-    limit = Math.min(Math.max(toInt(limit, 10), 1), 100);
-    const skip = (page - 1) * limit;
+  } catch (error) {
+    console.error("listRequests error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
+  }
+};
 
-    const baseQuery = MaintenanceRequest.find(filter)
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .select(
-        [
-          "_id",
-          "buildingId",
-          "roomId",
-          "furnitureId",
-          "reporterAccountId",
-          "assigneeAccountId",
-          "title",
-          "status",
-          "priority",
-          "affectedQuantity",
-          "scheduledAt",
-          "estimatedCost",
-          "actualCost",
-          "resolvedAt",
-          "createdAt",
-          "updatedAt",
-        ].join(" ")
-      )
-      .populate({ path: "buildingId", select: "_id name address" })
-      .populate({ path: "roomId", select: "_id name code floorNumber" })
-      .populate({ path: "furnitureId", select: "_id name" })
+exports.getRequest = async (req, res) => {
+  try {
+    const doc = await MaintenanceRequest.findById(req.params.id)
+      .populate("buildingId", "name")
+      .populate("roomId", "roomNumber currentTenantIds")
       .populate({
         path: "reporterAccountId",
         select: "email role userInfo",
-        populate: { path: "userInfo", select: "fullName phoneNumber" },
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber",
+        },
       })
       .populate({
         path: "assigneeAccountId",
         select: "email role userInfo",
-        populate: { path: "userInfo", select: "fullName phoneNumber" },
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber",
+        },
       })
-      .lean();
-
-    if (String(includeTimeline) === "true") {
-      baseQuery
-        .populate({
-          path: "timeline.by",
-          select: "email role userInfo",
-          populate: { path: "userInfo", select: "fullName" },
-        })
-        .select("+timeline");
-    }
-
-    const [data, total] = await Promise.all([
-      baseQuery.exec(),
-      MaintenanceRequest.countDocuments(filter),
-    ]);
-
-    for (const r of data) {
-      const rep = r.reporterAccountId;
-      const ass = r.assigneeAccountId;
-      r.reporterName = rep?.userInfo?.fullName || rep?.email || "Unknown";
-      r.assigneeName = ass?.userInfo?.fullName || ass?.email || null;
-
-      if (String(includeTimeline) === "true" && Array.isArray(r.timeline)) {
-        r.timeline = r.timeline.map((t) => ({
-          ...t,
-          byDisplay:
-            t?.by?.userInfo?.fullName || t?.by?.email || t?.by || "Unknown",
-        }));
-      }
-    }
-
-    return res.json({
-      data,
-      total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit),
-      sort,
-    });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Lỗi lấy danh sách" });
-  }
-};
-// Chi tiết phiếu
-exports.getRequest = async (req, res) => {
-  try {
-    const doc = await MaintenanceRequest.findById(req.params.id)
-      .populate("roomId furnitureId reporterAccountId assigneeAccountId")
-      .populate({ path: "buildingId", select: "_id name address" })
       .populate({
         path: "timeline.by",
         select: "email role userInfo",
@@ -198,124 +149,394 @@ exports.getRequest = async (req, res) => {
           path: "userInfo",
           select: "fullName phoneNumber",
         },
-      });
+      })
+      .lean();
 
-    if (!doc) return res.status(404).json({ message: "Không tìm thấy" });
+    if (!doc) return res.status(404).json({ success: false, message: "Không tìm thấy phiếu" });
+
+    // Kiểm tra quyền staff
     if (req.user.role === "staff") {
-      if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId._id))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+      if (!req.staff?.assignedBuildingIds?.includes(String(doc.buildingId._id))) {
+        return res.status(403).json({ success: false, message: "Bạn không quản lý tòa này" });
       }
     }
-    return res.json({ data: doc });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Lỗi lấy chi tiết" });
+
+    return res.json({ success: true, data: doc });
+
+  } catch (error) {
+    console.error("getRequest error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
 
-// Cập nhật phiếu (trạng thái, assign, lịch, chi phí, ghi chú)
 exports.updateRequest = async (req, res) => {
   try {
-    const {
-      status,
-      assigneeAccountId,
-      scheduledAt,
-      estimatedCost,
-      actualCost,
-      note,
-    } = req.body;
+    const { id } = req.params;
+    const { status, repairCost, note } = req.body;
 
-    const doc = await MaintenanceRequest.findById(req.params.id);
-    if (!doc) return res.status(404).json({ message: "Không tìm thấy" });
+    const maintenance = await MaintenanceRequest.findById(id)
+      .populate("buildingId", "landlordId")
+      .populate("roomId", "currentTenantIds roomNumber");
 
-    const prevStatus = doc.status;
-    const isAssignee =
-      doc.assigneeAccountId &&
-      String(doc.assigneeAccountId) === String(req.user._id);
-    if (!(isAdmin(req.user) || isLandlord(req.user) || isAssignee || req.user.role === "staff")) {
-      return res.status(403).json({ message: "Không có quyền" });
+    if (!maintenance) return res.status(404).json({ success: false, message: "Không tìm thấy phiếu" });
+
+    const changes = [];
+    const isPrivileged = ["landlord", "staff"].includes(req.user.role);
+    const isCurrentAssignee = String(maintenance.assigneeAccountId) === String(req.user._id);
+    const hasAssignee = !!maintenance.assigneeAccountId;
+
+    if (!isPrivileged && !isCurrentAssignee && hasAssignee) {
+      return res.status(403).json({ success: false, message: "Bạn không phải người được phân công" });
+    }
+    if (req.user.role === "staff" && !req.staff?.assignedBuildingIds?.includes(String(maintenance.buildingId._id))) {
+      return res.status(403).json({ success: false, message: "Bạn không quản lý tòa này" });
     }
 
-    if (req.user.role === "staff") {
-      if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+    if (!hasAssignee && (isPrivileged || req.user.role === "staff")) {
+      maintenance.assigneeAccountId = req.user._id;
+      changes.push("Đã nhận xử lý phiếu");
+    }
+
+    if (status && status !== maintenance.status) {
+      const oldStatus = maintenance.status;
+      maintenance.status = status;
+      if (status === "resolved") {
+        maintenance.resolvedAt = new Date();
+        changes.push(`ĐÃ HOÀN THÀNH (từ ${oldStatus} → resolved)`);
+      } else {
+        changes.push(`Trạng thái: ${oldStatus} → ${status}`);
+        if (maintenance.resolvedAt) maintenance.resolvedAt = null;
       }
     }
 
-    if (status) {
-      doc.status = status;
-      if (status === "resolved") doc.resolvedAt = new Date();
-      if (status !== "resolved") doc.resolvedAt = undefined;
+    let isPaymentRequest = false;
+    if (repairCost !== undefined || req.files?.length > 0) {
+      const cost = Number(repairCost);
+
+      if (cost > 0) {
+        if (!req.files || req.files.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Phải upload ít nhất 1 ảnh hóa đơn khi yêu cầu thanh toán",
+          });
+        }
+        const imageUrls = req.files.map(file => file.path);
+        maintenance.repairCost = cost;
+        maintenance.images = imageUrls;
+        changes.push(`Yêu cầu thanh toán: ${cost.toLocaleString()}₫`);
+        isPaymentRequest = true;
+      } else {
+        maintenance.repairCost = null;
+        maintenance.images = [];
+        changes.push("Chi phí do chủ nhà chi trả");
+      }
     }
-    if (assigneeAccountId) doc.assigneeAccountId = assigneeAccountId;
-    if (scheduledAt) doc.scheduledAt = new Date(scheduledAt);
-    if (estimatedCost != null) doc.estimatedCost = estimatedCost;
-    if (actualCost != null) doc.actualCost = actualCost;
 
-    doc.pushEvent(req.user._id, "updated", note || "Cập nhật yêu cầu");
-    await doc.save();
+    // === 5. GHI LOG ===
+    if (changes.length > 0 || note) {
+      maintenance.timeline.push({
+        by: req.user._id,
+        action: "updated",
+        note: note || changes.join(" | "),
+        at: new Date(),
+      });
+    }
 
-    // Đồng bộ damageCount theo chuyển trạng thái
-    const rf = await RoomFurniture.findOne({
-      roomId: doc.roomId,
-      furnitureId: doc.furnitureId,
+    await maintenance.save();
+    // === 6. GỬI THÔNG BÁO + REALTIME CHO RESIDENT (LUÔN GỬI, DÙ CÓ TIỀN HAY KHÔNG) ===
+    const io = req.app.get("io");
+    const user = await Account.findById(req.user._id).populate("userInfo");
+    const senderName = user?.userInfo?.fullName || req.user.email.split("@")[0] || "Chủ nhà";
+
+    if (io && maintenance.roomId?.currentTenantIds?.length) {
+      let title = "";
+      let content = "";
+
+      if (isPaymentRequest) {
+        title = "Yêu cầu thanh toán chi phí sửa chữa";
+        content = `${senderName} đã xử lý xong phiếu bảo trì.\nChi phí: ${maintenance.repairCost.toLocaleString()}₫\nVui lòng thanh toán trong 3 ngày nhé!`;
+      } else {
+        title = "Phiếu bảo trì đã được cập nhật";
+        content = `Phiếu "${maintenance.title}" đã được ${senderName} cập nhật.\nTrạng thái hiện tại: ${maintenance.status.toUpperCase()}`;
+        if (maintenance.status === "resolved") {
+          content = `Phiếu bảo trì đã được HOÀN THÀNH!\n${senderName} đã sửa xong "${maintenance.title}"`;
+        }
+      }
+
+      const notification = await Notification.create({
+        landlordId: maintenance.buildingId.landlordId,
+        createByRole: "system",
+        title,
+        content,
+        target: { residents: maintenance.roomId.currentTenantIds },
+        createdAt: new Date(),
+      });
+
+      const payload = {
+        _id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          _id: req.user._id.toString(),
+          role: "system",
+          name: senderName,
+        },
+        data: isPaymentRequest ? {
+          maintenanceId: id,
+          repairCost: maintenance.repairCost,
+          proofImages: maintenance.images,
+          deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        } : {
+          maintenanceId: id,
+          status: maintenance.status,
+        },
+      };
+
+      maintenance.roomId.currentTenantIds.forEach(tid => {
+        const userIdStr = tid.toString();
+        io.to(`user:${userIdStr}`).emit("new_notification", payload);
+        io.to(`user:${userIdStr}`).emit("unread_count_increment", { increment: 1 });
+      });
+
+    }
+
+    return res.json({
+      success: true,
+      message: "Cập nhật thành công",
+      data: maintenance,
     });
-    if (rf) {
-      const wasFinal = isFinal(prevStatus);
-      const nowFinal = isFinal(doc.status);
 
-      // Non-final -> Final : giảm
-      if (!wasFinal && nowFinal) {
-        const dec = Math.min(doc.affectedQuantity || 1, rf.damageCount || 0);
-        rf.damageCount = Math.max(0, (rf.damageCount || 0) - dec);
-        rf.syncConditionFromDamage();
-        await rf.save();
-      }
-
-      // Final -> Non-final (reopen) : tăng lại
-      if (wasFinal && !nowFinal) {
-        const inc = doc.affectedQuantity || 1;
-        rf.damageCount = Math.min((rf.damageCount || 0) + inc, rf.quantity);
-        rf.syncConditionFromDamage();
-        await rf.save();
-      }
-    }
-
-    return res.json({ message: "Đã cập nhật", data: doc });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Lỗi cập nhật" });
+  } catch (error) {
+    console.error("updateRequest error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
 
-// Thêm comment/timeline nhanh
 exports.comment = async (req, res) => {
   try {
+    const { id } = req.params;
     const { note } = req.body;
-    const doc = await MaintenanceRequest.findById(req.params.id);
-    if (!doc) return res.status(404).json({ message: "Không tìm thấy" });
+    if (!note?.trim()) return res.status(400).json({ success: false, message: "Nội dung không được trống" });
 
-    const can =
-      isAdmin(req.user) ||
-      isLandlord(req.user) ||
-      req.user.role === "staff" ||
-      String(doc.reporterAccountId) === String(req.user._id) ||
-      String(doc.assigneeAccountId) === String(req.user._id);
+    const maintenance = await MaintenanceRequest.findById(id)
+      .populate("roomId", "currentTenantIds roomNumber")
+      .populate("buildingId", "landlordId");
 
-    if (!can) return res.status(403).json({ message: "Không có quyền" });
+    if (!maintenance) return res.status(404).json({ success: false, message: "Không tìm thấy phiếu" });
 
-    if (req.user.role === "staff") {
-      if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
-      }
+    const allowed = ["landlord", "staff"].includes(req.user.role) ||
+      String(maintenance.reporterAccountId) === String(req.user._id) ||
+      String(maintenance.assigneeAccountId) === String(req.user._id);
+
+    if (!allowed) return res.status(403).json({ success: false, message: "Không có quyền bình luận" });
+    const user = await Account.findById(req.user._id).populate("userInfo");
+    const senderName = user?.userInfo?.fullName || req.user.email.split("@")[0] || "Chủ nhà";
+
+    const newComment = {
+      _id: new mongoose.Types.ObjectId(),
+      by: req.user._id,
+      action: "comment",
+      note: note.trim(),
+      at: new Date(),
+    };
+
+    maintenance.timeline.push(newComment);
+    await maintenance.save();
+
+    const io = req.app.get("io");
+    if (io && maintenance.roomId?.currentTenantIds?.length) {
+      const notification = await Notification.create({
+        landlordId: maintenance.buildingId.landlordId,
+        createByRole: "system",
+        title: "Có bình luận mới trong phiếu bảo trì",
+        content: `${senderName} đã bình luận: "${note.trim().substring(0, 100)}${note.trim().length > 100 ? "..." : ""}"`,
+        target: { residents: maintenance.roomId.currentTenantIds },
+        createdAt: new Date(),
+      });
+
+      const payload = {
+        _id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          _id: req.user._id.toString(),
+          role: req.user.role,
+          name: senderName,
+        },
+        data: {
+          maintenanceId: id,
+          comment: {
+            _id: newComment._id.toString(),
+            note: newComment.note,
+            by: senderName,
+            byId: req.user._id.toString(),
+            at: newComment.at,
+          },
+        },
+      };
+
+      maintenance.roomId.currentTenantIds.forEach(tid => {
+        const userIdStr = tid.toString();
+        if (userIdStr !== req.user._id.toString()) {
+          io.to(`user:${userIdStr}`).emit("new_notification", payload);
+          io.to(`user:${userIdStr}`).emit("unread_count_increment", { increment: 1 });
+        }
+      });
+
     }
 
-    doc.pushEvent(req.user._id, "comment", note || "");
-    await doc.save();
+    return res.json({
+      success: true,
+      message: "Đã thêm bình luận",
+      data: { commentId: newComment._id.toString() },
+    });
 
-    return res.json({ message: "Đã thêm ghi chú", data: doc });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Lỗi thêm ghi chú" });
+  } catch (error) {
+    console.error("comment error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
+  }
+};
+
+exports.updateComment = async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const { note } = req.body;
+    if (!note?.trim()) return res.status(400).json({ success: false, message: "Nội dung không được trống" });
+
+    const maintenance = await MaintenanceRequest.findById(id)
+      .populate("roomId", "currentTenantIds")
+      .populate("buildingId", "landlordId");
+
+    if (!maintenance) return res.status(404).json({ success: false, message: "Không tìm thấy phiếu" });
+
+    const comment = maintenance.timeline.id(commentId);
+    if (!comment || comment.action !== "comment") {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bình luận" });
+    }
+
+    if (String(comment.by) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ bình luận mới được sửa" });
+    }
+
+    const oldNote = comment.note;
+    comment.note = note.trim();
+    comment.action = "update";
+    comment.at = new Date();
+    await maintenance.save();
+
+    const user = await Account.findById(req.user._id).populate("userInfo");
+    const senderName = user?.userInfo?.fullName || req.user.email.split("@")[0] || "Chủ nhà";
+
+    // === GỬI THÔNG BÁO REALTIME + DB ===
+    const io = req.app.get("io");
+    if (io && maintenance.roomId?.currentTenantIds?.length) {
+      const notification = await Notification.create({
+        landlordId: maintenance.buildingId.landlordId,
+        createByRole: "system",
+        title: "Bình luận đã được chỉnh sửa",
+        content: `${senderName} đã chỉnh sửa bình luận trong phiếu bảo trì`,
+        target: { residents: maintenance.roomId.currentTenantIds },
+        createdAt: new Date(),
+      });
+
+      const payload = {
+        _id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: { _id: req.user._id.toString(), role: req.user.role, name: senderName },
+        data: {
+          maintenanceId: id,
+          commentId,
+          note: note.trim(),
+          edited: true,
+          editedAt: comment.editedAt,
+        },
+      };
+
+      maintenance.roomId.currentTenantIds.forEach(tid => {
+        io.to(`user:${tid}`).emit("new_notification", payload);
+        io.to(`user:${tid}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
+
+    return res.json({ success: true, message: "Đã sửa bình luận" });
+
+  } catch (error) {
+    console.error("updateComment error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
+  }
+};
+
+// ================== XÓA COMMENT ==================
+exports.deleteComment = async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+
+    const maintenance = await MaintenanceRequest.findById(id)
+      .populate("roomId", "currentTenantIds")
+      .populate("buildingId", "landlordId");
+
+    if (!maintenance) return res.status(404).json({ success: false, message: "Không tìm thấy phiếu" });
+
+    const comment = maintenance.timeline.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bình luận" });
+    }
+
+    const isOwner = String(comment.by) === String(req.user._id);
+    const isPrivileged = ["landlord", "staff"].includes(req.user.role);
+    if (!isOwner && !isPrivileged) {
+      return res.status(403).json({ success: false, message: "Không có quyền xóa" });
+    }
+
+    const user = await Account.findById(req.user._id).populate("userInfo");
+    const senderName = user?.userInfo?.fullName || req.user.email.split("@")[0] || "Chủ nhà";
+
+    maintenance.timeline.pull({ _id: commentId });
+    await maintenance.save();
+
+    // === GỬI THÔNG BÁO REALTIME + DB ===
+    const io = req.app.get("io");
+    if (io && maintenance.roomId?.currentTenantIds?.length) {
+      const notification = await Notification.create({
+        landlordId: maintenance.buildingId.landlordId,
+        createByRole: "system",
+        title: "Bình luận đã bị xóa",
+        content: `${senderName} đã xóa một bình luận trong phiếu bảo trì`,
+        target: { residents: maintenance.roomId.currentTenantIds },
+        createdAt: new Date(),
+      });
+
+      const payload = {
+        _id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: { _id: req.user._id.toString(), role: req.user.role, name: senderName },
+        data: { maintenanceId: id, commentId, action: "deleted" },
+      };
+
+      maintenance.roomId.currentTenantIds.forEach(tid => {
+        io.to(`user:${tid}`).emit("new_notification", payload);
+        io.to(`user:${tid}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
+
+    return res.json({ success: true, message: "Đã xóa bình luận" });
+
+  } catch (error) {
+    console.error("deleteComment error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
