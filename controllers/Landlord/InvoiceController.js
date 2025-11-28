@@ -760,11 +760,43 @@ exports.sendInvoiceEmail = async (req, res) => {
       });
     }
 
-    return res.json({
-      message: "Đã gửi email hóa đơn cho người thuê",
-      status: result.update.status || result.invoice.status,
-      emailStatus: result.update.emailStatus,
-    });
+    // Nếu email đã được gửi thành công, cập nhật trạng thái hoá đơn sang "sent" nếu đang là "draft"
+    try {
+      const updated = await Invoice.findOne({
+        _id: id,
+        landlordId,
+        isDeleted: false,
+      });
+      if (updated && updated.status === "draft") {
+        await Invoice.updateOne({ _id: id }, { $set: { status: "sent" } });
+        // Lấy lại invoice để trả về thông tin mới nhất
+        const refreshed = await Invoice.findById(id).lean();
+        return res.json({
+          message: "Đã gửi email hóa đơn cho người thuê",
+          status: refreshed.status,
+          emailStatus: refreshed.emailStatus,
+        });
+      }
+
+      // Nếu không cần cập nhật status (đã là sent/paid/cancelled), trả về dữ liệu như cũ
+      return res.json({
+        message: "Đã gửi email hóa đơn cho người thuê",
+        status: result.update.status || result.invoice.status,
+        emailStatus: result.update.emailStatus,
+      });
+    } catch (err) {
+      // Không block nếu việc cập nhật status fail, vẫn trả về kết quả gửi email
+      console.error(
+        "sendInvoiceEmail - failed to update invoice status to sent",
+        err
+      );
+      return res.json({
+        message:
+          "Đã gửi email hóa đơn cho người thuê (but failed to update invoice status)",
+        status: result.update.status || result.invoice.status,
+        emailStatus: result.update.emailStatus,
+      });
+    }
   } catch (e) {
     console.error("sendInvoiceEmail error:", e);
     return res.status(400).json({ message: e.message });
@@ -1461,7 +1493,6 @@ exports.sendAllDraftInvoices = async (req, res) => {
         const result = await sendInvoiceEmailCore(inv._id, landlordId);
 
         if (result.skipped) {
-          // ví dụ: paid/cancelled (dù filter của mình không lấy, nhưng để phòng khi đổi logic sau này)
           row.skipped = true;
           row.reason = result.reason;
           failCount++;
@@ -1469,7 +1500,6 @@ exports.sendAllDraftInvoices = async (req, res) => {
           continue;
         }
 
-        // Sau khi gửi email thành công, chuyển trạng thái hóa đơn sang "sent"
         await Invoice.updateOne({ _id: inv._id }, { $set: { status: "sent" } });
 
         row.success = true;

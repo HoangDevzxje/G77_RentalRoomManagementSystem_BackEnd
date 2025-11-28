@@ -578,6 +578,48 @@ exports.confirmReading = async (req, res) => {
 
     await doc.save();
 
+    // Khi xác nhận chỉ số thành công, cập nhật chỉ số bắt đầu của phòng (eStart/wStart)
+    // nếu có giá trị eCurrentIndex/wCurrentIndex. Không block nếu update fail.
+    try {
+      if (doc.roomId) {
+        const room = await Room.findById(doc.roomId)
+          .select("eStart wStart")
+          .lean();
+        if (room) {
+          const roomUpdate = {};
+          if (
+            typeof doc.eCurrentIndex === "number" &&
+            Number.isFinite(doc.eCurrentIndex)
+          ) {
+            // only update if it's greater or equal to the existing eStart to avoid regressions
+            if (room.eStart == null || doc.eCurrentIndex >= room.eStart) {
+              roomUpdate.eStart = doc.eCurrentIndex;
+            }
+          }
+          if (
+            typeof doc.wCurrentIndex === "number" &&
+            Number.isFinite(doc.wCurrentIndex)
+          ) {
+            // only update if it's greater or equal to the existing wStart to avoid regressions
+            if (room.wStart == null || doc.wCurrentIndex >= room.wStart) {
+              roomUpdate.wStart = doc.wCurrentIndex;
+            }
+          }
+
+          if (Object.keys(roomUpdate).length > 0) {
+            await Room.updateOne({ _id: doc.roomId }, { $set: roomUpdate });
+          }
+        }
+      }
+    } catch (err) {
+      console.error(
+        "confirmReading - failed to update room eStart/wStart for room",
+        doc.roomId,
+        err
+      );
+      // intentionally not throwing so we don't fail the confirm endpoint
+    }
+
     res.json({
       message: "Đã xác nhận chỉ số tiện ích",
       data: doc.toJSON(),
