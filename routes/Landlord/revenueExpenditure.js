@@ -58,10 +58,6 @@ const auth = ["landlord", "staff"];
  *                 minimum: 0
  *                 description: Số tiền (VND)
  *                 example: 15000000
- *               recordedAt:
- *                 type: string
- *                 format: date-time
- *                 description: Ngày ghi nhận (mặc định hiện tại)
  *               images:
  *                 type: array
  *                 items:

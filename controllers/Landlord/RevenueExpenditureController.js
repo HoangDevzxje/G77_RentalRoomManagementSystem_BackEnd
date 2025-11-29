@@ -5,10 +5,17 @@ const mongoose = require("mongoose");
 
 const create = async (req, res) => {
   try {
-    const { buildingId, title, description, type, amount, recordedAt } =
+    const { buildingId, title, description, type, amount } =
       req.body;
-    if (!title || !description || !type || !amount || !recordedAt)
-      return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
+    if (!title)
+      return res.status(400).json({ message: "Thiếu title" });
+    if (!description)
+      return res.status(400).json({ message: "Thiếu description" });
+    if (!type)
+      return res.status(400).json({ message: "Thiếu type" });
+    if (!amount)
+      return res.status(400).json({ message: "Thiếu amount" });
+
     const building = await Building.findOne({
       _id: buildingId,
       isDeleted: false,
@@ -52,7 +59,6 @@ const create = async (req, res) => {
       type,
       amount,
       images: imageUrls,
-      recordedAt: recordedAt ? new Date(recordedAt) : undefined,
     });
 
     res.status(201).json({
