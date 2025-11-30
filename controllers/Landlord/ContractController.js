@@ -174,7 +174,7 @@ async function createMoveInNotifications(contract, { io, mode }) {
     content: contentForLandlord,
     type: "reminder",
     target: { buildings: [buildingId] },
-    link: `/landlords/contracts`,
+    link: `/landlord/contracts`,
   });
 
   // Thông báo cho tenant

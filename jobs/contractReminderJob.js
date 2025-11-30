@@ -85,7 +85,7 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
       type: "reminder",
       target: { accounts: receivers },
       readBy: [],
-      link: "/landlords/contracts",
+      link: "/landlord/contracts",
       createdAt: new Date(),
     });
 
