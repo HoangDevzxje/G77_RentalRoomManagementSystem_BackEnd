@@ -194,7 +194,7 @@ exports.createRequest = async (req, res) => {
         title: `Báo hỏng: ${title}`,
         content: `Phòng ${room.roomNumber} - ${itemName} bị hỏng (${qty} cái)`,
         target: { buildings: [buildingId] },
-        link: `/landlords/maintenance`,
+        link: `/landlord/maintenance`,
       });
 
       const payload = {
@@ -349,7 +349,7 @@ exports.addComment = async (req, res) => {
       title: "Ghi chú mới trong phiếu bảo trì",
       content: `${senderName} đã bình luận: "${note.trim().substring(0, 50)}${note.length > 50 ? "..." : ""}"`,
       target: { buildings: [maintenance.buildingId._id] },
-      link: `/landlords/maintenance`,
+      link: `/landlord/maintenance`,
     });
 
     const io = req.app.get("io");
@@ -425,7 +425,7 @@ exports.updateComment = async (req, res) => {
       title: "Người thuê mới cập nhật trong phiếu bảo trì",
       content: `${senderName} đã bình luận: "${note.trim().substring(0, 50)}${note.length > 50 ? "..." : ""}"`,
       target: { buildings: [maintenance.buildingId._id] },
-      link: `/landlords/maintenance`,
+      link: `/landlord/maintenance`,
     });
 
     const io = req.app.get("io");
@@ -510,7 +510,7 @@ exports.deleteComment = async (req, res) => {
       title: "Bình luận đã bị xóa",
       content: `${deletedByName} đã xóa một bình luận trong phiếu bảo trì phòng ${maintenance.roomId?.roomNumber || ""}`,
       target: { buildings: [maintenance.buildingId._id] },
-      link: `/landlords/maintenance`,
+      link: `/landlord/maintenance`,
     });
 
     const io = req.app.get("io");

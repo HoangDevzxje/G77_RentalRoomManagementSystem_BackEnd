@@ -212,7 +212,7 @@ const create = async (req, res) => {
         content: `${contactName} (${contactPhone}) muốn xem phòng vào ${dayjs(date).format("DD/MM/YYYY")} lúc ${timeSlot}`,
         // type: "booking_request",
         target: { buildings: [buildingId] },
-        link: `/landlords/bookings`,
+        link: `/landlord/bookings`,
       });
 
       const payload = {

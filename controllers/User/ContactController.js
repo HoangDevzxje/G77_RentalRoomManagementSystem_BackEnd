@@ -65,7 +65,7 @@ const createContact = async (req, res) => {
       content: `${contactName} (${contactPhone}) muốn thuê phòng ${room.roomNumber || roomId}`,
       // type: "contract_request",
       target: { buildings: [buildingId] },
-      link: `/landlords/contacts`,
+      link: `/landlord/contact-management`,
     });
 
     // === REALTIME EMIT  ===
