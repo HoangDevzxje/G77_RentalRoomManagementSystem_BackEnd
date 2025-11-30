@@ -3,7 +3,9 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 const FloorCtrl = require("../../controllers/Landlord/FloorController");
 const checkSubscription = require("../../middleware/checkSubscription");
 const loadFloorAndCheckParent = require("../../middleware/loadFloorAndCheckParent");
-const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const {
+  checkStaffPermission,
+} = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
 /**
  * @swagger
@@ -81,7 +83,10 @@ const { PERMISSIONS } = require("../../constants/permissions");
 router.get(
   "/",
   checkAuthorize(["admin", "landlord", "resident", "staff"]),
-  checkStaffPermission(PERMISSIONS.FLOOR_VIEW, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.FLOOR_VIEW, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   loadFloorAndCheckParent,
   FloorCtrl.list
 );
@@ -286,7 +291,10 @@ router.get(
 router.post(
   "/",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.FLOOR_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.FLOOR_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.create
@@ -459,7 +467,10 @@ router.post(
 router.post(
   "/quick-create",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.FLOOR_CREATE, { checkBuilding: true, buildingField: "buildingId" }),
+  checkStaffPermission(PERMISSIONS.FLOOR_CREATE, {
+    checkBuilding: true,
+    buildingField: "buildingId",
+  }),
   loadFloorAndCheckParent,
   checkSubscription,
   FloorCtrl.quickCreate
@@ -1161,6 +1172,137 @@ router.patch(
   checkStaffPermission(PERMISSIONS.FLOOR_EDIT),
 
   FloorCtrl.updateStatus
+);
+/**
+ * @swagger
+ * /landlords/floors/{id}/laundry-devices:
+ *   get:
+ *     summary: Danh sách thiết bị giặt sấy trên tầng
+ *     tags: [Floors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của tầng
+ *     responses:
+ *       200:
+ *         description: Danh sách thiết bị
+ *   post:
+ *     summary: Thêm thiết bị giặt sấy cho tầng
+ *     tags: [Floors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của tầng
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, type, tuyaDeviceId]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "Máy giặt 1"
+ *               type:
+ *                 type: string
+ *                 enum: [washer, dryer]
+ *                 example: "washer"
+ *               tuyaDeviceId:
+ *                 type: string
+ *                 example: "bf1234567890abcd123xyz"
+ *     responses:
+ *       201:
+ *         description: Tạo mới thành công
+ */
+router.get(
+  "/:id/laundry-devices",
+  checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  FloorCtrl.getLaundryStatus
+);
+router.post(
+  "/:id/laundry-devices",
+  checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  FloorCtrl.createLaundryDevice
+);
+
+/**
+ * @swagger
+ * /landlords/floors/{id}/laundry-devices/{deviceId}:
+ *   patch:
+ *     summary: Cập nhật thiết bị giặt sấy
+ *     tags: [Floors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của tầng
+ *       - in: path
+ *         name: deviceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID nội bộ của thiết bị (subdocument _id)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               type:
+ *                 type: string
+ *                 enum: [washer, dryer]
+ *               tuyaDeviceId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *   delete:
+ *     summary: Xoá thiết bị giặt sấy khỏi tầng
+ *     tags: [Floors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: deviceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Xoá thành công
+ */
+router.patch(
+  "/:id/laundry-devices/:deviceId",
+  checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  FloorCtrl.updateLaundryDevice
+);
+router.delete(
+  "/:id/laundry-devices/:deviceId",
+  checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  FloorCtrl.deleteLaundryDevice
 );
 
 module.exports = router;

@@ -2,7 +2,69 @@ const mongoose = require("mongoose");
 const Building = require("../../models/Building");
 const Floor = require("../../models/Floor");
 const Room = require("../../models/Room");
+const { getDeviceStatus } = require("../../configs/tuyaClient");
 
+async function getLaundryStatusForFloor(floorId) {
+  const floor = await Floor.findById(floorId).lean();
+  if (!floor || floor.isDeleted) {
+    throw new Error("NOT_FOUND_FLOOR");
+  }
+
+  const devices = floor.laundryDevices || [];
+  if (!devices.length) {
+    return {
+      floorId,
+      devices: [],
+      message: "Tầng này chưa cấu hình thiết bị giặt sấy",
+    };
+  }
+
+  const checkDevice = async (device) => {
+    try {
+      const statusList = await getDeviceStatus(device.tuyaDeviceId);
+      let power = 0;
+      let switchOn = false;
+
+      statusList.forEach((item) => {
+        if (item.code === "cur_power") power = item.value || 0;
+        if (item.code === "switch_1") switchOn = !!item.value;
+      });
+
+      let status = "idle";
+      if (switchOn && power > 3) status = "running";
+
+      return {
+        _id: device._id,
+        name: device.name,
+        type: device.type,
+        tuyaDeviceId: device.tuyaDeviceId,
+        status,
+        power,
+      };
+    } catch (err) {
+      console.error(
+        "Check Tuya device error:",
+        device.tuyaDeviceId,
+        err.message
+      );
+      return {
+        _id: device._id,
+        name: device.name,
+        type: device.type,
+        tuyaDeviceId: device.tuyaDeviceId,
+        status: "unknown",
+        power: 0,
+      };
+    }
+  };
+
+  const results = await Promise.all(devices.map(checkDevice));
+
+  return {
+    floorId,
+    devices: results,
+  };
+}
 function parsePositiveInt(v, def) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) && n > 0 ? n : def;
@@ -10,27 +72,44 @@ function parsePositiveInt(v, def) {
 
 const list = async (req, res) => {
   try {
-    const { buildingId, page = 1, limit = 20, includeDeleted = "false", status } = req.query;
+    const {
+      buildingId,
+      page = 1,
+      limit = 20,
+      includeDeleted = "false",
+      status,
+    } = req.query;
 
-    if (!buildingId) return res.status(400).json({ message: "Thiếu buildingId" });
-    if (!mongoose.Types.ObjectId.isValid(buildingId)) return res.status(400).json({ message: "buildingId không hợp lệ" });
+    if (!buildingId)
+      return res.status(400).json({ message: "Thiếu buildingId" });
+    if (!mongoose.Types.ObjectId.isValid(buildingId))
+      return res.status(400).json({ message: "buildingId không hợp lệ" });
 
-    const allowIncludeDeleted = includeDeleted === "true" && req.user?.role === "admin";
+    const allowIncludeDeleted =
+      includeDeleted === "true" && req.user?.role === "admin";
 
-    const b = await Building.findById(buildingId).select("_id landlordId isDeleted status").lean();
+    const b = await Building.findById(buildingId)
+      .select("_id landlordId isDeleted status")
+      .lean();
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
-    if (b.isDeleted && !allowIncludeDeleted) return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
+    if (b.isDeleted && !allowIncludeDeleted)
+      return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
 
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
-    }
-    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+    } else if (
+      req.user.role === "landlord" &&
+      String(b.landlordId) !== String(req.user._id)
+    ) {
       return res.status(403).json({ message: "Không có quyền" });
-    }
-    else if (req.user.role === "resident") {
-      const allowed = Array.isArray(req.user.memberOfBuildingIds) && req.user.memberOfBuildingIds.map(String).includes(String(b._id));
+    } else if (req.user.role === "resident") {
+      const allowed =
+        Array.isArray(req.user.memberOfBuildingIds) &&
+        req.user.memberOfBuildingIds.map(String).includes(String(b._id));
       if (!allowed) return res.status(403).json({ message: "Không có quyền" });
     }
 
@@ -42,14 +121,25 @@ const list = async (req, res) => {
     if (!allowIncludeDeleted) filter.isDeleted = false;
 
     const [data, total] = await Promise.all([
-      Floor.find(filter).sort({ level: 1, _id: 1 }).skip((pageNum - 1) * limitNum).limit(limitNum).lean(),
+      Floor.find(filter)
+        .sort({ level: 1, _id: 1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
       Floor.countDocuments(filter),
     ]);
 
     const totalPages = Math.ceil(total / limitNum);
     res.json({
       data,
-      pagination: { total, page: pageNum, limit: limitNum, totalPages, hasNext: pageNum < totalPages, hasPrev: pageNum > 1 },
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+      },
       includeDeleted: allowIncludeDeleted,
     });
   } catch (e) {
@@ -62,28 +152,39 @@ const getById = async (req, res) => {
     const { id } = req.params;
     const { includeDeleted = "false" } = req.query;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "floorId không hợp lệ" });
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: "floorId không hợp lệ" });
 
-    const allowIncludeDeleted = includeDeleted === "true" && req.user?.role === "admin";
+    const allowIncludeDeleted =
+      includeDeleted === "true" && req.user?.role === "admin";
 
     const f = await Floor.findById(id).lean();
     if (!f) return res.status(404).json({ message: "Không tìm thấy tầng" });
-    if (f.isDeleted && !allowIncludeDeleted) return res.status(410).json({ message: "Tầng đã bị xóa" });
+    if (f.isDeleted && !allowIncludeDeleted)
+      return res.status(410).json({ message: "Tầng đã bị xóa" });
 
-    const b = await Building.findById(f.buildingId).select("_id landlordId isDeleted status").lean();
+    const b = await Building.findById(f.buildingId)
+      .select("_id landlordId isDeleted status")
+      .lean();
     if (!b) return res.status(404).json({ message: "Tòa nhà không tồn tại" });
-    if (b.isDeleted && !allowIncludeDeleted) return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
+    if (b.isDeleted && !allowIncludeDeleted)
+      return res.status(410).json({ message: "Tòa nhà đã bị xóa" });
 
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(b._id))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
-    }
-    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+    } else if (
+      req.user.role === "landlord" &&
+      String(b.landlordId) !== String(req.user._id)
+    ) {
       return res.status(403).json({ message: "Không có quyền" });
-    }
-    else if (req.user.role === "resident") {
-      const allowed = Array.isArray(req.user.memberOfBuildingIds) && req.user.memberOfBuildingIds.map(String).includes(String(b._id));
+    } else if (req.user.role === "resident") {
+      const allowed =
+        Array.isArray(req.user.memberOfBuildingIds) &&
+        req.user.memberOfBuildingIds.map(String).includes(String(b._id));
       if (!allowed) return res.status(403).json({ message: "Không có quyền" });
     }
 
@@ -116,11 +217,17 @@ const create = async (req, res) => {
     }
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
-    }
-    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
-      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    } else if (
+      req.user.role === "landlord" &&
+      String(b.landlordId) !== String(req.user._id)
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Không có quyền với tòa nhà này" });
     }
     const doc = await Floor.create({
       buildingId,
@@ -159,11 +266,17 @@ const update = async (req, res) => {
     }
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
-    }
-    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
-      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    } else if (
+      req.user.role === "landlord" &&
+      String(b.landlordId) !== String(req.user._id)
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Không có quyền với tòa nhà này" });
     }
     const payload = {};
     if (req.body.description !== undefined)
@@ -216,11 +329,17 @@ const softDelete = async (req, res) => {
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
-    }
-    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
-      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    } else if (
+      req.user.role === "landlord" &&
+      String(b.landlordId) !== String(req.user._id)
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Không có quyền với tòa nhà này" });
     }
 
     if (force === "true" && req.user.role === "admin") {
@@ -277,11 +396,17 @@ const restore = async (req, res) => {
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
-    }
-    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
-      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    } else if (
+      req.user.role === "landlord" &&
+      String(b.landlordId) !== String(req.user._id)
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Không có quyền với tòa nhà này" });
     }
 
     const session = await mongoose.startSession();
@@ -329,11 +454,17 @@ const updateStatus = async (req, res) => {
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
-    }
-    else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
-      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    } else if (
+      req.user.role === "landlord" &&
+      String(b.landlordId) !== String(req.user._id)
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Không có quyền với tòa nhà này" });
     }
 
     await Floor.updateOne({ _id: id }, { $set: { status } });
@@ -355,7 +486,9 @@ const remove = async (req, res) => {
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(doc.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
     const roomCount = await Room.countDocuments({ floorId: doc._id });
@@ -403,7 +536,9 @@ const quickCreate = async (req, res) => {
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
     // Tập levels cần tạo
@@ -472,6 +607,205 @@ const quickCreate = async (req, res) => {
     return res.status(400).json({ message: e.message });
   }
 };
+async function checkManageFloorPermission(req, floor) {
+  try {
+    const building = await Building.findById(floor.buildingId)
+      .select("landlordId isDeleted")
+      .lean();
+
+    if (!building || building.isDeleted) {
+      return { ok: false, status: 404, message: "Tòa nhà không tồn tại" };
+    }
+
+    if (req.user.role === "admin") {
+      return { ok: true };
+    }
+
+    if (req.user.role === "landlord") {
+      if (String(building.landlordId) !== String(req.user._id)) {
+        return {
+          ok: false,
+          status: 403,
+          message: "Không có quyền với tòa này",
+        };
+      }
+      return { ok: true };
+    }
+
+    if (req.user.role === "staff") {
+      if (
+        !req.staff?.assignedBuildingIds
+          ?.map(String)
+          .includes(String(building._id))
+      ) {
+        return {
+          ok: false,
+          status: 403,
+          message: "Bạn không được quản lý tòa này",
+        };
+      }
+      return { ok: true };
+    }
+
+    return { ok: false, status: 403, message: "Không có quyền" };
+  } catch (err) {
+    return { ok: false, status: 500, message: err.message };
+  }
+}
+
+const getLaundryStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const data = await getLaundryStatusForFloor(id);
+    return res.json(data);
+  } catch (err) {
+    if (err.message === "NOT_FOUND_FLOOR") {
+      return res.status(404).json({ message: "Không tìm thấy tầng" });
+    }
+    console.error("getLaundryStatus error:", err);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: err.message });
+  }
+};
+
+// POST /floors/:id/laundry-devices
+const createLaundryDevice = async (req, res) => {
+  try {
+    const { id } = req.params; // floorId
+    const { name, type, tuyaDeviceId } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "floorId không hợp lệ" });
+    }
+
+    const floor = await Floor.findById(id);
+    if (!floor || floor.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy tầng" });
+    }
+
+    const perm = await checkManageFloorPermission(req, floor);
+    if (!perm.ok) {
+      return res.status(perm.status).json({ message: perm.message });
+    }
+
+    if (!name || !type || !tuyaDeviceId) {
+      return res
+        .status(400)
+        .json({ message: "Thiếu name, type hoặc tuyaDeviceId" });
+    }
+
+    if (!["washer", "dryer"].includes(type)) {
+      return res
+        .status(400)
+        .json({ message: "type phải là washer hoặc dryer" });
+    }
+
+    const newDevice = {
+      name: name.trim(),
+      type,
+      tuyaDeviceId: tuyaDeviceId.trim(),
+    };
+
+    floor.laundryDevices.push(newDevice);
+    await floor.save();
+
+    // phần tử mới nằm ở cuối mảng
+    const created = floor.laundryDevices[floor.laundryDevices.length - 1];
+
+    return res.status(201).json({
+      message: "Thêm thiết bị giặt sấy thành công",
+      device: created,
+    });
+  } catch (e) {
+    console.error("createLaundryDevice error:", e);
+    return res.status(500).json({ message: e.message || "Lỗi máy chủ" });
+  }
+};
+// PATCH /floors/:id/laundry-devices/:deviceId
+const updateLaundryDevice = async (req, res) => {
+  try {
+    const { id, deviceId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "floorId không hợp lệ" });
+    }
+
+    const floor = await Floor.findById(id);
+    if (!floor || floor.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy tầng" });
+    }
+
+    const perm = await checkManageFloorPermission(req, floor);
+    if (!perm.ok) {
+      return res.status(perm.status).json({ message: perm.message });
+    }
+
+    const dev = floor.laundryDevices.id(deviceId);
+    if (!dev) {
+      return res.status(404).json({ message: "Không tìm thấy thiết bị" });
+    }
+
+    const { name, type, tuyaDeviceId } = req.body || {};
+
+    if (name !== undefined) dev.name = String(name).trim();
+    if (type !== undefined) {
+      if (!["washer", "dryer"].includes(type)) {
+        return res
+          .status(400)
+          .json({ message: "type phải là washer hoặc dryer" });
+      }
+      dev.type = type;
+    }
+    if (tuyaDeviceId !== undefined) {
+      dev.tuyaDeviceId = String(tuyaDeviceId).trim();
+    }
+
+    await floor.save();
+
+    return res.json({
+      message: "Cập nhật thiết bị giặt sấy thành công",
+      device: dev,
+    });
+  } catch (e) {
+    console.error("updateLaundryDevice error:", e);
+    return res.status(500).json({ message: e.message || "Lỗi máy chủ" });
+  }
+};
+// DELETE /floors/:id/laundry-devices/:deviceId
+const deleteLaundryDevice = async (req, res) => {
+  try {
+    const { id, deviceId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "floorId không hợp lệ" });
+    }
+
+    const floor = await Floor.findById(id);
+    if (!floor || floor.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy tầng" });
+    }
+
+    const perm = await checkManageFloorPermission(req, floor);
+    if (!perm.ok) {
+      return res.status(perm.status).json({ message: perm.message });
+    }
+
+    const dev = floor.laundryDevices.id(deviceId);
+    if (!dev) {
+      return res.status(404).json({ message: "Không tìm thấy thiết bị" });
+    }
+
+    dev.deleteOne(); // hoặc floor.laundryDevices.id(deviceId).remove();
+    await floor.save();
+
+    return res.json({ message: "Xoá thiết bị giặt sấy thành công" });
+  } catch (e) {
+    console.error("deleteLaundryDevice error:", e);
+    return res.status(500).json({ message: e.message || "Lỗi máy chủ" });
+  }
+};
 
 module.exports = {
   list,
@@ -483,4 +817,9 @@ module.exports = {
   softDelete,
   restore,
   updateStatus,
+  getLaundryStatus,
+  createLaundryDevice,
+  updateLaundryDevice,
+  deleteLaundryDevice,
+  getLaundryStatusForFloor,
 };

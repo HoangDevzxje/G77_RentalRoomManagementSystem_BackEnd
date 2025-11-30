@@ -22,15 +22,23 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 
 const DB = require("./configs/db");
-const { startExpirationJob } = require("./utils/cron/expireSubscriptions");
-const { registerAutoEndContractsCron } = require("./jobs/autoEndContracts");
+const {
+  registerAutoEndContractsCron,
+  autoEndContractsOnTime,
+} = require("./jobs/autoEndContracts");
 
-// Khởi tạo app + server
+const setupLaundrySocket = require("./sockets/laundrySocket");
+
+// =========================================
+//  APP & SERVER
+// =========================================
 const app = express();
 const port = process.env.PORT || 9999;
 const server = http.createServer(app);
 
-// ==================== SOCKET.IO SETUP ====================
+// =========================================
+//  SOCKET.IO SETUP
+// =========================================
 const io = new Server(server, {
   cors: {
     origin: true,
@@ -39,22 +47,29 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e8,
   pingTimeout: 60000,
 });
+
+// cho toàn hệ thống dùng
 global._io = io;
-// Middleware xác thực Socket.IO (bắt buộc có JWT)
+
+// ---------- JWT AUTH CHO SOCKET ----------
 io.use((socket, next) => {
+  const token =
+    socket.handshake.auth?.token ||
+    socket.handshake.headers?.authorization?.replace("Bearer ", "");
+
+  if (!token) {
+    const err = new Error("Không có token");
+    err.data = { message: "Không có token" };
+    return next(err);
+  }
+
+  // Fake req/res để tái sử dụng middleware checkAuthorize()
   const req = {
-    header: (key) => {
-      if (key === "Authorization") {
-        const token =
-          socket.handshake.auth.token || socket.handshake.headers.authorization;
-        return token ? `Bearer ${token}` : null;
-      }
-      return null;
-    },
+    header: () => `Bearer ${token}`,
   };
 
   const res = {
-    status: (code) => ({
+    status: () => ({
       json: (obj) => {
         const error = new Error(obj.message || "Unauthorized");
         error.data = obj;
@@ -63,41 +78,60 @@ io.use((socket, next) => {
     }),
   };
 
+  // Gọi middleware thật
   checkAuthorize()(req, res, (err) => {
     if (err) return next(err);
-    socket.user = req.user;
+    socket.user = req.user; // Gắn user vào socket
     next();
   });
 });
 
-// Xử lý kết nối + join room tự động
+// ---------- SOCKET.IO CONNECTION ----------
 io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.user.id} (${socket.user.role})`);
+  console.log(`🔌 Socket connected: ${socket.user.id} (${socket.user.role})`);
 
-  // Gọi hàm join room thông minh (tách riêng file cho dễ bảo trì)
-  require("./sockets/joinRooms")(socket, io);
+  // Các room mặc định (nếu bạn có logic riêng)
+  try {
+    require("./sockets/joinRooms")(socket, io);
+  } catch (e) {
+    console.warn("joinRooms not found or failed:", e.message);
+  }
 
-  // Các event khác (chat, typing, v.v.) sẽ import ở đây
-  // require("./sockets/notificationSocket")(socket, io);
-  // require("./sockets/chatSocket")(socket, io);
+  // Socket realtime giặt sấy
+  setupLaundrySocket(io, socket);
 
   socket.on("disconnect", () => {
-    console.log(`User disconnected: ${socket.user.id}`);
+    console.log(`❌ Socket disconnected: ${socket.user.id}`);
   });
 });
 
 app.set("io", io);
 
-// ==================== END SOCKET.IO ====================
-
+// =========================================
+//  MIDDLEWARE
+// =========================================
 app.use("/static", express.static(path.join(__dirname, "public")));
+
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// =========================================
+//  SWAGGER
+// =========================================
 const swaggerOptions = {
   definition: {
     openapi: "3.0.3",
     info: {
       title: "RRMS API",
       version: "1.0.0",
-      description: "API Rental Room Management System",
+      description: "Rental Room Management System API",
     },
     servers: [
       {
@@ -117,51 +151,48 @@ const swaggerOptions = {
   apis: ["./routes/**/*.js"],
 };
 
-// Cấu hình CORS
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Swagger setup
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
+
 app.use(
   "/api-docs",
   swaggerUi.serve,
   swaggerUi.setup(swaggerDocs, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
+    swaggerOptions: { persistAuthorization: true },
   })
 );
+
 app.get("/swagger.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.send(swaggerDocs);
 });
 
+// =========================================
+//  ROUTES
+// =========================================
 routes(app);
 
+// =========================================
+//  START SERVER
+// =========================================
 DB.connectDB()
   .then(() => {
     server.listen(port, () => {
-      console.log(`Server + Socket.IO running at http://localhost:${port}`);
-      console.log(`Swagger: http://localhost:${port}/api-docs`);
+      console.log(`🚀 Server + Socket.IO chạy tại http://localhost:${port}`);
+      console.log(`📘 Swagger: http://localhost:${port}/api-docs`);
     });
-    // registerAutoEndContractsCron();
-    startExpirationJob();
+
+    // Cron jobs
+    registerAutoEndContractsCron();
+    autoEndContractsOnTime();
+
     // Graceful shutdown
     process.on("SIGTERM", shutDown);
     process.on("SIGINT", shutDown);
 
     function shutDown() {
-      console.log("Đang tắt server & Socket.IO...");
+      console.log("⛔ Đang tắt server & Socket...");
       server.close(() => {
-        console.log("Server closed.");
+        console.log("Đã tắt.");
         process.exit(0);
       });
     }

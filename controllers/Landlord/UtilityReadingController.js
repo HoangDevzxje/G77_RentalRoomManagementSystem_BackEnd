@@ -300,6 +300,7 @@ exports.getReading = async (req, res) => {
 /**
  * PUT /landlords/utility-readings/:id
  * Chỉ số đã billed (hoặc có invoiceId) thì không cho sửa index/tiền/kỳ/phòng.
+ * Chỉ cho phép sửa ePreviousIndex/wPreviousIndex ở bản ghi ĐẦU TIÊN của phòng đó.
  */
 exports.updateReading = async (req, res) => {
   try {
@@ -353,10 +354,39 @@ exports.updateReading = async (req, res) => {
       }
     }
 
+    // NEW: kiểm tra bản ghi đầu tiên của phòng
+    let canEditPrevIndex = false;
+    if (!locked && (ePreviousIndex != null || wPreviousIndex != null)) {
+      const firstReading = await UtilityReading.findOne({
+        landlordId,
+        roomId: reading.roomId,
+        isDeleted: false,
+      })
+        .sort({ periodYear: 1, periodMonth: 1, createdAt: 1, _id: 1 })
+        .select("_id")
+        .lean();
+
+      if (firstReading && String(firstReading._id) === String(reading._id)) {
+        canEditPrevIndex = true;
+      } else {
+        return res.status(400).json({
+          message:
+            "Chỉ được phép chỉnh ePreviousIndex / wPreviousIndex ở bản ghi chỉ số ĐẦU TIÊN của phòng.",
+        });
+      }
+    }
+    // END NEW
+
     // Nếu chưa lock, cho phép cập nhật nhưng phải validate
     if (!locked) {
-      // ePreviousIndex
+      // ePreviousIndex - chỉ cho sửa nếu là bản đầu tiên (canEditPrevIndex)
       if (ePreviousIndex != null) {
+        if (!canEditPrevIndex) {
+          return res.status(400).json({
+            message:
+              "Chỉ được chỉnh ePreviousIndex ở bản ghi chỉ số đầu tiên của phòng.",
+          });
+        }
         const prev = Number(ePreviousIndex);
         if (!Number.isFinite(prev) || prev < 0) {
           return res
@@ -366,8 +396,14 @@ exports.updateReading = async (req, res) => {
         reading.ePreviousIndex = prev;
       }
 
-      // wPreviousIndex
+      // wPreviousIndex - chỉ cho sửa nếu là bản đầu tiên (canEditPrevIndex)
       if (wPreviousIndex != null) {
+        if (!canEditPrevIndex) {
+          return res.status(400).json({
+            message:
+              "Chỉ được chỉnh wPreviousIndex ở bản ghi chỉ số đầu tiên của phòng.",
+          });
+        }
         const prev = Number(wPreviousIndex);
         if (!Number.isFinite(prev) || prev < 0) {
           return res

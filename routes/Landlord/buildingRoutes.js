@@ -1160,5 +1160,95 @@ router.post(
   checkSubscription,
   BuildingCtrl.quickSetup
 );
+/**
+ * @swagger
+ * /landlords/buildings/{buildingId}/washers:
+ *   get:
+ *     summary: Danh sách tất cả máy giặt trong tòa, có thể lọc theo tầng & trạng thái
+ *     tags: [Floors]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: buildingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của tòa nhà
+ *       - in: query
+ *         name: floorId
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: ID của tầng (filter theo tầng cụ thể, optional)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [running, idle, unknown]
+ *         required: false
+ *         description: Lọc theo trạng thái máy giặt (running/idle/unknown)
+ *     responses:
+ *       200:
+ *         description: Danh sách máy giặt trong tòa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 buildingId:
+ *                   type: string
+ *                   example: "6750a1b2c3d4e5f678901234"
+ *                 total:
+ *                   type: integer
+ *                   example: 3
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       buildingId:
+ *                         type: string
+ *                       floorId:
+ *                         type: string
+ *                         description: ID của tầng
+ *                       floorLevel:
+ *                         type: integer
+ *                         description: Tầng mấy (1, 2, 3,...)
+ *                         example: 3
+ *                       floorDescription:
+ *                         type: string
+ *                         example: "Khu giặt sấy chung cư mini tầng 3"
+ *                       deviceId:
+ *                         type: string
+ *                         description: _id của thiết bị trong floor.laundryDevices
+ *                       name:
+ *                         type: string
+ *                         example: "Máy giặt 1"
+ *                       tuyaDeviceId:
+ *                         type: string
+ *                         example: "bf1234567890abcd123xyz"
+ *                       status:
+ *                         type: string
+ *                         enum: [running, idle, unknown]
+ *                         example: "running"
+ *                       power:
+ *                         type: number
+ *                         description: Công suất hiện tại (W)
+ *                         example: 245.7
+ *       400:
+ *         description: buildingId hoặc floorId không hợp lệ
+ *       403:
+ *         description: Không có quyền truy cập
+ *       404:
+ *         description: Không tìm thấy tòa nhà
+ *       500:
+ *         description: Lỗi server
+ */
+router.get(
+  "/:buildingId/washers",
+  checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  BuildingCtrl.listWashersInBuilding
+);
 
 module.exports = router;
