@@ -21,7 +21,7 @@ exports.listMyInvoices = async (req, res) => {
     const filter = {
       tenantId,
       isDeleted: false,
-      status: { $in: ["sent", "paid", "overdue"] },
+      status: { $in: ["sent", "transfer_pending", "paid", "overdue"] },
     };
 
     if (status) filter.status = status;
@@ -221,6 +221,84 @@ exports.payMyInvoice = async (req, res) => {
     });
   } catch (e) {
     console.error("payMyInvoice (bank transfer) error:", e);
+    return res.status(500).json({ message: e.message || "Server error" });
+  }
+};
+// POST /tenants/invoices/:id/request-transfer-confirmation
+exports.requestBankTransferConfirmation = async (req, res) => {
+  try {
+    const tenantId = req.user?._id;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res
+        .status(401)
+        .json({ message: "Không xác định được người dùng" });
+    }
+
+    // Ảnh đã upload lên Cloudinary nhờ middleware uploadTransferProof
+    const file = req.file;
+    if (!file || !file.path) {
+      return res
+        .status(400)
+        .json({ message: "Thiếu ảnh chứng từ chuyển khoản" });
+    }
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      tenantId,
+      isDeleted: false,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+    }
+
+    // Không cho gửi nếu hóa đơn đã thanh toán / hủy
+    if (["paid", "cancelled"].includes(invoice.status)) {
+      return res.status(400).json({
+        message: "Hóa đơn đã được xử lý, không thể gửi yêu cầu xác nhận",
+      });
+    }
+
+    // Chỉ cho gửi khi hóa đơn đã được gửi cho tenant (hoặc quá hạn)
+    if (!["sent", "overdue"].includes(invoice.status)) {
+      return res.status(400).json({
+        message:
+          "Chỉ gửi yêu cầu xác nhận cho hóa đơn ở trạng thái 'sent' hoặc 'overdue'",
+      });
+    }
+
+    // Nếu đã từng chuyển sang transfer_pending rồi thì tùy bạn:
+    // Cho phép gửi lại (ghi đè) hay chặn? Ở đây chặn luôn:
+    if (invoice.status === "transfer_pending") {
+      return res.status(400).json({
+        message:
+          "Bạn đã gửi yêu cầu xác nhận chuyển khoản cho hóa đơn này, vui lòng chờ chủ trọ kiểm tra.",
+      });
+    }
+
+    // Ghi nhận URL Cloudinary & thời điểm
+    invoice.transferProofImageUrl = file.path; // Cloudinary secure_url
+    invoice.transferRequestedAt = new Date();
+
+    // Chuyển trạng thái sang chờ xác nhận
+    invoice.status = "transfer_pending";
+
+    await invoice.save();
+
+    return res.json({
+      message:
+        "Đã gửi yêu cầu xác nhận chuyển khoản. Vui lòng chờ chủ trọ kiểm tra và xác nhận.",
+      data: {
+        _id: invoice._id,
+        status: invoice.status,
+        transferProofImageUrl: invoice.transferProofImageUrl,
+        transferRequestedAt: invoice.transferRequestedAt,
+      },
+    });
+  } catch (e) {
+    console.error("requestBankTransferConfirmation error:", e);
     return res.status(500).json({ message: e.message || "Server error" });
   }
 };

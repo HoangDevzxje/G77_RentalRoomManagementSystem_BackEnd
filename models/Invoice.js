@@ -4,6 +4,7 @@ const INVOICE_STATUS = [
   "draft", // mới tạo, landlord có thể chỉnh sửa
   "sent", // đã gửi cho tenant (email / in-app)
   "paid", // đã thanh toán
+  "transfer_pending",
   "overdue", // quá hạn
   "cancelled", // hủy hóa đơn
 ];
@@ -186,6 +187,12 @@ const invoiceSchema = new mongoose.Schema(
     paymentRef: { type: String },
     paymentNote: { type: String },
 
+    transferProofImageUrl: {
+      type: String, // URL ảnh chuyển khoản (đã upload lên Cloudinary/S3...)
+    },
+    transferRequestedAt: {
+      type: Date, // thời điểm tenant gửi yêu cầu xác nhận
+    },
     // Tham chiếu email
     // Email chính sẽ gửi đến tenant.email, field này chỉ là override nếu cần
     emailToOverride: {

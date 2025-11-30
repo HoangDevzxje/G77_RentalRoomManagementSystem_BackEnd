@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const tenantInvoiceController = require("../../controllers/User/TenantInvoiceController");
-
+const { uploadTransferProof } = require("../../configs/cloudinary");
 /**
  * @swagger
  * tags:
@@ -22,7 +22,7 @@ const tenantInvoiceController = require("../../controllers/User/TenantInvoiceCon
  *         in: query
  *         schema:
  *           type: string
- *           enum: [draft, sent, paid, overdue, cancelled]
+ *           enum: [draft, sent, transfer_pending, paid, overdue, cancelled]
  *         description: Lọc theo trạng thái hóa đơn
  *       - name: periodMonth
  *         in: query
@@ -233,5 +233,43 @@ router.post(
   checkAuthorize("resident"),
   tenantInvoiceController.payMyInvoice
 );
-
+/**
+ * @swagger
+ * /invoices/{id}/request-transfer-confirmation:
+ *   post:
+ *     summary: Tenant gửi yêu cầu xác nhận đã chuyển khoản (kèm ảnh)
+ *     tags: [Tenant Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               proofImageUrl:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               note:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Gửi yêu cầu thành công
+ *       400:
+ *         description: Hóa đơn không hợp lệ hoặc đã được xử lý
+ */
+router.post(
+  "/:id/request-transfer-confirmation",
+  uploadTransferProof,
+  checkAuthorize("resident"),
+  tenantInvoiceController.requestBankTransferConfirmation
+);
 module.exports = router;

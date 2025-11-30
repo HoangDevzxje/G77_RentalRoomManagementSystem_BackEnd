@@ -57,6 +57,32 @@ const bankQrStorage = new CloudinaryStorage({
     };
   },
 });
+const transferProofStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    const tenantId = req.user?._id?.toString() || "unknown-tenant";
+
+    const folder = `transfer_proofs/${tenantId}`;
+
+    const safeName = (file.originalname || "proof")
+      .toLowerCase()
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-z0-9-_]+/g, "-");
+
+    return {
+      folder,
+      allowed_formats: ["jpg", "jpeg", "png", "webp"],
+      format: "webp",
+      public_id: `${Date.now()}-${safeName}`,
+      transformation: [{ width: 1280, crop: "scale" }],
+    };
+  },
+});
+
+// field name: "proofImage"
+const uploadTransferProof = multer({ storage: transferProofStorage }).single(
+  "proofImage"
+);
 
 // field name: "qrImage"
 const uploadBankQr = multer({ storage: bankQrStorage }).single("qrImage");
@@ -66,4 +92,5 @@ module.exports = {
   uploadMultiple,
   uploadSingle,
   uploadBankQr,
+  uploadTransferProof,
 };

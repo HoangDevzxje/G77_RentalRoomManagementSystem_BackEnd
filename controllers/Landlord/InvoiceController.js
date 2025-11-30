@@ -678,6 +678,12 @@ exports.markInvoicePaid = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
+    if (!["sent", "overdue", "transfer_pending"].includes(invoice.status)) {
+      return res.status(400).json({
+        message:
+          "Chỉ cho phép ghi nhận thanh toán với hóa đơn sent/overdue/transfer_pending",
+      });
+    }
 
     // Không cho mark paid nếu đã hủy
     if (invoice.status === "cancelled") {
@@ -732,7 +738,7 @@ exports.markInvoicePaid = async (req, res) => {
 
     await invoice.save();
 
-    // 🔗 Sau khi hóa đơn đã "paid" → tự động ghi log thu
+    // Sau khi hóa đơn đã "paid" → tự động ghi log thu
     await ensureRevenueLogForInvoicePaid(invoice, { actorId: req.user?._id });
 
     return res.json({
