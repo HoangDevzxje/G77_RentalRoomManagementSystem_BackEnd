@@ -1,6 +1,7 @@
 const Room = require('../../models/Room');
 const Account = require('../../models/Account');
 const mongoose = require("mongoose");
+const Notification = require('../../models/Notification');
 const addRoommate = async (req, res) => {
     let { roomId, userIds } = req.body;
     const requesterId = req.user.id;
@@ -29,7 +30,8 @@ const addRoommate = async (req, res) => {
             _id: roomId,
             status: 'rented',
             currentTenantIds: requesterId
-        }).session(session);
+        }).populate('buildingId', "landlordId")
+            .session(session);
 
         if (!room) {
             return res.status(403).json({
@@ -89,6 +91,39 @@ const addRoommate = async (req, res) => {
         room.currentTenantIds.push(...userIds);
         await room.save({ session });
 
+        const requester = await Account.findById(requesterId)
+            .populate("userInfo", "fullName")
+            .lean();
+        const affectedTenantIds = [...userIds];
+
+        const notification = await Notification.create({
+            landlordId: room.buildingId.landlordId,
+            createByRole: "system",
+            title: "Bạn được thêm vào phòng",
+            content: `${requester.userInfo?.fullName} đã thêm bạn vào phòng ${room.roomNumber}`,
+            target: { residents: [affectedTenantIds] },
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+            const payload = {
+                id: notification._id.toString(),
+                title: notification.title,
+                content: notification.content,
+                link: notification.link,
+                createdAt: notification.createdAt,
+                createBy: {
+                    id: requesterId,
+                    name: requester.userInfo?.fullName,
+                    role: "system"
+                }
+            };
+
+            affectedTenantIds.forEach(tenantId => {
+                io.to(`user:${tenantId}`).emit("new_notification", payload);
+                io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+            });
+        }
         await session.commitTransaction();
 
         return res.json({
@@ -139,7 +174,8 @@ const removeRoommate = async (req, res) => {
             _id: roomId,
             status: 'rented',
             currentTenantIds: requesterId
-        }).session(session);
+        }).populate("buildingId", "landlordId")
+            .session(session);
 
         if (!room) {
             return res.status(403).json({
@@ -168,7 +204,39 @@ const removeRoommate = async (req, res) => {
         );
 
         await room.save({ session });
+        const requester = await Account.findById(requesterId)
+            .populate("userInfo", "fullName")
+            .lean();
+        const affectedTenantIds = [...userIds];
 
+        const notification = await Notification.create({
+            landlordId: room.buildingId.landlordId,
+            createByRole: "system",
+            title: "Bạn bị xóa khỏi phòng",
+            content: `${requester.userInfo?.fullName} đã xóa bạn khỏi phòng ${room.roomNumber}`,
+            target: { residents: [affectedTenantIds] },
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+            const payload = {
+                id: notification._id.toString(),
+                title: notification.title,
+                content: notification.content,
+                link: notification.link,
+                createdAt: notification.createdAt,
+                createBy: {
+                    id: requesterId,
+                    name: requester.userInfo?.fullName,
+                    role: "system"
+                }
+            };
+
+            affectedTenantIds.forEach(tenantId => {
+                io.to(`user:${tenantId}`).emit("new_notification", payload);
+                io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+            });
+        }
         await session.commitTransaction();
 
         return res.json({

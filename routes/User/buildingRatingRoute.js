@@ -81,15 +81,11 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *                       items:
  *                         type: string
  *                         example: "https://cdn.example.com/upload/img1.jpg"
- *                     isAnonymous:
- *                       type: boolean
- *                       example: false
  *                     user:
  *                       type: object
  *                       nullable: true
  *                       example:
  *                         fullName: "Nguyễn Văn A"
- *                         avatar: "https://example.com/ava.jpg"
  *                     createdAt:
  *                       type: string
  *                       example: "2025-02-04T10:20:00.000Z"

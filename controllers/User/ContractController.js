@@ -286,7 +286,7 @@ exports.signByTenant = async (req, res) => {
       content,
       // type: "contract_signed",
       target: { buildings: [buildingId] },
-      link: `/landlords/contracts`,
+      link: `/landlord/contracts`,
     });
 
     //  REALTIME EMIT
@@ -457,8 +457,6 @@ exports.requestExtend = async (req, res) => {
     //      TẠO THÔNG BÁO
     const landlordId = contract.landlordId?._id;
     const buildingId = contract.buildingId?._id;
-    console.log("landlordId", landlordId);
-    console.log("buildingId", buildingId);
     const tenantInfo = await UserInformation.findById(req.user.userInfo).lean();
     const tenantName = tenantInfo?.fullName || "Người thuê";
 
@@ -470,7 +468,7 @@ exports.requestExtend = async (req, res) => {
       title: "Yêu cầu gia hạn hợp đồng",
       content,
       target: { buildings: [buildingId] },
-      link: `/landlords/contacts`,
+      link: `/landlord/contact-management`,
     });
 
     const io = req.app.get("io");

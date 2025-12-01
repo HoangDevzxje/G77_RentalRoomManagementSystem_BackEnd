@@ -62,10 +62,9 @@ const createContact = async (req, res) => {
       createBy: tenantId,
       createByRole: "resident",
       title: "Yêu cầu hợp đồng mới",
-      content: `${contactName} (${contactPhone}) muốn thuê phòng ${room.roomNumber || roomId}`,
-      // type: "contract_request",
+      content: `${contactName} (${contactPhone}) muốn thuê phòng ${room.roomNumber || roomId} của tòa nhà ${building.name}`,
       target: { buildings: [buildingId] },
-      link: `/landlords/contacts`,
+      link: `/landlord/contact-management`,
     });
 
     // === REALTIME EMIT  ===
@@ -162,7 +161,9 @@ const cancelContact = async (req, res) => {
     const tenantId = req.user._id;
     const { id } = req.params;
 
-    const request = await Contact.findOne({ _id: id, tenantId });
+    const request = await Contact.findOne({ _id: id, tenantId })
+      .populate("roomId", "roomNumber")
+      .populate("buildingId", "name");
     if (!request)
       return res.status(404).json({ message: "Không tìm thấy yêu cầu!" });
 
@@ -173,7 +174,48 @@ const cancelContact = async (req, res) => {
 
     request.status = "cancelled";
     await request.save();
+    const notification = await Notification.create({
+      landlordId: request.landlordId,
+      createBy: tenantId,
+      createByRole: "resident",
+      title: "Hủy yêu cầu hợp đồng",
+      content: `${request.contactName} (${request.contactPhone}) đã hủy yêu cầu tạo hợp đồng với phòng ${request?.roomId?.roomNumber} của tòa nhà ${request?.buildingId?.name}`,
+      target: { buildings: [request.buildingId] },
+      link: `/landlord/contact-management`,
+    });
 
+    const io = req.app.get("io");
+    if (io) {
+      const payload = {
+        id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          id: tenantId.toString(),
+          name: request.contactName,
+          role: "resident"
+        }
+      };
+
+      io.to(`user:${request.landlordId}`).emit("new_notification", payload);
+
+      const staffList = await Staff.find({
+        assignedBuildings: request.buildingId,
+        isDeleted: false
+      }).select("accountId").lean();
+
+      staffList.forEach(staff => {
+        io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+      });
+
+      io.to(`user:${request.landlordId}`).emit("unread_count_increment", { increment: 1 });
+      staffList.forEach(staff => {
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
     res.json({ success: true, message: "Đã hủy yêu cầu thành công!" });
   } catch (err) {
     res.status(500).json({ message: "Lỗi hệ thống khi hủy yêu cầu!" });

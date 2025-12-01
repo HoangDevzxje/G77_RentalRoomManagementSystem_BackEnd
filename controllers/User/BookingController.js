@@ -107,7 +107,7 @@ const create = async (req, res) => {
 
     const landlordId = post.landlordId._id;
 
-    const schedule = await LandlordSchedule.findOne({ landlordId, buildingId });
+    const schedule = await LandlordSchedule.findOne({ landlordId, buildingId }).populate("buildingId", "name");
     if (!schedule) {
       return res.status(400).json({
         success: false,
@@ -209,10 +209,10 @@ const create = async (req, res) => {
         createBy: tenantId,
         createByRole: "resident",
         title: "Có lịch xem phòng mới!",
-        content: `${contactName} (${contactPhone}) muốn xem phòng vào ${dayjs(date).format("DD/MM/YYYY")} lúc ${timeSlot}`,
+        content: `${contactName} (${contactPhone}) muốn xem phòng của tòa nhà ${schedule.buildingId.name} vào ngày ${dayjs(date).format("DD/MM/YYYY")} lúc ${timeSlot}`,
         // type: "booking_request",
         target: { buildings: [buildingId] },
-        link: `/landlords/bookings`,
+        link: `/landlord/bookings`,
       });
 
       const payload = {
@@ -290,7 +290,7 @@ const cancel = async (req, res) => {
     const tenantId = req.user._id;
     const { id } = req.params;
 
-    const booking = await Booking.findOne({ _id: id, tenantId, isDeleted: false });
+    const booking = await Booking.findOne({ _id: id, tenantId, isDeleted: false }).populate("buildingId", "name");
     if (!booking) return res.status(404).json({ message: "Không tìm thấy lịch đặt!" });
 
     if (booking.status === "accepted")
@@ -298,6 +298,49 @@ const cancel = async (req, res) => {
 
     booking.status = "cancelled";
     await booking.save();
+
+    const io = req.app.get("io");
+    if (io) {
+      const notification = await Notification.create({
+        landlordId: booking.landlordId,
+        createBy: tenantId,
+        createByRole: "resident",
+        title: "Hũy lịch xem phòng!",
+        content: `${booking.contactName} (${booking.contactPhone}) đã hủy lịch xem phòng của tòa nhà ${booking.buildingId.name} vào ngày ${dayjs(booking.date).format("DD/MM/YYYY")} lúc ${booking.timeSlot}`,
+        target: { buildings: [booking.buildingId] },
+        link: `/landlord/bookings`,
+      });
+
+      const payload = {
+        id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          id: tenantId.toString(),
+          name: booking.contactName,
+          role: "resident",
+          phone: booking.contactPhone
+        }
+      };
+
+      // 1. Gửi cho Landlord
+      io.to(`user:${booking.landlordId}`).emit("new_notification", payload);
+      io.to(`user:${booking.landlordId}`).emit("unread_count_increment", { increment: 1 });
+
+      // 2. Gửi cho tất cả Staff quản lý tòa này (nếu có)
+      const staffList = await Staff.find({
+        assignedBuildings: booking.buildingId,
+        isDeleted: false
+      }).select("accountId").lean();
+
+      staffList.forEach(staff => {
+        io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
 
     res.json({ success: true, message: "Hủy lịch thành công!" });
   } catch (err) {
