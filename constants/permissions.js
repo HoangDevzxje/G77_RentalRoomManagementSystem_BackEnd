@@ -91,6 +91,11 @@ const PERMISSIONS = {
     RESIDENT_CREATE: "resident:create",
     RESIDENT_EDIT: "resident:edit",
     RESIDENT_DELETE: "resident:delete",
+    //dien nuoc
+    UTILITY_VIEW: "utility:view",
+    UTILITY_CREATE: "utility:create",
+    UTILITY_EDIT: "utility:edit",
+    UTILITY_DELETE: "utility:delete",
 
     // === HÓA ĐƠN ===
     INVOICE_VIEW: "invoice:view",

@@ -247,7 +247,9 @@ exports.signByTenant = async (req, res) => {
       return res.status(400).json({ message: "Thiếu signatureUrl" });
     }
 
-    const contract = await Contract.findOne({ _id: id, tenantId });
+    const contract = await Contract.findOne({ _id: id, tenantId })
+      .populate("buildingId", "name")
+      .populate("roomId", "roomNumber");
     if (!contract) {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
     }
@@ -276,7 +278,7 @@ exports.signByTenant = async (req, res) => {
     const tenantName = tenantInfo?.fullName || "Người thuê";
 
     const title = "Người thuê đã ký hợp đồng";
-    const content = `${tenantName} đã ký hợp đồng thuê cho phòng ${contract.roomNumber || contract.roomId}`;
+    const content = `${tenantName} đã ký hợp đồng thuê cho phòng ${contract?.roomId?.roomNumber} của tòa nhà ${contract?.buildingId?.name}`;
 
     const notification = await Notification.create({
       landlordId,
