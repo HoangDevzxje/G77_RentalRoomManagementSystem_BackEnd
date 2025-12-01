@@ -1241,7 +1241,7 @@ exports.approveExtension = async (req, res) => {
         target: { residents: [contract.tenantId] },
         createdAt: new Date(),
       });
-
+      const io = req.app.get("io");
       if (io) {
         io.to(`user:${contract.tenantId}`).emit("new_notification", {
           _id: notiResident._id,
@@ -1315,7 +1315,7 @@ exports.rejectExtension = async (req, res) => {
         target: { residents: [contract.tenantId] },
         createdAt: new Date(),
       });
-
+      const io = req.app.get("io");
       if (io) {
         io.to(`user:${contract.tenantId}`).emit("new_notification", {
           _id: notiResident._id,
