@@ -1162,9 +1162,9 @@ router.post(
 );
 /**
  * @swagger
- * /landlords/buildings/{buildingId}/washers:
+ * /landlords/buildings/{buildingId}/laundry-devices:
  *   get:
- *     summary: Danh sách tất cả máy giặt trong tòa, có thể lọc theo tầng & trạng thái
+ *     summary: Danh sách tất cả thiết bị giặt/sấy trong tòa (máy giặt & máy sấy), có thể lọc theo tầng, loại & trạng thái
  *     tags: [Floors]
  *     security:
  *       - bearerAuth: []
@@ -1182,12 +1182,19 @@ router.post(
  *         required: false
  *         description: ID của tầng (filter theo tầng cụ thể, optional)
  *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [washer, dryer]
+ *         required: false
+ *         description: Lọc theo loại thiết bị (washer|dryer). Không truyền = trả về cả hai.
+ *       - in: query
  *         name: status
  *         schema:
  *           type: string
  *           enum: [running, idle, unknown]
  *         required: false
- *         description: Lọc theo trạng thái máy giặt (running/idle/unknown)
+ *         description: Lọc theo trạng thái thiết bị (running/idle/unknown)
  *     responses:
  *       200:
  *         description: Danh sách máy giặt trong tòa
@@ -1246,9 +1253,9 @@ router.post(
  *         description: Lỗi server
  */
 router.get(
-  "/:buildingId/washers",
+  "/:buildingId/laundry-devices",
   checkAuthorize(["admin", "landlord", "staff", "resident"]),
-  BuildingCtrl.listWashersInBuilding
+  BuildingCtrl.listLaundryDevicesInBuilding
 );
 
 module.exports = router;

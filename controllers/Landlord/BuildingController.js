@@ -1347,7 +1347,13 @@ const importFromExcel = async (req, res) => {
     return res.status(500).json({ message: e.message || "Server error" });
   }
 };
-async function getWashersInBuilding({ user, buildingId, floorId, status }) {
+async function getLaundryDevicesInBuilding({
+  user,
+  buildingId,
+  floorId,
+  status,
+  type,
+}) {
   if (!mongoose.Types.ObjectId.isValid(buildingId)) {
     const err = new Error("buildingId không hợp lệ");
     err.statusCode = 400;
@@ -1405,22 +1411,33 @@ async function getWashersInBuilding({ user, buildingId, floorId, status }) {
   // ===== COLLECT WASHERS =====
   const washerDevices = [];
   for (const floor of floors) {
-    (floor.laundryDevices || [])
-      .filter((d) => d.type === "washer")
-      .forEach((d) => {
-        washerDevices.push({
-          buildingId,
-          floorId: floor._id,
-          floorLevel: floor.level,
-          deviceId: d._id,
-          name: d.name,
-          tuyaDeviceId: d.tuyaDeviceId,
-          type: d.type,
-        });
+    (floor.laundryDevices || []).forEach((d) => {
+      washerDevices.push({
+        buildingId,
+        floorId: floor._id,
+        floorLevel: floor.level,
+        deviceId: d._id,
+        name: d.name,
+        tuyaDeviceId: d.tuyaDeviceId,
+        type: d.type,
       });
+    });
   }
 
-  if (!washerDevices.length) return { buildingId, total: 0, data: [] };
+  // Apply type filter if requested (washer|dryer)
+  let filteredDevices = washerDevices;
+  if (type && typeof type === "string") {
+    const t = String(type).toLowerCase();
+    if (["washer", "dryer"].includes(t)) {
+      filteredDevices = filteredDevices.filter((d) => d.type === t);
+    } else {
+      const err = new Error("type không hợp lệ (washer|dryer)");
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  if (!filteredDevices.length) return { buildingId, total: 0, data: [] };
 
   // ===== CHECK TUYA STATUS =====
   const mapDeviceWithStatus = async (dev) => {
@@ -1445,7 +1462,7 @@ async function getWashersInBuilding({ user, buildingId, floorId, status }) {
   };
 
   let devicesWithStatus = await Promise.all(
-    washerDevices.map(mapDeviceWithStatus)
+    filteredDevices.map(mapDeviceWithStatus)
   );
 
   // FILTER BY STATUS
@@ -1460,15 +1477,16 @@ async function getWashersInBuilding({ user, buildingId, floorId, status }) {
   };
 }
 
-// GET /buildings/:buildingId/washers
-// Danh sách tất cả máy giặt trong 1 tòa, có filter theo tầng & trạng thái
-const listWashersInBuilding = async (req, res) => {
+// GET /buildings/:buildingId/laundry-devices
+// Danh sách tất cả thiết bị giặt/sấy (washer/dryer) trong 1 tòa, có filter theo tầng, loại & trạng thái
+const listLaundryDevicesInBuilding = async (req, res) => {
   try {
-    const result = await getWashersInBuilding({
+    const result = await getLaundryDevicesInBuilding({
       user: req.user,
       buildingId: req.params.buildingId,
       floorId: req.query.floorId,
       status: req.query.status,
+      type: req.query.type,
     });
 
     return res.json(result);
@@ -1492,6 +1510,6 @@ module.exports = {
   remove,
   downloadImportTemplate,
   importFromExcel,
-  listWashersInBuilding,
-  getWashersInBuilding,
+  listLaundryDevicesInBuilding,
+  getLaundryDevicesInBuilding,
 };
