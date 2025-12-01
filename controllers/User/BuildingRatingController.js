@@ -136,7 +136,6 @@ const createOrUpdateRating = async (req, res) => {
                 rating: updatedRating.rating,
                 comment: updatedRating.comment,
                 images: updatedRating.images,
-                isAnonymous: updatedRating.isAnonymous,
                 user: {
                     fullName: updatedRating.userId?.userInfo?.fullName,
                     email: updatedRating.userId?.email
