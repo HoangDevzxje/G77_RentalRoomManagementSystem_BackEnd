@@ -1370,27 +1370,6 @@ async function getLaundryDevicesInBuilding({
     throw err;
   }
 
-  // ===== CHECK PERMISSION =====
-  if (user.role === "admin") {
-    // ok
-  } else if (user.role === "landlord") {
-    if (String(building.landlordId) !== String(user._id)) {
-      const err = new Error("Không có quyền với tòa nhà này");
-      err.statusCode = 403;
-      throw err;
-    }
-  } else if (user.role === "staff") {
-    if (!user.assignedBuildingIds?.map(String).includes(String(building._id))) {
-      const err = new Error("Bạn không được quản lý tòa nhà này");
-      err.statusCode = 403;
-      throw err;
-    }
-  } else {
-    const err = new Error("Không có quyền");
-    err.statusCode = 403;
-    throw err;
-  }
-
   // ===== FLOOR FILTER =====
   const floorFilter = { buildingId, isDeleted: false };
   if (floorId) {
