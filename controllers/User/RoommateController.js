@@ -1,6 +1,7 @@
 const Room = require('../../models/Room');
 const Account = require('../../models/Account');
 const mongoose = require("mongoose");
+const Notification = require('../../models/Notification');
 const addRoommate = async (req, res) => {
     let { roomId, userIds } = req.body;
     const requesterId = req.user.id;
@@ -93,35 +94,35 @@ const addRoommate = async (req, res) => {
         const requester = await Account.findById(requesterId)
             .populate("userInfo", "fullName")
             .lean();
+        const affectedTenantIds = [...userIds];
 
-        for (const uid of userIds) {
+        const notification = await Notification.create({
+            landlordId: room.buildingId.landlordId,
+            createByRole: "system",
+            title: "Bạn được thêm vào phòng",
+            content: `${requester.userInfo?.fullName} đã thêm bạn vào phòng ${room.roomNumber}`,
+            target: { residents: [affectedTenantIds] },
+        });
 
-            const notification = await Notification.create({
-                landlordId: room.buildingId.landlordId,
-                createByRole: "system",
-                title: "Bạn được thêm vào phòng",
-                content: `${requester.userInfo?.fullName} đã thêm bạn vào phòng ${room.roomNumber}`,
-                target: { residents: [uid] },
+        const io = req.app.get("io");
+        if (io) {
+            const payload = {
+                id: notification._id.toString(),
+                title: notification.title,
+                content: notification.content,
+                link: notification.link,
+                createdAt: notification.createdAt,
+                createBy: {
+                    id: requesterId,
+                    name: requester.userInfo?.fullName,
+                    role: "system"
+                }
+            };
+
+            affectedTenantIds.forEach(tenantId => {
+                io.to(`user:${tenantId}`).emit("new_notification", payload);
+                io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
             });
-
-            const io = req.app.get("io");
-            if (io) {
-                const payload = {
-                    id: notification._id.toString(),
-                    title: notification.title,
-                    content: notification.content,
-                    link: notification.link,
-                    createdAt: notification.createdAt,
-                    createBy: {
-                        id: requesterId,
-                        name: requester.userInfo?.fullName,
-                        role: "system"
-                    }
-                };
-
-                io.to(`user:${uid}`).emit("new_notification", payload);
-                io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 });
-            }
         }
         await session.commitTransaction();
 
@@ -206,35 +207,35 @@ const removeRoommate = async (req, res) => {
         const requester = await Account.findById(requesterId)
             .populate("userInfo", "fullName")
             .lean();
+        const affectedTenantIds = [...userIds];
 
-        for (const uid of userIds) {
+        const notification = await Notification.create({
+            landlordId: room.buildingId.landlordId,
+            createByRole: "system",
+            title: "Bạn bị xóa khỏi phòng",
+            content: `${requester.userInfo?.fullName} đã xóa bạn khỏi phòng ${room.roomNumber}`,
+            target: { residents: [affectedTenantIds] },
+        });
 
-            const notification = await Notification.create({
-                landlordId: room.buildingId.landlordId,
-                createByRole: "system",
-                title: "Bạn bị xóa khỏi phòng",
-                content: `${requester.userInfo?.fullName} đã xóa bạn khỏi phòng ${room.roomNumber}`,
-                target: { residents: [uid] },
+        const io = req.app.get("io");
+        if (io) {
+            const payload = {
+                id: notification._id.toString(),
+                title: notification.title,
+                content: notification.content,
+                link: notification.link,
+                createdAt: notification.createdAt,
+                createBy: {
+                    id: requesterId,
+                    name: requester.userInfo?.fullName,
+                    role: "system"
+                }
+            };
+
+            affectedTenantIds.forEach(tenantId => {
+                io.to(`user:${tenantId}`).emit("new_notification", payload);
+                io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
             });
-
-            const io = req.app.get("io");
-            if (io) {
-                const payload = {
-                    id: notification._id.toString(),
-                    title: notification.title,
-                    content: notification.content,
-                    link: notification.link,
-                    createdAt: notification.createdAt,
-                    createBy: {
-                        id: requesterId,
-                        name: requester.userInfo?.fullName,
-                        role: "system"
-                    }
-                };
-
-                io.to(`user:${uid}`).emit("new_notification", payload);
-                io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 });
-            }
         }
         await session.commitTransaction();
 
