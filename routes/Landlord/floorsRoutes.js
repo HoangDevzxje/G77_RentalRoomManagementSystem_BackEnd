@@ -867,7 +867,8 @@ router.delete(
  */
 router.delete(
   "/:id/hard-delete",
-  checkAuthorize(["admin"]),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.FLOOR_DELETE),
   checkSubscription,
   FloorCtrl.remove
 );

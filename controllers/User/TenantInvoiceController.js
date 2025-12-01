@@ -248,7 +248,15 @@ exports.requestBankTransferConfirmation = async (req, res) => {
       _id: id,
       tenantId,
       isDeleted: false,
-    });
+    }).populate("roomId", "roomNumber")
+      .populate({
+        path: "tenantId",
+        select: "userInfo",
+        populate: {
+          path: "userInfo",
+          select: "fullName",
+        }
+      });
 
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
@@ -286,7 +294,53 @@ exports.requestBankTransferConfirmation = async (req, res) => {
     invoice.status = "transfer_pending";
 
     await invoice.save();
+    const landlordId = invoice.landlordId;
+    const buildingId = invoice.buildingId;
 
+    const notification = await Notification.create({
+      landlordId,
+      createBy: tenantId,
+      createByRole: "resident",
+      title: "Yêu cầu xác nhận thanh toán",
+      content: `Người thuê ${invoice?.tenantId?.userInfo?.fullName}, phòng ${invoice?.roomId?.roomNumber} đã gửi yêu cầu xác nhận chuyển khoản cho hóa đơn #${invoice._id}.`,
+      type: "reminder",
+      target: { buildings: [buildingId] },
+      link: `/landlord/invoices`,
+    });
+
+    const io = req.app.get("io");
+
+    if (io) {
+      const payload = {
+        id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          id: tenantId.toString(),
+          name: invoice?.tenantId?.userInfo?.fullName,
+          role: "resident",
+        },
+      };
+
+      io.to(`user:${landlordId}`).emit("new_notification", payload);
+
+      const staffList = await Staff.find({
+        assignedBuildings: buildingId,
+        isDeleted: false,
+      }).select("accountId").lean();
+
+      staffList.forEach((staff) => {
+        io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+      });
+
+      io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
+      staffList.forEach((staff) => {
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
     return res.json({
       message:
         "Đã gửi yêu cầu xác nhận chuyển khoản. Vui lòng chờ chủ trọ kiểm tra và xác nhận.",

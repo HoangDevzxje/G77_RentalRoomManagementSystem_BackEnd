@@ -1,4 +1,5 @@
 const Booking = require("../../models/Booking");
+const Notification = require("../../models/Notification");
 
 const getAllBookings = async (req, res) => {
     try {
@@ -89,8 +90,7 @@ const updateBookingStatus = async (req, res) => {
         const { action, landlordNote } = req.body;
 
         const booking = await Booking.findOne({ _id: id, isDeleted: false })
-            .populate("buildingId", "_id");
-
+            .populate("buildingId", "_id name");
         if (!booking) {
             return res.status(404).json({ message: "Không tìm thấy lịch đặt!" });
         }
@@ -105,24 +105,31 @@ const updateBookingStatus = async (req, res) => {
                 return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
             }
         }
-
+        let title = "Cập nhật lịch xem phòng";
+        let statusText = "";
         switch (action) {
             case "accept":
                 if (booking.status !== "pending")
                     return res.status(400).json({ message: "Chỉ có thể chấp nhận lịch đang chờ!" });
                 booking.status = "accepted";
+                title = "Chấp nhận lịch xem phòng";
+                statusText = "Lịch xem phòng của bạn đã được chấp nhận";
                 break;
 
             case "reject":
                 if (booking.status !== "pending")
                     return res.status(400).json({ message: "Chỉ có thể từ chối lịch đang chờ!" });
                 booking.status = "rejected";
+                title = "Từ chối lịch xem phòng";
+                statusText = "Lịch xem phòng của bạn đã bị từ chối";
                 break;
 
             case "cancel":
                 if (booking.status !== "accepted")
                     return res.status(400).json({ message: "Chỉ có thể hủy lịch đã chấp nhận!" });
                 booking.status = "cancelled";
+                title = "Hủy lịch xem phòng";
+                statusText = "Lịch xem phòng của bạn đã bị hủy";
                 break;
 
             default:
@@ -131,6 +138,31 @@ const updateBookingStatus = async (req, res) => {
 
         if (landlordNote) booking.landlordNote = landlordNote;
         await booking.save();
+
+        const residentId = booking.tenantId;
+
+        const notiResident = await Notification.create({
+            landlordId: booking.landlordId,
+            createByRole: "system",
+            title: title,
+            content: `Chủ tòa nhà ${booking.buildingId.name} đã cập nhật trạng thái lịch xem phòng: ${statusText}`,
+            target: { residents: [residentId] },
+        });
+
+        // Gửi realtime
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`user:${residentId}`).emit("new_notification", {
+                _id: notiResident._id,
+                title: notiResident.title,
+                content: notiResident.content,
+                type: notiResident.type,
+                createdAt: notiResident.createdAt,
+                createBy: { role: "system" },
+            });
+
+            io.to(`user:${residentId}`).emit("unread_count_increment", { increment: 1 });
+        }
 
         res.json({
             success: true,
@@ -147,4 +179,4 @@ module.exports = {
     getAllBookings,
     getBookingDetail,
     updateBookingStatus,
-};
+}; 0

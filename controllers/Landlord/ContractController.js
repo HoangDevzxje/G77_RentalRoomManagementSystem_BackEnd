@@ -89,7 +89,8 @@ function mapAccountToPerson(acc) {
 }
 
 async function confirmMoveInCore(contractId, { io, mode = "manual" } = {}) {
-  const contract = await Contract.findById(contractId);
+  const contract = await Contract.findById(contractId)
+    .populate("roomId", "roomNumber");
   if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
   if (contract.moveInConfirmedAt) {
@@ -156,19 +157,18 @@ async function createMoveInNotifications(contract, { io, mode }) {
       ? "Hệ thống đã xác nhận người thuê vào ở"
       : "Đã xác nhận người thuê vào ở";
   const contentForLandlord = `Hợp đồng ${contract.contract?.no || ""
-    } cho phòng ${contract.roomNumber || roomId} đã được xác nhận vào ở.`;
+    } cho phòng ${contract?.roomId?.roomNumber} đã được xác nhận vào ở.`;
 
   const titleForTenant =
     mode === "auto"
       ? "Hệ thống đã xác nhận bạn vào ở"
       : "Bạn đã được xác nhận vào ở";
-  const contentForTenant = `Hợp đồng thuê phòng ${contract.roomNumber || roomId
+  const contentForTenant = `Hợp đồng thuê phòng ${contract?.roomId?.roomNumber
     } đã được xác nhận vào ở. Chúc bạn ở vui vẻ!`;
 
   // Thông báo cho landlord (và staff qua building)
   const notiLandlord = await Notification.create({
     landlordId,
-    createBy: null,
     createByRole: "system",
     title: titleForLandlord,
     content: contentForLandlord,
@@ -180,13 +180,11 @@ async function createMoveInNotifications(contract, { io, mode }) {
   // Thông báo cho tenant
   const notiTenant = await Notification.create({
     landlordId,
-    createBy: null,
     createByRole: "system",
     title: titleForTenant,
     content: contentForTenant,
     type: "reminder",
-    target: { residents: [tenantId], rooms: [roomId] },
-    link: `/tenants/contracts`,
+    target: { residents: [tenantId] },
   });
 
   if (io) {
@@ -1001,7 +999,7 @@ exports.terminateContract = async (req, res) => {
       }
     }
     // Lấy phòng
-    const room = await Room.findById(contract.roomId);
+    const room = await Room.findById(contract.roomId).populate("buildingId", "name");
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
@@ -1024,7 +1022,32 @@ exports.terminateContract = async (req, res) => {
       room.currentContractId = null;
       await room.save();
     }
+    const affectedTenantIds = [...room.currentTenantIds];
+    const io = req.app.get("io");
 
+    const notification = await Notification.create({
+      landlordId,
+      createByRole: "system",
+      title: "Hợp đồng đã bị chấm dứt",
+      content: `Hợp đồng thuê phòng ${room.roomNumber} tòa nhà ${room.buildingId.name} của bạn đã bị chấm dứt.`,
+      target: { residents: affectedTenantIds },
+    });
+
+    if (io) {
+      const payload = {
+        _id: notification._id,
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        createdAt: notification.createdAt,
+        createBy: { role: "system" },
+      };
+
+      affectedTenantIds.forEach(tenantId => {
+        io.to(`user:${tenantId}`).emit("new_notification", payload);
+        io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+      });
+    }
     res.json({
       message: "Đã chấm dứt hợp đồng thành công",
       status: contract.status,

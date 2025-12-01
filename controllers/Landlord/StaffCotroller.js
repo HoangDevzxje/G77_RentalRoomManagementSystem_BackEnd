@@ -101,7 +101,6 @@ const createStaff = async (req, res) => {
                 loginUrl: `${process.env.CLIENT_URL}/auth/login`,
                 changePasswordUrl: `${process.env.CLIENT_URL}/auth/change-password-first?token=${resetToken}`, // token có hạn 24h
             });
-            console.log("resetToken", resetToken);
         } catch (emailError) {
             await UserInformation.deleteOne({ _id: userInfo._id });
             await Account.deleteOne({ _id: account._id });
@@ -201,10 +200,10 @@ const getPermissionsByAccountId = async (req, res) => {
         }
 
         return res.json(staff.permissions);
-    }catch (err) {
+    } catch (err) {
         console.error(err);
         return res.status(500).json({ message: 'Lỗi server' });
-    } 
+    }
 }
 
 const updateStaffInfo = async (req, res) => {

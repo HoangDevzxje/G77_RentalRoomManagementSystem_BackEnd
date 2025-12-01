@@ -1,4 +1,5 @@
 const Contact = require("../../models/Contact");
+const Notification = require("../../models/Notification");
 
 const getAllContacts = async (req, res) => {
   try {
@@ -74,8 +75,7 @@ const updateContractStatus = async (req, res) => {
     const request = await Contact.findOne({
       _id: id,
       isDeleted: false,
-    }).populate("buildingId", "_id");
-
+    }).populate("buildingId", "_id name");
     if (!request) {
       return res.status(404).json({ message: "Không tìm thấy yêu cầu!" });
     }
@@ -93,7 +93,8 @@ const updateContractStatus = async (req, res) => {
           .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
-
+    let title = '';
+    let statusText = '';
     switch (action) {
       case "accepted":
         if (request.status !== "pending")
@@ -101,6 +102,8 @@ const updateContractStatus = async (req, res) => {
             .status(400)
             .json({ message: "Chỉ có thể chấp nhận yêu cầu đang chờ!" });
         request.status = "accepted";
+        title = "Chấp nhận yêu cầu tạo hợp đồng";
+        statusText = "Yêu cầu tạo hợp đồng của bản đã được chấp nhận";
         break;
       case "rejected":
         if (request.status !== "pending")
@@ -108,6 +111,8 @@ const updateContractStatus = async (req, res) => {
             .status(400)
             .json({ message: "Chỉ có thể từ chối yêu cầu đang chờ!" });
         request.status = "rejected";
+        title = "Không chấp nhận yêu cầu tạo hợp đồng";
+        statusText = "Yêu cầu tạo hợp đồng của bạn không được chấp nhận";
         break;
       default:
         return res.status(400).json({ message: "Hành động không hợp lệ!" });
@@ -115,6 +120,29 @@ const updateContractStatus = async (req, res) => {
 
     if (landlordNote) request.landlordNote = landlordNote;
     await request.save();
+
+    const notiResident = await Notification.create({
+      landlordId: request.landlordId,
+      createByRole: "system",
+      title: title,
+      content: `Chủ tòa nhà ${request.buildingId.name} đã cập nhật trạng thái yêu cầu tạo hợp đồng: ${statusText}`,
+      target: { residents: [request.tenantId] },
+    });
+
+    // Gửi realtime
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user:${request.tenantId}`).emit("new_notification", {
+        _id: notiResident._id,
+        title: notiResident.title,
+        content: notiResident.content,
+        type: notiResident.type,
+        createdAt: notiResident.createdAt,
+        createBy: { role: "system" },
+      });
+
+      io.to(`user:${request.tenantId}`).emit("unread_count_increment", { increment: 1 });
+    }
 
     res.json({
       success: true,

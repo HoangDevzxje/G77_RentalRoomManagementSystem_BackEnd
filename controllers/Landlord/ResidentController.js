@@ -158,7 +158,6 @@ const getTenants = async (req, res) => {
         pipeline.push({ $skip: skip }, { $limit: limitNum });
 
         const people = await Room.aggregate(pipeline);
-        console.log("people", people);
         let stats = { current: 0, max: 0, text: "0/0 người", percentage: 0 };
 
         const statsMatch = {

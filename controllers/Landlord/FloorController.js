@@ -318,7 +318,6 @@ const softDelete = async (req, res) => {
     const { force } = req.query;
 
     const f = await Floor.findById(id).select("buildingId isDeleted");
-    console.log(f);
     if (!f || f.isDeleted)
       return res.status(404).json({ message: "Không tìm thấy tầng" });
 

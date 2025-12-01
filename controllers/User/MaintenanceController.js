@@ -192,7 +192,7 @@ exports.createRequest = async (req, res) => {
         createBy: req.user._id,
         createByRole: "resident",
         title: `Báo hỏng: ${title}`,
-        content: `Phòng ${room.roomNumber} - ${itemName} bị hỏng (${qty} cái)`,
+        content: `Phòng ${room.roomNumber} tòa nhà ${building.name} - ${itemName} bị hỏng (${qty} cái)`,
         target: { buildings: [buildingId] },
         link: `/landlord/maintenance`,
       });

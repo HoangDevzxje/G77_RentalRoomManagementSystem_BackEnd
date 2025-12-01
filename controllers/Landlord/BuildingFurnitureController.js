@@ -9,7 +9,6 @@ const RoomFurniture = require("../../models/RoomFurniture");
 exports.create = async (req, res) => {
   try {
     const { buildingId, furnitureId } = req.body;
-    console.log(req.body);
     if (!buildingId) return res.status(400).json({ message: "buildingId là bắt buộc" });
     if (!furnitureId) return res.status(400).json({ message: "furnitureId là bắt buộc" });
     const b = await Building.findById(buildingId).lean();

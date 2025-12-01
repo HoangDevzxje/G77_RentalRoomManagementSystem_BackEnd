@@ -457,8 +457,6 @@ exports.requestExtend = async (req, res) => {
     //      TẠO THÔNG BÁO
     const landlordId = contract.landlordId?._id;
     const buildingId = contract.buildingId?._id;
-    console.log("landlordId", landlordId);
-    console.log("buildingId", buildingId);
     const tenantInfo = await UserInformation.findById(req.user.userInfo).lean();
     const tenantName = tenantInfo?.fullName || "Người thuê";
 

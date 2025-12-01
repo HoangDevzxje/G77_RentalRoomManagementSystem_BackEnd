@@ -2,6 +2,8 @@ const Building = require('../../models/Building');
 const BuildingRating = require('../../models/BuildingRating');
 const Room = require('../../models/Room');
 const mongoose = require("mongoose");
+const Staff = require('../../models/Staff');
+const Notification = require('../../models/Notification');
 const createOrUpdateRating = async (req, res) => {
     const { buildingId, rating, comment } = req.body;
     const userId = req.user.id;
@@ -71,6 +73,57 @@ const createOrUpdateRating = async (req, res) => {
                 }
             })
             .lean();
+
+        const building = await Building.findById(buildingId).lean();
+        const landlordId = building.landlordId;
+
+        const notification = await Notification.create({
+            landlordId,
+            createBy: userId,
+            createByRole: "resident",
+            title: updatedRating.createdAt === updatedRating.updatedAt
+                ? "Cư dân mới đánh giá tòa nhà"
+                : "Cư dân vừa cập nhật đánh giá tòa nhà",
+            content: `${updatedRating.userId?.userInfo?.fullName || "Một cư dân"} đã đánh giá tòa nhà với ${ratingNum} sao.`,
+            target: { buildings: [buildingId] },
+            link: `/landlord/ratings`,
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+            const payload = {
+                id: notification._id.toString(),
+                title: notification.title,
+                content: notification.content,
+                type: notification.type,
+                link: notification.link,
+                createdAt: notification.createdAt,
+                createBy: {
+                    id: userId.toString(),
+                    name: updatedRating.userId?.userInfo?.fullName,
+                    role: "resident"
+                }
+            };
+
+            // Gửi cho landlord
+            io.to(`user:${landlordId}`).emit("new_notification", payload);
+
+            // Gửi cho staff
+            const staffList = await Staff.find({
+                assignedBuildings: buildingId,
+                isDeleted: false
+            }).select("accountId").lean();
+
+            staffList.forEach(staff => {
+                io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+            });
+
+            io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
+
+            staffList.forEach(staff => {
+                io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+            });
+        }
 
         res.json({
             success: true,
