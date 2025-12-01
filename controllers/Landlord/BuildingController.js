@@ -1412,10 +1412,10 @@ async function getWashersInBuilding({ user, buildingId, floorId, status }) {
           buildingId,
           floorId: floor._id,
           floorLevel: floor.level,
-          floorDescription: floor.description || "",
           deviceId: d._id,
           name: d.name,
           tuyaDeviceId: d.tuyaDeviceId,
+          type: d.type,
         });
       });
   }
