@@ -229,126 +229,51 @@ exports.requestBankTransferConfirmation = async (req, res) => {
   try {
     const tenantId = req.user?._id;
     const { id } = req.params;
-
+    const { note, amount } = req.body;
     if (!tenantId) {
       return res
         .status(401)
         .json({ message: "Không xác định được người dùng" });
     }
-
-    // Ảnh đã upload lên Cloudinary nhờ middleware uploadTransferProof
     const file = req.file;
     if (!file || !file.path) {
       return res
         .status(400)
         .json({ message: "Thiếu ảnh chứng từ chuyển khoản" });
     }
-
     const invoice = await Invoice.findOne({
       _id: id,
       tenantId,
       isDeleted: false,
-    }).populate("roomId", "roomNumber")
+    })
+      .populate("roomId", "roomNumber")
       .populate({
         path: "tenantId",
         select: "userInfo",
-        populate: {
-          path: "userInfo",
-          select: "fullName",
-        }
+        populate: { path: "userInfo", select: "fullName" },
       });
-
-    if (!invoice) {
+    if (!invoice)
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
-    }
-
-    // Không cho gửi nếu hóa đơn đã thanh toán / hủy
     if (["paid", "cancelled"].includes(invoice.status)) {
-      return res.status(400).json({
-        message: "Hóa đơn đã được xử lý, không thể gửi yêu cầu xác nhận",
-      });
+      return res.status(400).json({ message: "Hóa đơn đã được xử lý" });
     }
-
-    // Chỉ cho gửi khi hóa đơn đã được gửi cho tenant (hoặc quá hạn)
-    if (!["sent", "overdue"].includes(invoice.status)) {
-      return res.status(400).json({
-        message:
-          "Chỉ gửi yêu cầu xác nhận cho hóa đơn ở trạng thái 'sent' hoặc 'overdue'",
-      });
+    if (!["sent", "overdue", "transfer_pending"].includes(invoice.status)) {
+      return res
+        .status(400)
+        .json({ message: "Trạng thái hóa đơn không hợp lệ" });
     }
-
-    // Nếu đã từng chuyển sang transfer_pending rồi thì tùy bạn:
-    // Cho phép gửi lại (ghi đè) hay chặn? Ở đây chặn luôn:
-    if (invoice.status === "transfer_pending") {
-      return res.status(400).json({
-        message:
-          "Bạn đã gửi yêu cầu xác nhận chuyển khoản cho hóa đơn này, vui lòng chờ chủ trọ kiểm tra.",
-      });
-    }
-
-    // Ghi nhận URL Cloudinary & thời điểm
-    invoice.transferProofImageUrl = file.path; // Cloudinary secure_url
+    invoice.transferProofImageUrl = file.path;
     invoice.transferRequestedAt = new Date();
-
-    // Chuyển trạng thái sang chờ xác nhận
     invoice.status = "transfer_pending";
-
+    if (note) invoice.paymentNote = note;
     await invoice.save();
-    const landlordId = invoice.landlordId;
-    const buildingId = invoice.buildingId;
-
-    const notification = await Notification.create({
-      landlordId,
-      createBy: tenantId,
-      createByRole: "resident",
-      title: "Yêu cầu xác nhận thanh toán",
-      content: `Người thuê ${invoice?.tenantId?.userInfo?.fullName}, phòng ${invoice?.roomId?.roomNumber} đã gửi yêu cầu xác nhận chuyển khoản cho hóa đơn #${invoice._id}.`,
-      type: "reminder",
-      target: { buildings: [buildingId] },
-      link: `/landlord/invoices`,
-    });
-
-    const io = req.app.get("io");
-
-    if (io) {
-      const payload = {
-        id: notification._id.toString(),
-        title: notification.title,
-        content: notification.content,
-        type: notification.type,
-        link: notification.link,
-        createdAt: notification.createdAt,
-        createBy: {
-          id: tenantId.toString(),
-          name: invoice?.tenantId?.userInfo?.fullName,
-          role: "resident",
-        },
-      };
-
-      io.to(`user:${landlordId}`).emit("new_notification", payload);
-
-      const staffList = await Staff.find({
-        assignedBuildings: buildingId,
-        isDeleted: false,
-      }).select("accountId").lean();
-
-      staffList.forEach((staff) => {
-        io.to(`user:${staff.accountId}`).emit("new_notification", payload);
-      });
-
-      io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
-      staffList.forEach((staff) => {
-        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
-      });
-    }
     return res.json({
       message:
-        "Đã gửi yêu cầu xác nhận chuyển khoản. Vui lòng chờ chủ trọ kiểm tra và xác nhận.",
+        "Đã gửi yêu cầu xác nhận chuyển khoản. Vui lòng chờ chủ trọ kiểm tra.",
       data: {
         _id: invoice._id,
         status: invoice.status,
         transferProofImageUrl: invoice.transferProofImageUrl,
-        transferRequestedAt: invoice.transferRequestedAt,
       },
     });
   } catch (e) {
