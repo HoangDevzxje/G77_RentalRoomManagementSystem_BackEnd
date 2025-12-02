@@ -5,6 +5,7 @@ const Contract = require("../../models/Contract");
 const Building = require("../../models/Building");
 const BuildingService = require("../../models/BuildingService");
 const RevenueExpenditure = require("../../models/RevenueExpenditures");
+const Notification = require("../../models/Notification");
 const sendEmail = require("../../utils/sendMail");
 
 function getPeriodRange(periodMonth, periodYear) {
@@ -748,6 +749,13 @@ exports.markInvoicePaid = async (req, res) => {
       _id: id,
       landlordId,
       isDeleted: false,
+    }).populate({
+      path: "roomId",
+      select: "roomNumber currentTenantIds buildingId",
+      populate: {
+        path: "buildingId",
+        select: "name",
+      },
     });
 
     if (!invoice) {
@@ -831,7 +839,50 @@ exports.markInvoicePaid = async (req, res) => {
 
     // Sau khi hóa đơn đã "paid" → tự động ghi log thu
     await ensureRevenueLogForInvoicePaid(invoice, { actorId: req.user?._id });
+    const room = invoice.roomId;
+    if (room && room.currentTenantIds && room.currentTenantIds.length > 0) {
+      const affectedTenantIds = room.currentTenantIds.map(id => id.toString());
+      const roomNumber = room.roomNumber;
+      const buildingName = room.buildingId?.name;
 
+      const paidDateStr = invoice.paidAt.toLocaleDateString("vi-VN");
+
+      const notification = await Notification.create({
+        landlordId,
+        createByRole: "system",
+        title: "Thanh toán thành công",
+        content: `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n` +
+          `Phòng ${roomNumber} – ${buildingName}\n` +
+          `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
+          `Đã được ghi nhận thanh toán thành công vào ngày ${paidDateStr}.\n` +
+          `Cảm ơn bạn đã thanh toán đúng hạn!`,
+        type: "reminder",
+        target: { residents: affectedTenantIds },
+      });
+
+      // === REALTIME PUSH ===
+      const io = req.app.get("io");
+      if (io) {
+        const payload = {
+          _id: notification._id,
+          title: notification.title,
+          content: notification.content,
+          type: notification.type,
+          createdAt: notification.createdAt,
+          relatedInvoiceId: invoice._id,
+          createBy: {
+            role: "system",
+          },
+        };
+
+        affectedTenantIds.forEach(tenantId => {
+          io.to(`user:${tenantId}`).emit("new_notification", payload);
+          io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+        });
+
+        console.log(`[PAYMENT] ĐÃ XÁC NHẬN] Đã gửi thông báo thanh toán thành công đến ${affectedTenantIds.length} người – Hóa đơn ${invoice.invoiceNumber}`);
+      }
+    }
     return res.json({
       message: "Đã ghi nhận thanh toán hóa đơn",
       data: invoice,
@@ -853,9 +904,17 @@ exports.sendInvoiceEmail = async (req, res) => {
       landlordId,
       isDeleted: false,
     })
-      .select("buildingId status")
+      .select("buildingId status totalAmount periodMonth periodYear dueDate")
+      .populate({
+        path: "roomId",
+        select: "currentTenantIds roomNumber",
+        populate: {
+          path: "buildingId",
+          select: "name",
+        },
+      })
       .lean();
-
+    console.log(invoice)
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
@@ -879,7 +938,48 @@ exports.sendInvoiceEmail = async (req, res) => {
         skipped: true,
       });
     }
+    const affectedTenantIds = invoice.roomId.currentTenantIds.map(id => id.toString());
 
+    const roomNumber = invoice.roomId.roomNumber;
+    const buildingName = invoice.roomId.buildingId?.name;
+
+    const dueDateStr = invoice.dueDate
+      ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
+      : "ngày đến hạn";
+
+    const notification = await Notification.create({
+      landlordId,
+      createByRole: "system",
+      title: "Hóa đơn mới",
+      content: `Bạn nhận được hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n` +
+        `phòng ${roomNumber} – ${buildingName}\n` +
+        `với số tiền ${invoice.totalAmount.toLocaleString("vi-VN")} ₫.\n` +
+        `Vui lòng thanh toán trước ngày ${dueDateStr}.`,
+      type: "reminder",
+      target: { residents: affectedTenantIds },
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      const payload = {
+        _id: notification._id,
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        createdAt: notification.createdAt,
+        relatedInvoiceId: invoice._id,
+        createBy: {
+          role: "system",
+        },
+      };
+
+      affectedTenantIds.forEach(tenantId => {
+        io.to(`user:${tenantId}`).emit("new_notification", payload);
+        io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+      });
+
+      console.log(`[INVOICE] Đã gửi thông báo hóa đơn đến ${affectedTenantIds.length} người`);
+    }
     // Nếu email đã được gửi thành công, cập nhật trạng thái hoá đơn sang "sent" nếu đang là "draft"
     try {
       const updated = await Invoice.findOne({
@@ -1647,8 +1747,16 @@ exports.sendAllDraftInvoices = async (req, res) => {
     }
     const invoices = await Invoice.find(filter)
       .select(
-        "_id invoiceNumber roomId buildingId tenantId periodMonth periodYear status"
+        "_id invoiceNumber roomId buildingId tenantId periodMonth periodYear status dueDate totalAmount"
       )
+      .populate({
+        path: "roomId",
+        select: "roomNumber currentTenantIds buildingId",
+        populate: {
+          path: "buildingId",
+          select: "name",
+        },
+      })
       .lean();
 
     if (!invoices.length) {
@@ -1664,7 +1772,7 @@ exports.sendAllDraftInvoices = async (req, res) => {
     const results = [];
     let successCount = 0;
     let failCount = 0;
-
+    const io = req.app.get("io");
     for (const inv of invoices) {
       const row = {
         invoiceId: inv._id,
@@ -1688,6 +1796,47 @@ exports.sendAllDraftInvoices = async (req, res) => {
         }
 
         await Invoice.updateOne({ _id: inv._id }, { $set: { status: "sent" } });
+        const tenantIds = inv.roomId?.currentTenantIds || [];
+        const affectedTenantIds = tenantIds.map(id => id.toString());
+
+        if (affectedTenantIds.length > 0) {
+          const roomNumber = inv.roomId.roomNumber;
+          const buildingName = inv.roomId.buildingId?.name || "tòa nhà";
+          const dueDateStr = inv.dueDate
+            ? new Date(inv.dueDate).toLocaleDateString("vi-VN")
+            : "ngày đến hạn";
+
+          const notification = await Notification.create({
+            landlordId,
+            createByRole: "system",
+            title: "Hóa đơn mới",
+            content: `Hóa đơn tháng ${inv.periodMonth}/${inv.periodYear} – phòng ${roomNumber}, ${buildingName}\n` +
+              `Số tiền: ${inv.totalAmount.toLocaleString("vi-VN")} ₫\n` +
+              `Hạn thanh toán: ${dueDateStr}`,
+            type: "reminder",
+            target: { residents: affectedTenantIds },
+          });
+
+          if (io) {
+            const payload = {
+              _id: notification._id,
+              title: notification.title,
+              content: notification.content,
+              type: notification.type,
+              createdAt: notification.createdAt,
+              relatedInvoiceId: inv._id,
+              createBy: {
+                role: "system",
+              },
+            };
+
+            affectedTenantIds.forEach(tenantId => {
+              io.to(`user:${tenantId}`).emit("new_notification", payload);
+              io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+            });
+          }
+          console.log(`[BATCH INVOICE] Đã gửi thông báo cho ${affectedTenantIds.length} người – Hóa đơn ${inv.invoiceNumber}`);
+        }
 
         row.success = true;
         row.emailStatus =
