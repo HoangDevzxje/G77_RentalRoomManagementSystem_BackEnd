@@ -4,7 +4,7 @@ const {
   getLaundryStatusForFloor,
 } = require("../controllers/Landlord/FloorController");
 const {
-  getWashersInBuilding,
+  getLaundryDevicesInBuilding,
 } = require("../controllers/Landlord/BuildingController");
 
 // floorId -> intervalId
@@ -65,7 +65,7 @@ function startBuildingInterval(io, buildingId, payload, intervalMs = 5000) {
         return;
       }
 
-      const data = await getWashersInBuilding(payload);
+      const data = await getLaundryDevicesInBuilding(payload);
       io.to(room).emit("laundry_building_status", data);
     } catch (err) {
       console.error("[Laundry][Building] Interval error:", err.message);
@@ -142,7 +142,7 @@ function setupLaundrySocket(io, socket) {
   /**
    * Join realtime theo TÒA
    * payload: { buildingId, floorId?, status? }
-   * - Quyền / validate đã xử lý bên trong getWashersInBuilding
+   * - Quyền / validate đã xử lý bên trong getLaundryDevicesInBuilding
    */
   socket.on(
     "join_laundry_building",
@@ -163,7 +163,7 @@ function setupLaundrySocket(io, socket) {
 
         // Gửi trạng thái lần đầu
         try {
-          const data = await getWashersInBuilding(payload);
+          const data = await getLaundryDevicesInBuilding(payload);
           socket.emit("laundry_building_status", data);
         } catch (err) {
           console.error("[Laundry][Building] First load error:", err.message);
