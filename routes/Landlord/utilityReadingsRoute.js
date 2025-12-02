@@ -1,7 +1,9 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const utilityController = require("../../controllers/Landlord/UtilityReadingController");
-
+const checkSubscription = require("../../middleware/checkSubscription");
+const { PERMISSIONS } = require("../../constants/permissions");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 /**
  * @swagger
  * tags:
@@ -502,32 +504,52 @@ const utilityController = require("../../controllers/Landlord/UtilityReadingCont
 
 router.get(
   "/rooms",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_VIEW),
   utilityController.listRoomsForUtility
 );
-router.get("/", checkAuthorize("landlord"), utilityController.listReadings);
-router.post("/", checkAuthorize("landlord"), utilityController.createReading);
+router.get("/",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_VIEW),
+  utilityController.listReadings);
+
+router.post("/",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_CREATE),
+  checkSubscription,
+  utilityController.createReading);
 
 router.post(
   "/bulk",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_CREATE),
+  checkSubscription,
   utilityController.bulkCreateReadings
 );
 router.post(
   "/:id/confirm",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_CREATE),
+  checkSubscription,
   utilityController.confirmReading
 );
 router.delete(
   "/:id",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_DELETE),
+  checkSubscription,
   utilityController.deleteReading
 );
 router.patch(
   "/:id",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_EDIT),
+  checkSubscription,
   utilityController.updateReading
 );
-router.get("/:id", checkAuthorize("landlord"), utilityController.getReading);
+router.get("/:id",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.UTILITY_VIEW),
+  utilityController.getReading);
 
 module.exports = router;

@@ -23,7 +23,8 @@ function getPeriodRange(periodMonth, periodYear) {
  */
 exports.listReadings = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const {
       buildingId,
       roomId,
@@ -36,8 +37,40 @@ exports.listReadings = async (req, res) => {
 
     const filter = { isDeleted: false, landlordId };
 
-    if (buildingId) filter.buildingId = buildingId;
-    if (roomId) filter.roomId = roomId;
+    if (isStaff) {
+      const allowedBuildingIds = req.staff.assignedBuildingIds.map(id => id.toString());
+
+      if (buildingId) {
+        if (!allowedBuildingIds.includes(buildingId.toString())) {
+          return res.status(403).json({ message: "Bạn không quản lý tòa nhà này" });
+        }
+        filter.buildingId = buildingId;
+      }
+
+      else if (roomId) {
+        const room = await Room.findById(roomId)
+          .select("buildingId isDeleted")
+          .lean();
+
+        if (!room || room.isDeleted) {
+          return res.status(404).json({ message: "Không tìm thấy phòng" });
+        }
+
+        const roomBuildingId = room.buildingId.toString();
+        if (!allowedBuildingIds.includes(roomBuildingId)) {
+          return res.status(403).json({ message: "Phòng này không thuộc tòa nhà bạn được quản lý" });
+        }
+
+        filter.roomId = roomId;
+      }
+
+      else {
+        filter.buildingId = { $in: req.staff.assignedBuildingIds };
+      }
+    } else {
+      if (buildingId) filter.buildingId = buildingId;
+      if (roomId) filter.roomId = roomId;
+    }
     if (status) filter.status = status;
     if (periodMonth) filter.periodMonth = Number(periodMonth);
     if (periodYear) filter.periodYear = Number(periodYear);
@@ -45,7 +78,6 @@ exports.listReadings = async (req, res) => {
     const pageNumber = toInt(page, 1);
     const pageSize = Math.min(Math.max(toInt(limit, 20), 1), 100);
     const skip = (pageNumber - 1) * pageSize;
-
     const [items, total] = await Promise.all([
       UtilityReading.find(filter)
         .populate("roomId", "roomNumber buildingId")
@@ -75,9 +107,10 @@ exports.listReadings = async (req, res) => {
  * - Ưu tiên lấy từ UtilityReading gần nhất.
  * - Nếu chưa có -> lấy từ Room.eStart / Room.wStart.
  */
-async function getPreviousIndexes(roomId) {
+async function getPreviousIndexes(roomId, landlordId) {
   const last = await UtilityReading.findOne({
     roomId,
+    landlordId,
     isDeleted: false,
   })
     .sort({ periodYear: -1, periodMonth: -1, createdAt: -1 })
@@ -87,12 +120,12 @@ async function getPreviousIndexes(roomId) {
     return {
       ePreviousIndex:
         typeof last.eCurrentIndex === "number" &&
-        Number.isFinite(last.eCurrentIndex)
+          Number.isFinite(last.eCurrentIndex)
           ? last.eCurrentIndex
           : 0,
       wPreviousIndex:
         typeof last.wCurrentIndex === "number" &&
-        Number.isFinite(last.wCurrentIndex)
+          Number.isFinite(last.wCurrentIndex)
           ? last.wCurrentIndex
           : 0,
     };
@@ -119,7 +152,8 @@ async function getPreviousIndexes(roomId) {
 // Body: { roomId, periodMonth, periodYear, eCurrentIndex?, wCurrentIndex? }
 exports.createReading = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { roomId, periodMonth, periodYear, eCurrentIndex, wCurrentIndex } =
       req.body || {};
 
@@ -168,7 +202,16 @@ exports.createReading = async (req, res) => {
         .status(400)
         .json({ message: "Tòa nhà không ở trạng thái active" });
     }
-
+    if (isStaff) {
+      const buildingIdStr = building._id.toString();
+      if (!req.staff.assignedBuildingIds.includes(buildingIdStr)) {
+        return res.status(403).json({
+          message: "Bạn không được quản lý tòa nhà này",
+          buildingId: buildingIdStr,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     // Check trùng kỳ
     const existed = await UtilityReading.findOne({
       landlordId,
@@ -185,7 +228,7 @@ exports.createReading = async (req, res) => {
     }
 
     // previous indexes
-    const { ePreviousIndex, wPreviousIndex } = await getPreviousIndexes(roomId);
+    const { ePreviousIndex, wPreviousIndex } = await getPreviousIndexes(roomId, landlordId);
 
     // Validate current indexes
     let eCurr = null;
@@ -258,7 +301,7 @@ exports.createReading = async (req, res) => {
       wConsumption,
       wUnitPrice,
       wAmount,
-      createdById: landlordId,
+      createdById: req.user._id,
     });
 
     res.status(201).json({
@@ -276,10 +319,14 @@ exports.createReading = async (req, res) => {
  */
 exports.getReading = async (req, res) => {
   try {
+    const isStaff = req.user.role === "staff";
+    console.log("isStaff", req.staff);
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const doc = await UtilityReading.findOne({
       _id: id,
+      landlordId,
       isDeleted: false,
     })
       .populate("roomId", "roomNumber buildingId")
@@ -289,7 +336,21 @@ exports.getReading = async (req, res) => {
     if (!doc) {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
     }
+    if (isStaff) {
+      const buildingIdFromRoom = doc.roomId?.buildingId?.toString();
+      if (!buildingIdFromRoom) {
+        // Trường hợp cực hiếm: roomId bị null hoặc populate lỗi
+        return res.status(403).json({ message: "Không xác định được tòa nhà của chỉ số này" });
+      }
 
+      if (!req.staff.assignedBuildingIds.includes(buildingIdFromRoom)) {
+        return res.status(403).json({
+          message: "Bạn không được quản lý tòa nhà chứa chỉ số này",
+          buildingId: buildingIdFromRoom,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     res.json({ data: doc });
   } catch (e) {
     console.error("getReading error:", e);
@@ -304,7 +365,8 @@ exports.getReading = async (req, res) => {
  */
 exports.updateReading = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const {
@@ -326,12 +388,32 @@ exports.updateReading = async (req, res) => {
       _id: id,
       landlordId,
       isDeleted: false,
+    }).populate({
+      path: "roomId",
+      select: "buildingId",
+      populate: {
+        path: "buildingId",
+        select: "landlordId status",
+      },
     });
 
     if (!reading) {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
     }
+    if (isStaff) {
+      const buildingIdFromRoom = reading.roomId?.buildingId?._id?.toString();
+      if (!buildingIdFromRoom) {
+        return res.status(500).json({ message: "Dữ liệu phòng/tòa nhà bị lỗi" });
+      }
 
+      if (!req.staff.assignedBuildingIds.includes(buildingIdFromRoom)) {
+        return res.status(403).json({
+          message: "Bạn không được phép chỉnh sửa chỉ số của tòa nhà này",
+          buildingId: buildingIdFromRoom,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     const locked = reading.status === "billed" || !!reading.invoiceId;
 
     if (locked) {
@@ -541,19 +623,40 @@ exports.updateReading = async (req, res) => {
  */
 exports.confirmReading = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const doc = await UtilityReading.findOne({
       _id: id,
       landlordId,
       isDeleted: false,
+    }).populate({
+      path: "roomId",
+      select: "buildingId",
+      populate: {
+        path: "buildingId",
+        select: "landlordId status",
+      },
     });
 
     if (!doc) {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
     }
+    if (isStaff) {
+      const buildingId = doc.roomId?.buildingId?._id?.toString();
+      if (!buildingId) {
+        return res.status(500).json({ message: "Không xác định được tòa nhà của chỉ số này" });
+      }
 
+      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép xác nhận chỉ số của tòa nhà này",
+          buildingId,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     if (doc.status !== "draft") {
       return res.status(400).json({
         message: "Chỉ được xác nhận chỉ số khi đang ở trạng thái draft",
@@ -672,15 +775,40 @@ exports.confirmReading = async (req, res) => {
  */
 exports.deleteReading = async (req, res) => {
   try {
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const doc = await UtilityReading.findOne({
       _id: id,
       isDeleted: false,
+    }).populate({
+      path: "roomId",
+      select: "buildingId",
+      populate: {
+        path: "buildingId",
+        select: "landlordId",
+      },
     });
 
     if (!doc) {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
+    }
+
+    if (isStaff) {
+      const buildingId = doc.roomId?.buildingId?._id?.toString();
+
+      if (!buildingId) {
+        return res.status(500).json({ message: "Không xác định được tòa nhà của chỉ số này" });
+      }
+
+      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép xóa chỉ số của tòa nhà này",
+          buildingId,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
     }
 
     if (doc.status === "billed") {
@@ -706,7 +834,8 @@ exports.deleteReading = async (req, res) => {
  */
 exports.bulkCreateReadings = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { readings } = req.body || {};
 
     if (!Array.isArray(readings) || readings.length === 0) {
@@ -716,6 +845,9 @@ exports.bulkCreateReadings = async (req, res) => {
         total: 0,
       });
     }
+    const allowedBuildingIds = isStaff
+      ? req.staff.assignedBuildingIds.map(id => id.toString())
+      : null;
 
     const results = [];
 
@@ -778,7 +910,21 @@ exports.bulkCreateReadings = async (req, res) => {
           results.push(itemResult);
           continue;
         }
+        if (String(building.landlordId) !== String(landlordId)) {
+          itemResult.error = "Phòng không thuộc quyền quản lý";
+          results.push(itemResult);
+          continue;
+        }
 
+        // === QUAN TRỌNG: KIỂM TRA QUYỀN STAFF ===
+        if (isStaff) {
+          const buildingIdStr = building._id.toString();
+          if (!allowedBuildingIds.includes(buildingIdStr)) {
+            itemResult.error = "Bạn không được quản lý tòa nhà này";
+            results.push(itemResult);
+            continue;
+          }
+        }
         if (building.status !== "active") {
           itemResult.error = "Tòa nhà không ở trạng thái active";
           results.push(itemResult);
@@ -802,7 +948,8 @@ exports.bulkCreateReadings = async (req, res) => {
 
         // previous indexes
         const { ePreviousIndex, wPreviousIndex } = await getPreviousIndexes(
-          roomId
+          roomId,
+          landlordId
         );
 
         // Validate current indexes
@@ -840,12 +987,12 @@ exports.bulkCreateReadings = async (req, res) => {
 
         const eUnitPrice =
           typeof building.ePrice === "number" &&
-          Number.isFinite(building.ePrice)
+            Number.isFinite(building.ePrice)
             ? building.ePrice
             : 0;
         const wUnitPrice =
           typeof building.wPrice === "number" &&
-          Number.isFinite(building.wPrice)
+            Number.isFinite(building.wPrice)
             ? building.wPrice
             : 0;
 
@@ -878,7 +1025,7 @@ exports.bulkCreateReadings = async (req, res) => {
           wConsumption,
           wUnitPrice,
           wAmount,
-          createdById: landlordId,
+          createdById: req.user._id,
         });
 
         itemResult.success = true;
@@ -921,7 +1068,8 @@ exports.bulkCreateReadings = async (req, res) => {
  */
 exports.listRoomsForUtility = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
 
     let {
       buildingId,
@@ -976,9 +1124,24 @@ exports.listRoomsForUtility = async (req, res) => {
       isDeleted: false,
       status: "rented",
     };
-
-    if (buildingId) {
-      roomFilter.buildingId = buildingId;
+    if (isStaff) {
+      if (buildingId) {
+        // Nếu có truyền buildingId → kiểm tra quyền trước
+        if (!req.staff.assignedBuildingIds.includes(buildingId.toString())) {
+          return res.status(403).json({
+            message: "Bạn không được quản lý tòa nhà này",
+          });
+        }
+        roomFilter.buildingId = buildingId;
+      } else {
+        // Không truyền buildingId → chỉ lấy các tòa nhà được assign
+        roomFilter.buildingId = { $in: req.staff.assignedBuildingIds };
+      }
+    } else {
+      // Landlord: có thể filter buildingId hoặc không
+      if (buildingId) {
+        roomFilter.buildingId = buildingId;
+      }
     }
     if (q) {
       roomFilter.roomNumber = { $regex: q, $options: "i" };
