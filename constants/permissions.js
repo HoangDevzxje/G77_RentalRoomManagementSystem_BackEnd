@@ -101,6 +101,7 @@ const PERMISSIONS = {
     INVOICE_VIEW: "invoice:view",
     INVOICE_CREATE: "invoice:create",
     INVOICE_EDIT: "invoice:edit",
+    INVOICE_DELETE: "invoice:delete",
 
     // === ĐIỀU KHOẢN (TERM) ===
     TERM_CREATE: "term:create",

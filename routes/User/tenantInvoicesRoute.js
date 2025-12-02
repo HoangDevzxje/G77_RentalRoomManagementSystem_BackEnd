@@ -5,7 +5,7 @@ const { uploadTransferProof } = require("../../configs/cloudinary");
 /**
  * @swagger
  * tags:
- *   - name: Tenant Invoices
+ *   - name: Resident Invoices
  *     description: Người thuê xem và thanh toán hóa đơn của mình
  */
 
@@ -14,7 +14,7 @@ const { uploadTransferProof } = require("../../configs/cloudinary");
  * /invoices:
  *   get:
  *     summary: Tenant xem danh sách hóa đơn của mình
- *     tags: [Tenant Invoices]
+ *     tags: [Resident Invoices]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -107,7 +107,7 @@ router.get(
  * /invoices/{id}:
  *   get:
  *     summary: Tenant xem chi tiết một hóa đơn
- *     tags: [Tenant Invoices]
+ *     tags: [Resident Invoices]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -186,7 +186,7 @@ router.get(
  *     description: >
  *       Tenant yêu cầu thanh toán online. Hệ thống tạo yêu cầu thanh toán qua cổng MoMo Sandbox
  *       và trả về payUrl để FE redirect người dùng sang MoMo.
- *     tags: [Tenant Invoices]
+ *     tags: [Resident Invoices]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -238,7 +238,7 @@ router.post(
  * /invoices/{id}/request-transfer-confirmation:
  *   post:
  *     summary: Tenant gửi yêu cầu xác nhận đã chuyển khoản (kèm ảnh)
- *     tags: [Tenant Invoices]
+ *     tags: [Resident Invoices]
  *     security:
  *       - bearerAuth: []
  *     parameters:

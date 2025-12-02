@@ -470,7 +470,7 @@ const contractController = require("../../controllers/User/ContractController");
  *       Điều kiện:
  *       - Hợp đồng có `tenantId` = tài khoản hiện tại
  *       - Trạng thái hợp đồng là `completed`
- *     tags: [Resident - Contracts]
+ *     tags: [Resident Contracts]
  *     security:
  *       - bearerAuth: []
  *     parameters:

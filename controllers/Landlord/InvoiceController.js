@@ -74,9 +74,8 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
     : "N/A";
 
-  let html = `<p>Chào ${
-    tenant.userInfo?.fullName || "Anh/Chị"
-  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  let html = `<p>Chào ${tenant.userInfo?.fullName || "Anh/Chị"
+    },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
   html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
   html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
   html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
@@ -152,9 +151,8 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
     const amount = Number(invoice.totalAmount) || 0;
     if (amount <= 0) return;
 
-    const title = `Thu tiền hóa đơn ${
-      invoice.invoiceNumber || String(invoice._id)
-    }`;
+    const title = `Thu tiền hóa đơn ${invoice.invoiceNumber || String(invoice._id)
+      }`;
 
     const descParts = [];
     if (invoice.roomSnapshot?.roomNumber) {
@@ -192,7 +190,8 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
 // body: { roomId, periodMonth, periodYear, includeRent?, extraItems? }
 exports.generateMonthlyInvoice = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const {
       roomId,
       periodMonth,
@@ -200,7 +199,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       includeRent = true,
       extraItems = [],
     } = req.body || {};
-
+    console.log(req.body);
     if (!roomId || !periodMonth || !periodYear) {
       return res.status(400).json({
         message: "Thiếu roomId hoặc periodMonth/periodYear",
@@ -222,7 +221,11 @@ exports.generateMonthlyInvoice = async (req, res) => {
     }
 
     // 1. Kiểm tra phòng + quyền landlord
-    const room = await Room.findById(roomId).lean();
+    const room = await Room.findById(roomId).populate({
+      path: "buildingId",
+      select: "landlordId status isDeleted",
+    })
+      .lean();
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
@@ -233,6 +236,18 @@ exports.generateMonthlyInvoice = async (req, res) => {
     if (!building || String(building.landlordId) !== String(landlordId)) {
       return res.status(403).json({ message: "Bạn không quản lý phòng này" });
     }
+
+    if (isStaff) {
+      const buildingIdStr = building._id.toString();
+      if (!req.staff.assignedBuildingIds.includes(buildingIdStr)) {
+        return res.status(403).json({
+          message: "Bạn không được phép tạo hóa đơn cho tòa nhà này",
+          buildingId: buildingIdStr,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
+
     if (building.isDeleted || building.status === "inactive") {
       return res
         .status(400)
@@ -369,12 +384,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -468,7 +483,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       dueDate,
       items,
       status: "draft",
-      createdBy: landlordId,
+      createdBy: req.user._id,
     });
 
     invoice.recalculateTotals();
@@ -500,7 +515,8 @@ exports.generateMonthlyInvoice = async (req, res) => {
 // Lấy danh sách hóa đơn
 exports.getInvoices = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
 
     const {
       status,
@@ -522,8 +538,36 @@ exports.getInvoices = async (req, res) => {
     };
 
     if (status) filter.status = status;
-    if (buildingId) filter.buildingId = buildingId;
-    if (roomId) filter.roomId = roomId;
+    if (isStaff) {
+      if (buildingId) {
+        if (!req.staff.assignedBuildingIds.includes(buildingId.toString())) {
+          return res.status(403).json({
+            message: "Bạn không được quản lý tòa nhà này",
+          });
+        }
+        filter.buildingId = buildingId;
+      }
+      else {
+        filter.buildingId = { $in: req.staff.assignedBuildingIds };
+      }
+
+      if (roomId) {
+        const room = await Room.findById(roomId).select("buildingId").lean();
+        if (!room) {
+          return res.status(404).json({ message: "Không tìm thấy phòng" });
+        }
+        const roomBuildingId = room.buildingId.toString();
+        if (!req.staff.assignedBuildingIds.includes(roomBuildingId)) {
+          return res.status(403).json({
+            message: "Phòng này không thuộc tòa nhà bạn được quản lý",
+          });
+        }
+        filter.roomId = roomId;
+      }
+    } else {
+      if (buildingId) filter.buildingId = buildingId;
+      if (roomId) filter.roomId = roomId;
+    }
     if (contractId) filter.contractId = contractId;
     if (periodMonth) filter.periodMonth = Number(periodMonth);
     if (periodYear) filter.periodYear = Number(periodYear);
@@ -579,7 +623,8 @@ exports.getInvoices = async (req, res) => {
 // Chi tiết hoá đơn
 exports.getInvoiceDetail = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const invoice = await Invoice.findOne({
@@ -606,7 +651,21 @@ exports.getInvoiceDetail = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
+    if (isStaff) {
+      const buildingId = invoice.buildingId?._id?.toString();
 
+      if (!buildingId) {
+        return res.status(500).json({ message: "Dữ liệu hóa đơn bị lỗi (thiếu buildingId)" });
+      }
+
+      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép xem hóa đơn của tòa nhà này",
+          buildingId,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     return res.json({ data: invoice });
   } catch (e) {
     console.error("getInvoiceDetail error:", e);
@@ -618,7 +677,8 @@ exports.getInvoiceDetail = async (req, res) => {
 // Cập nhật hoá đơn (chỉ cho phép sửa một số field)
 exports.updateInvoice = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
     const allowedFields = [
@@ -645,7 +705,21 @@ exports.updateInvoice = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
+    if (isStaff) {
+      const buildingId = invoice.buildingId?._id?.toString();
 
+      if (!buildingId) {
+        return res.status(500).json({ message: "Hóa đơn không có thông tin tòa nhà" });
+      }
+
+      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép sửa hóa đơn của tòa nhà này",
+          buildingId,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     Object.assign(invoice, update);
 
     invoice.recalculateTotals();
@@ -665,7 +739,8 @@ exports.updateInvoice = async (req, res) => {
 // Đánh dấu đã thanh toán
 exports.markInvoicePaid = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { paymentMethod, paidAt, note, paidAmount } = req.body || {};
 
@@ -677,6 +752,22 @@ exports.markInvoicePaid = async (req, res) => {
 
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+    }
+
+    if (isStaff) {
+      const buildingId = invoice.buildingId?._id?.toString();
+
+      if (!buildingId) {
+        return res.status(500).json({ message: "Hóa đơn không có thông tin tòa nhà" });
+      }
+
+      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép ghi nhận thanh toán cho hóa đơn của tòa nhà này",
+          buildingId,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
     }
     if (!["sent", "overdue", "transfer_pending"].includes(invoice.status)) {
       return res.status(400).json({
@@ -754,9 +845,32 @@ exports.markInvoicePaid = async (req, res) => {
 // POST /landlords/invoices/:id/send-email
 exports.sendInvoiceEmail = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
+    const invoice = await Invoice.findOne({
+      _id: id,
+      landlordId,
+      isDeleted: false,
+    })
+      .select("buildingId status")
+      .lean();
 
+    if (!invoice) {
+      return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+    }
+
+    // === KIỂM TRA QUYỀN STAFF THEO TÒA NHÀ ===
+    if (isStaff) {
+      const buildingId = invoice.buildingId?.toString();
+      if (!buildingId || !req.staff.assignedBuildingIds.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép gửi hóa đơn của tòa nhà này",
+          buildingId,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     const result = await sendInvoiceEmailCore(id, landlordId);
 
     if (result.skipped) {
@@ -813,7 +927,8 @@ exports.sendInvoiceEmail = async (req, res) => {
 // body: { roomId, periodMonth, periodYear, dueDate?, includeRent?, extraItems? }
 exports.generateInvoice = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const {
       roomId,
       periodMonth,
@@ -844,7 +959,9 @@ exports.generateInvoice = async (req, res) => {
     }
 
     // 1. Kiểm tra room + building thuộc landlord
-    const room = await Room.findById(roomId).lean();
+    const room = await Room.findById(roomId)
+      .populate("buildingId", "landlordId status isDeleted")
+      .lean();
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
@@ -855,6 +972,18 @@ exports.generateInvoice = async (req, res) => {
     if (!building || String(building.landlordId) !== String(landlordId)) {
       return res.status(403).json({ message: "Bạn không quản lý phòng này" });
     }
+
+    if (isStaff) {
+      const buildingIdStr = building._id.toString();
+      if (!req.staff.assignedBuildingIds.includes(buildingIdStr)) {
+        return res.status(403).json({
+          message: "Bạn không được phép tạo hóa đơn cho tòa nhà này",
+          buildingId: buildingIdStr,
+          yourAssigned: req.staff.assignedBuildingIds,
+        });
+      }
+    }
+
     if (building.isDeleted || building.status === "inactive") {
       return res
         .status(400)
@@ -1000,12 +1129,12 @@ exports.generateInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -1104,7 +1233,7 @@ exports.generateInvoice = async (req, res) => {
       dueDate: finalDueDate,
       items,
       status: "draft",
-      createdBy: landlordId,
+      createdBy: req.user._id,
     });
 
     invoice.recalculateTotals();
@@ -1135,7 +1264,8 @@ exports.generateInvoice = async (req, res) => {
 // body: { buildingId, periodMonth, periodYear, includeRent? }
 exports.generateMonthlyInvoicesBulk = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const {
       buildingId,
       periodMonth,
@@ -1175,7 +1305,16 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
         .status(404)
         .json({ message: "Không tìm thấy tòa nhà hoặc không thuộc quyền" });
     }
-
+    if (isStaff) {
+      const buildingIdStr = building._id.toString();
+      if (!req.staff.assignedBuildingIds.includes(buildingIdStr)) {
+        return res.status(403).json({
+          message: "Bạn không được phép tạo hóa đơn hàng loạt cho tòa nhà này",
+          buildingId: buildingIdStr,
+          yourAssignedBuildings: req.staff.assignedBuildingIds,
+        });
+      }
+    }
     // 1) Lấy tất cả phòng "rented" thuộc building
     const rooms = await Room.find({
       buildingId,
@@ -1280,7 +1419,8 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
 // Liệt kê phòng + hợp đồng phù hợp để tạo hóa đơn
 exports.listRoomsForInvoice = async (req, res) => {
   try {
-    const landlordId = req.user?._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
 
     if (!landlordId) {
       return res.status(401).json({ message: "Không xác định được landlord" });
@@ -1330,14 +1470,39 @@ exports.listRoomsForInvoice = async (req, res) => {
       ],
     };
 
-    if (buildingId) {
-      filter.buildingId = buildingId;
-    }
-
     if (roomId) {
       filter.roomId = roomId;
     }
+    if (isStaff) {
+      if (buildingId) {
+        const bid = buildingId.toString();
+        if (!req.staff.assignedBuildingIds.includes(bid)) {
+          return res.status(403).json({
+            message: "Bạn không được quản lý tòa nhà này",
+            buildingId: bid,
+          });
+        }
+        filter.buildingId = buildingId;
+      } else {
+        filter.buildingId = { $in: req.staff.assignedBuildingIds };
+      }
 
+      if (roomId) {
+        const room = await Room.findById(roomId).select("buildingId").lean();
+        if (room) {
+          const roomBuildingId = room.buildingId?.toString();
+          if (roomBuildingId && !req.staff.assignedBuildingIds.includes(roomBuildingId)) {
+            return res.status(403).json({
+              message: "Phòng này không thuộc tòa nhà bạn được quản lý",
+            });
+          }
+        }
+      }
+    } else {
+      if (buildingId) {
+        filter.buildingId = buildingId;
+      }
+    }
     let contractsQuery = Contract.find(filter)
       .populate("roomId", "roomNumber status isDeleted floorId")
       .populate("buildingId", "name address status isDeleted")
@@ -1431,7 +1596,8 @@ exports.listRoomsForInvoice = async (req, res) => {
 // body: { buildingId?, periodMonth?, periodYear? }
 exports.sendAllDraftInvoices = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { buildingId, periodMonth, periodYear } = req.body || {};
 
     if (!landlordId) {
@@ -1444,9 +1610,6 @@ exports.sendAllDraftInvoices = async (req, res) => {
       status: "draft", // chỉ gửi các hóa đơn đang draft
     };
 
-    if (buildingId) {
-      filter.buildingId = buildingId;
-    }
     if (periodMonth) {
       const m = Number(periodMonth);
       if (!Number.isInteger(m) || m < 1 || m > 12) {
@@ -1463,7 +1626,25 @@ exports.sendAllDraftInvoices = async (req, res) => {
       }
       filter.periodYear = y;
     }
-
+    if (isStaff) {
+      if (buildingId) {
+        const bid = buildingId.toString();
+        if (!req.staff.assignedBuildingIds.includes(bid)) {
+          return res.status(403).json({
+            message: "Bạn không được phép gửi hóa đơn của tòa nhà này",
+            buildingId: bid,
+            yourAssigned: req.staff.assignedBuildingIds,
+          });
+        }
+        filter.buildingId = buildingId;
+      } else {
+        filter.buildingId = { $in: req.staff.assignedBuildingIds };
+      }
+    } else {
+      if (buildingId) {
+        filter.buildingId = buildingId;
+      }
+    }
     const invoices = await Invoice.find(filter)
       .select(
         "_id invoiceNumber roomId buildingId tenantId periodMonth periodYear status"

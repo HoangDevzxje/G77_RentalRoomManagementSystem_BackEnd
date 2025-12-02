@@ -354,7 +354,7 @@ const checkSubscription = require("../../middleware/checkSubscription");
  *   get:
  *     summary: Lấy danh sách quyền của nhân viên theo accountId
  *     description: Trả về danh sách quyền dưới dạng mảng các chuỗi (permission codes).
- *     tags: [Landlord Employees Management]
+ *     tags: [Landlord Staffs Management]
  *     security:
  *       - bearerAuth: []
  *     parameters:

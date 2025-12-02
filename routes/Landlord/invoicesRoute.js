@@ -1,7 +1,9 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const invoiceController = require("../../controllers/Landlord/InvoiceController");
-
+const checkSubscription = require("../../middleware/checkSubscription");
+const { PERMISSIONS } = require("../../constants/permissions");
+const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 /**
  * @swagger
  * tags:
@@ -76,7 +78,10 @@ const invoiceController = require("../../controllers/Landlord/InvoiceController"
  *       200:
  *         description: Danh sách hóa đơn
  */
-router.get("/", checkAuthorize("landlord"), invoiceController.getInvoices);
+router.get("/",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_VIEW),
+  invoiceController.getInvoices);
 
 /**
  * @swagger
@@ -126,7 +131,8 @@ router.get("/", checkAuthorize("landlord"), invoiceController.getInvoices);
  */
 router.get(
   "/rooms",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_VIEW),
   invoiceController.listRoomsForInvoice
 );
 
@@ -189,7 +195,9 @@ router.get(
  */
 router.post(
   "/generate",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_CREATE),
+  checkSubscription,
   invoiceController.generateInvoice
 );
 
@@ -230,7 +238,9 @@ router.post(
  */
 router.post(
   "/generate-monthly",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_CREATE),
+  checkSubscription,
   invoiceController.generateMonthlyInvoice
 );
 
@@ -284,7 +294,9 @@ router.post(
  */
 router.post(
   "/generate-monthly-bulk",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_CREATE),
+  checkSubscription,
   invoiceController.generateMonthlyInvoicesBulk
 );
 
@@ -322,7 +334,9 @@ router.post(
  */
 router.post(
   "/send-drafts",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_CREATE),
+  checkSubscription,
   invoiceController.sendAllDraftInvoices
 );
 
@@ -346,7 +360,8 @@ router.post(
  */
 router.get(
   "/:id",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_VIEW),
   invoiceController.getInvoiceDetail
 );
 
@@ -388,7 +403,9 @@ router.get(
  */
 router.patch(
   "/:id",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_EDIT),
+  checkSubscription,
   invoiceController.updateInvoice
 );
 
@@ -412,7 +429,9 @@ router.patch(
  */
 router.post(
   "/:id/pay",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_CREATE),
+  checkSubscription,
   invoiceController.markInvoicePaid
 );
 
@@ -436,7 +455,9 @@ router.post(
  */
 router.post(
   "/:id/send",
-  checkAuthorize("landlord"),
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_CREATE),
+  checkSubscription,
   invoiceController.sendInvoiceEmail
 );
 

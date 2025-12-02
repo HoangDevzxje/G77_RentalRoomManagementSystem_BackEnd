@@ -7,7 +7,7 @@ const { uploadMultiple } = require("../../configs/cloudinary");
 /**
  * @swagger
  * tags:
- *   name: Resident - Maintenance
+ *   name: Resident Maintenance
  *   description: Cư dân tạo và theo dõi yêu cầu bảo trì
  */
 
@@ -21,7 +21,7 @@ const { uploadMultiple } = require("../../configs/cloudinary");
  *       - Bắt buộc chọn danh mục (category)
  *       - Chỉ yêu cầu furnitureId khi category = furniture
  *       - Hỗ trợ upload tối đa 5 ảnh
- *     tags: [Resident - Maintenance]
+ *     tags: [Resident Maintenance]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -158,7 +158,7 @@ router.post(
  *       - Trả về tất cả phiếu bảo trì (của mình + bạn cùng phòng + người thuê trước) trong các phòng đang ở
  *       - Rất hữu ích để biết lịch sử hỏng hóc, tình trạng sửa chữa chung của phòng
  *       - Hỗ trợ lọc theo trạng thái, danh mục, phân trang
- *     tags: [Resident - Maintenance]
+ *     tags: [Resident Maintenance]
  *     security:
  *       - bearerAuth: []
  *
@@ -380,7 +380,7 @@ router.get("/my-room", checkAuthorize(["resident"]), ctrl.listMyRoomRequests);
  * /maintenance/{id}:
  *   get:
  *     summary: Xem chi tiết yêu cầu bảo trì của cư dân
- *     tags: [Resident - Maintenance]
+ *     tags: [Resident Maintenance]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -408,7 +408,7 @@ router.get("/:id", checkAuthorize(["resident"]), ctrl.getRequest);
  *     description: |
  *       - Resident đang ở phòng hoặc Landlord/Staff mới được thêm bình luận
  *       - Tạo thông báo realtime cho Landlord + Staff + các resident khác trong phòng
- *     tags: [Resident - Maintenance, Landlord - Maintenance]
+ *     tags: [Resident Maintenance, Landlord - Maintenance]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -455,7 +455,7 @@ router.get("/:id", checkAuthorize(["resident"]), ctrl.getRequest);
  *   put:
  *     summary: Sửa bình luận
  *     description: Chỉ người viết bình luận hoặc Landlord/Staff mới được sửa
- *     tags: [Resident - Maintenance, Landlord - Maintenance]
+ *     tags: [Resident Maintenance, Landlord - Maintenance]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -501,7 +501,7 @@ router.get("/:id", checkAuthorize(["resident"]), ctrl.getRequest);
  *   delete:
  *     summary: Xóa bình luận
  *     description: Chỉ người viết hoặc Landlord/Staff mới được xóa
- *     tags: [Resident - Maintenance, Landlord - Maintenance]
+ *     tags: [Resident Maintenance, Landlord - Maintenance]
  *     security:
  *       - bearerAuth: []
  *     parameters:
