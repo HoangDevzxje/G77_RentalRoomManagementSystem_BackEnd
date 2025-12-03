@@ -41,6 +41,32 @@ const regulationSnapshotSchema = new mongoose.Schema(
   },
   { _id: false }
 );
+// Yêu cầu chấm dứt hợp đồng từ tenant
+const terminationRequestSchema = new mongoose.Schema(
+  {
+    reason: { type: String, required: true },
+    note: { type: String },
+
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "cancelled"],
+      default: "pending",
+    },
+
+    requestedAt: { type: Date, default: Date.now },
+    requestedById: { type: mongoose.Schema.Types.ObjectId, ref: "Account" },
+
+    processedAt: { type: Date },
+    processedById: { type: mongoose.Schema.Types.ObjectId, ref: "Account" },
+    processedByRole: {
+      type: String,
+      enum: ["landlord", "system"],
+    },
+
+    rejectedReason: { type: String },
+  },
+  { _id: false }
+);
 
 // Lịch sử gia hạn
 const extensionSchema = new mongoose.Schema(
@@ -234,6 +260,7 @@ const contractSchema = new mongoose.Schema(
       ref: "Contract",
       default: null,
     },
+    terminationRequest: terminationRequestSchema,
   },
   { timestamps: true }
 );

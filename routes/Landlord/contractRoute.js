@@ -3,7 +3,9 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 const contractController = require("../../controllers/Landlord/ContractController");
 const checkSubscription = require("../../middleware/checkSubscription");
 const { PERMISSIONS } = require("../../constants/permissions");
-const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const {
+  checkStaffPermission,
+} = require("../../middleware/checkStaffPermission");
 
 /**
  * @swagger
@@ -21,7 +23,7 @@ const { checkStaffPermission } = require("../../middleware/checkStaffPermission"
  *       Trả về danh sách hợp đồng dựa trên quyền truy cập của user:
  *       - Nếu là landlord → xem toàn bộ hợp đồng của mình.
  *       - Nếu là staff → chỉ xem hợp đồng thuộc các tòa nhà được phân quyền (assignedBuildingIds).
- * 
+ *
  *       Hỗ trợ:
  *       - Lọc theo trạng thái hợp đồng.
  *       - Lọc theo tình trạng xác nhận vào ở (moveInConfirmedAt).
@@ -53,7 +55,7 @@ const { checkStaffPermission } = require("../../middleware/checkStaffPermission"
  *         schema:
  *           type: string
  *         description: |
- *           Lọc theo tòa nhà.  
+ *           Lọc theo tòa nhà.
  *           Nếu là staff: chỉ được phép xem nếu buildingId thuộc assignedBuildingIds.
  *
  *       - name: search
@@ -165,7 +167,6 @@ const { checkStaffPermission } = require("../../middleware/checkStaffPermission"
  *       403:
  *         description: Staff không có quyền xem building này.
  */
-
 
 /**
  * @swagger
@@ -971,6 +972,100 @@ const { checkStaffPermission } = require("../../middleware/checkStaffPermission"
  *       500:
  *         description: Lỗi server khi tạo PDF
  */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/approve-terminate:
+ *   patch:
+ *     summary: Duyệt yêu cầu chấm dứt hợp đồng từ tenant
+ *     description: |
+ *       Landlord duyệt yêu cầu chấm dứt hợp đồng.
+ *
+ *       **Quy tắc:**
+ *       - Chỉ duyệt khi `terminationRequest.status = pending`
+ *       - Sau khi duyệt:
+ *         - `terminationRequest.status = approved`
+ *         - `contract.status = terminated`
+ *         - `terminationType = early_termination`
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID hợp đồng
+ *     responses:
+ *       200:
+ *         description: Duyệt yêu cầu thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã duyệt yêu cầu chấm dứt hợp đồng"
+ *                 contractStatus:
+ *                   type: string
+ *                   example: "terminated"
+ *       400:
+ *         description: Không có yêu cầu chấm dứt đang chờ
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+/**
+ * @swagger
+ * /landlords/contracts/{id}/reject-terminate:
+ *   patch:
+ *     summary: Từ chối yêu cầu chấm dứt hợp đồng
+ *     description: |
+ *       Chủ trọ từ chối yêu cầu chấm dứt từ người thuê.
+ *
+ *       **Quy tắc:**
+ *       - Chỉ từ chối khi `terminationRequest.status = pending`
+ *       - Sau khi từ chối:
+ *         - `terminationRequest.status = rejected`
+ *     tags: [Landlord Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID hợp đồng
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               rejectedReason:
+ *                 type: string
+ *                 example: "Cần báo trước ít nhất 30 ngày theo hợp đồng."
+ *     responses:
+ *       200:
+ *         description: Từ chối yêu cầu chấm dứt thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã từ chối yêu cầu chấm dứt hợp đồng"
+ *                 terminationRequest:
+ *                   type: object
+ *       400:
+ *         description: Không có yêu cầu chấm dứt đang chờ xử lý
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+
 router.post(
   "/from-contact",
   checkAuthorize(["landlord", "staff"]),
@@ -987,56 +1082,48 @@ router.get(
 router.put(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.updateData
 );
 router.post(
   "/:id/sign-landlord",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.signByLandlord
 );
 router.post(
   "/:id/send-to-tenant",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.sendToTenant
 );
 router.get(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_VIEW, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   contractController.getDetail
 );
 router.get(
@@ -1048,14 +1135,12 @@ router.get(
 router.post(
   "/:id/confirm-move-in",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.confirmMoveIn
 );
@@ -1063,14 +1148,12 @@ router.post(
 router.post(
   "/:id/approve-extension",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.approveExtension
 );
@@ -1078,14 +1161,12 @@ router.post(
 router.post(
   "/:id/reject-extension",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.rejectExtension
 );
@@ -1093,14 +1174,12 @@ router.post(
 router.delete(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_DELETE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_DELETE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.deleteContract
 );
@@ -1108,42 +1187,36 @@ router.delete(
 router.post(
   "/:id/void",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.voidContract
 );
 router.post(
   "/:id/clone",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.cloneContract
 );
 router.post(
   "/:id/terminate",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Contract",
-      idField: "id"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.terminateContract
 );
@@ -1153,4 +1226,18 @@ router.get(
   checkStaffPermission(PERMISSIONS.CONTRACT_VIEW),
   contractController.downloadContractPdf
 );
+router.patch(
+  "/:id/approve-terminate",
+  checkAuthorize,
+  checkSubscription,
+  contractController.approveTerminate
+);
+
+router.patch(
+  "/:id/reject-terminate",
+  checkAuthorize,
+  checkSubscription,
+  contractController.rejectTerminate
+);
+
 module.exports = router;

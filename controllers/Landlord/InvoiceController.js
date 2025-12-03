@@ -110,10 +110,14 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     text,
   });
 
+  console.log("Kết quả gửi email invoice:", emailResult);
+
   const update = {
     $set: {
-      emailStatus: emailResult ? "sent" : "failed",
-      emailSentAt: new Date(),
+      emailStatus: emailResult && emailResult.success ? "sent" : "failed",
+      emailLastError:
+        emailResult && !emailResult.success ? emailResult.error : null,
+      emailSentAt: emailResult && emailResult.success ? new Date() : null,
     },
   };
 
@@ -126,9 +130,11 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     update: {
       status: updatedInvoice.status,
       emailStatus: updatedInvoice.emailStatus,
+      emailLastError: updatedInvoice.emailLastError,
     },
   };
 }
+
 async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
   try {
     if (!invoice) return;

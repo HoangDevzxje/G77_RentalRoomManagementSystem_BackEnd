@@ -495,6 +495,63 @@ const contractController = require("../../controllers/User/ContractController");
  *       500:
  *         description: Lỗi server khi xuất PDF
  */
+/**
+ * @swagger
+ * /contracts/{id}/request-terminate:
+ *   patch:
+ *     summary: Người thuê gửi yêu cầu chấm dứt hợp đồng
+ *     description: |
+ *       Người thuê gửi yêu cầu chấm dứt hợp đồng trước hạn.
+ *
+ *       **Chỉ được gửi khi:**
+ *       - Hợp đồng ở trạng thái `completed` (đang hiệu lực)
+ *       - Không có yêu cầu chấm dứt nào đang ở trạng thái `pending`
+ *
+ *       Sau khi gửi: `terminationRequest.status = pending`.
+ *     tags: [Resident Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID hợp đồng
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Tôi chuyển chỗ làm nên không thể ở tiếp."
+ *               note:
+ *                 type: string
+ *                 example: "Muốn kết thúc vào cuối tháng."
+ *     responses:
+ *       200:
+ *         description: Đã gửi yêu cầu chấm dứt hợp đồng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Đã gửi yêu cầu chấm dứt hợp đồng"
+ *                 terminationRequest:
+ *                   type: object
+ *       400:
+ *         description: Lỗi validate hoặc trạng thái không hợp lệ để gửi yêu cầu
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+
 router.get(
   "/accounts/search-by-email",
   checkAuthorize("resident"),
@@ -538,6 +595,11 @@ router.get(
   "/:id/download",
   checkAuthorize("resident"),
   contractController.residentDownloadMyContractPdf
+);
+router.patch(
+  "/:id/request-terminate",
+  checkAuthorize,
+  contractController.requestTerminate
 );
 
 module.exports = router;

@@ -312,16 +312,22 @@ exports.signByTenant = async (req, res) => {
 
       const staffList = await Staff.find({
         assignedBuildings: buildingId,
-        isDeleted: false
-      }).select("accountId").lean();
+        isDeleted: false,
+      })
+        .select("accountId")
+        .lean();
 
-      staffList.forEach(staff => {
+      staffList.forEach((staff) => {
         io.to(`user:${staff.accountId}`).emit("new_notification", payload);
       });
 
-      io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
-      staffList.forEach(staff => {
-        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      io.to(`user:${landlordId}`).emit("unread_count_increment", {
+        increment: 1,
+      });
+      staffList.forEach((staff) => {
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", {
+          increment: 1,
+        });
       });
     }
     res.json({
@@ -493,16 +499,22 @@ exports.requestExtend = async (req, res) => {
 
       const staffList = await Staff.find({
         assignedBuildings: buildingId,
-        isDeleted: false
-      }).select("accountId").lean();
+        isDeleted: false,
+      })
+        .select("accountId")
+        .lean();
 
-      staffList.forEach(staff => {
+      staffList.forEach((staff) => {
         io.to(`user:${staff.accountId}`).emit("new_notification", payload);
       });
 
-      io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
-      staffList.forEach(staff => {
-        io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
+      io.to(`user:${landlordId}`).emit("unread_count_increment", {
+        increment: 1,
+      });
+      staffList.forEach((staff) => {
+        io.to(`user:${staff.accountId}`).emit("unread_count_increment", {
+          increment: 1,
+        });
       });
     }
     res.json({
@@ -687,7 +699,7 @@ async function streamContractPdf(contract, res) {
     } else {
       try {
         res.end();
-      } catch { }
+      } catch {}
     }
   });
 
@@ -710,14 +722,14 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.8);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(16)
     .text("HỢP ĐỒNG THUÊ PHÒNG", { align: "center", underline: true });
 
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
   pdf.moveDown(0.5);
   pdf
     .fontSize(10)
@@ -733,7 +745,8 @@ async function streamContractPdf(contract, res) {
       `Hôm nay, ngày ${formatDate(meta.signDate) || "....../....../......"}`
     );
   pdf.text(
-    `Tại: ${meta.signPlace || (building && building.address) || "................"
+    `Tại: ${
+      meta.signPlace || (building && building.address) || "................"
     }`
   );
 
@@ -743,17 +756,18 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.3);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf.text("BÊN CHO THUÊ (BÊN A):");
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
 
   pdf
     .fontSize(11)
     .text(`Họ tên: ${A?.name || ""}`)
     .text(
-      `CCCD: ${A?.cccd || ""}   Cấp ngày: ${formatDate(A?.cccdIssuedDate) || ""
+      `CCCD: ${A?.cccd || ""}   Cấp ngày: ${
+        formatDate(A?.cccdIssuedDate) || ""
       }   Nơi cấp: ${A?.cccdIssuedPlace || ""}`
     )
     .text(`Hộ khẩu thường trú: ${A?.permanentAddress || ""}`)
@@ -764,17 +778,18 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.6);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf.text("BÊN THUÊ (BÊN B):");
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
 
   pdf
     .fontSize(11)
     .text(`Họ tên: ${B?.name || ""}`)
     .text(
-      `CCCD: ${B?.cccd || ""}   Cấp ngày: ${formatDate(B?.cccdIssuedDate) || ""
+      `CCCD: ${B?.cccd || ""}   Cấp ngày: ${
+        formatDate(B?.cccdIssuedDate) || ""
       }   Nơi cấp: ${B?.cccdIssuedPlace || ""}`
     )
     .text(`Hộ khẩu thường trú: ${B?.permanentAddress || ""}`)
@@ -786,17 +801,18 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(0.6);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("Người ở cùng (roommates):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     roommates.forEach((r, idx) => {
       pdf
         .fontSize(11)
         .text(
-          `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""} – Điện thoại: ${r.phone || ""
+          `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""} – Điện thoại: ${
+            r.phone || ""
           }`
         );
     });
@@ -806,11 +822,11 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.8);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf.text("THÔNG TIN PHÒNG VÀ GIÁ THUÊ:");
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
 
   const buildingName = building?.name || "";
   const roomNumber = room?.roomNumber || "";
@@ -818,13 +834,15 @@ async function streamContractPdf(contract, res) {
   pdf
     .fontSize(11)
     .text(
-      `Tòa nhà: ${buildingName} – Địa chỉ: ${building?.address || "................................"
+      `Tòa nhà: ${buildingName} – Địa chỉ: ${
+        building?.address || "................................"
       }`
     )
     .text(`Phòng: ${roomNumber}    Diện tích: ${area || ""} m²`)
     .text(`Giá thuê: ${meta.price?.toLocaleString("vi-VN") || ""} VND/tháng`)
     .text(
-      `Tiền cọc: ${meta.deposit?.toLocaleString("vi-VN") || ""
+      `Tiền cọc: ${
+        meta.deposit?.toLocaleString("vi-VN") || ""
       } VND (bằng chữ: ................................)`
     )
     .text(
@@ -839,17 +857,18 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(0.5);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("Phương tiện gửi kèm:");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     bikes.forEach((b, idx) => {
       pdf
         .fontSize(11)
         .text(
-          `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${b.color || ""
+          `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${
+            b.color || ""
           } – Hãng: ${b.brand || ""}`
         );
     });
@@ -860,11 +879,11 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(1);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.fontSize(13).text("I. ĐIỀU KHOẢN HỢP ĐỒNG", { underline: true });
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf.moveDown(0.5);
 
     const sortedTerms = [...terms].sort(
@@ -874,11 +893,11 @@ async function streamContractPdf(contract, res) {
     sortedTerms.forEach((t, idx) => {
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       const desc = t.description || "";
       if (!desc) {
@@ -894,11 +913,11 @@ async function streamContractPdf(contract, res) {
             const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
             try {
               pdf.font(FONT_BOLD);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(prefix, { continued: true });
             try {
               pdf.font(FONT_REGULAR);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(it, {
               paragraphGap: 4,
               align: "justify",
@@ -926,11 +945,11 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(1);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.fontSize(13).text("II. NỘI QUY / QUY ĐỊNH", { underline: true });
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf.moveDown(0.5);
 
     const sortedRegs = [...regulations].sort(
@@ -940,11 +959,11 @@ async function streamContractPdf(contract, res) {
     sortedRegs.forEach((r, idx) => {
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       const desc = r.description || "";
       if (!desc) {
@@ -960,11 +979,11 @@ async function streamContractPdf(contract, res) {
             const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
             try {
               pdf.font(FONT_BOLD);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(prefix, { continued: true });
             try {
               pdf.font(FONT_REGULAR);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(it, {
               paragraphGap: 4,
               align: "justify",
@@ -1010,7 +1029,7 @@ async function streamContractPdf(contract, res) {
   // ===== Tiêu đề =====
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(12)
     .text("ĐẠI DIỆN BÊN A", leftX, pdf.y, {
@@ -1027,7 +1046,7 @@ async function streamContractPdf(contract, res) {
   // ===== Hướng dẫn ký =====
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(11)
     .text("(Ký, ghi rõ họ tên)", leftX, pdf.y, {
@@ -1064,7 +1083,7 @@ async function streamContractPdf(contract, res) {
 
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(12)
     .text(AName, leftX, pdf.y, {
@@ -1115,6 +1134,74 @@ exports.residentDownloadMyContractPdf = async (req, res) => {
     }
     try {
       res.end();
-    } catch { }
+    } catch {}
+  }
+};
+// PATCH /tenants/contracts/:id/request-terminate
+exports.requestTerminate = async (req, res) => {
+  try {
+    const tenantId = req.user?._id;
+    const { id } = req.params;
+    const { reason, note } = req.body || {};
+
+    if (!reason || String(reason).trim() === "") {
+      return res
+        .status(400)
+        .json({ message: "Lý do huỷ hợp đồng là bắt buộc" });
+    }
+
+    const contract = await Contract.findOne({ _id: id, tenantId });
+    if (!contract) {
+      return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
+    }
+
+    if (contract.status !== "completed") {
+      return res.status(400).json({
+        message:
+          "Chỉ được gửi yêu cầu chấm dứt khi hợp đồng đang hiệu lực (completed)",
+      });
+    }
+
+    // Nếu đã có request pending
+    if (
+      contract.terminationRequest &&
+      contract.terminationRequest.status === "pending"
+    ) {
+      return res.status(400).json({
+        message: "Bạn đang có yêu cầu chấm dứt hợp đồng đang chờ xử lý",
+      });
+    }
+
+    // Tạo yêu cầu mới
+    contract.terminationRequest = {
+      reason,
+      note: note || "",
+      status: "pending",
+      requestedAt: new Date(),
+      requestedById: tenantId,
+    };
+
+    await contract.save();
+
+    // Thông báo landlord
+    const buildingId = contract.buildingId;
+    const landlordId = contract.landlordId?._id || contract.landlordId;
+
+    await Notification.create({
+      landlordId,
+      createBy: tenantId,
+      createByRole: "resident",
+      title: "Yêu cầu chấm dứt hợp đồng",
+      content: `Người thuê yêu cầu chấm dứt hợp đồng phòng ${contract?.roomId?.roomNumber}`,
+      target: { buildings: [buildingId] },
+      link: `/landlord/contracts/${contract._id}`,
+    });
+
+    res.json({
+      message: "Đã gửi yêu cầu chấm dứt hợp đồng",
+      terminationRequest: contract.terminationRequest,
+    });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
   }
 };

@@ -32,7 +32,7 @@ try {
  *   - Với type = 'invoice' => payload là object { tenantName, invoiceNumber, ... }
  * @param {'register'|'reset-password'|'invoice'|'generic_otp'} type
  */
-const sendEmail = async (toEmail, payload, type = "register") => {
+const sendEmail = async (toEmailOrOptions, payload, type = "register") => {
   try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -41,6 +41,28 @@ const sendEmail = async (toEmail, payload, type = "register") => {
         pass: process.env.EMAIL_PASS, // App Password nếu bật 2FA
       },
     });
+
+    if (
+      toEmailOrOptions &&
+      typeof toEmailOrOptions === "object" &&
+      toEmailOrOptions.email
+    ) {
+      const { email, subject, html, text } = toEmailOrOptions;
+
+      const mailOptions = {
+        from: `"Rental Room Management System" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: subject || "Thông báo từ hệ thống",
+        html: html || "",
+        text: text || undefined,
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log("Email đã được gửi thành công:", info.messageId);
+      return { success: true, messageId: info.messageId };
+    }
+
+    const toEmail = toEmailOrOptions;
 
     let title = "";
     let subject = "";
