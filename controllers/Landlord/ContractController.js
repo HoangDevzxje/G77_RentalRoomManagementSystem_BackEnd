@@ -1075,7 +1075,7 @@ exports.listMine = async (req, res) => {
     const {
       status,
       search,
-      moveIn, // 'confirmed' | 'not_confirmed'
+      moveIn,
       buildingId,
       page = 1,
       limit = 20,
@@ -1086,7 +1086,6 @@ exports.listMine = async (req, res) => {
     if (isStaff && req.staff?.assignedBuildingIds?.length > 0) {
       filter.buildingId = { $in: req.staff.assignedBuildingIds };
     }
-    // Filter theo trạng thái
     if (status) {
       filter.status = status;
     }
@@ -1098,14 +1097,12 @@ exports.listMine = async (req, res) => {
       }
       filter.buildingId = buildingId;
     }
-    // Filter theo đã xác nhận vào ở hay chưa
     if (moveIn === "confirmed") {
-      filter.moveInConfirmedAt = { $ne: null }; // đã confirm
+      filter.moveInConfirmedAt = { $ne: null };
     } else if (moveIn === "not_confirmed") {
-      filter.moveInConfirmedAt = null; // chưa confirm
+      filter.moveInConfirmedAt = null;
     }
 
-    // Search theo số hợp đồng
     if (search) {
       const keyword = String(search).trim();
       if (keyword) {
@@ -1123,7 +1120,7 @@ exports.listMine = async (req, res) => {
           [
             "_id",
             "status",
-            "moveInConfirmedAt", // 👈 THÊM Ở ĐÂY
+            "moveInConfirmedAt",
             "sentToTenantAt",
             "completedAt",
             "buildingId",
@@ -1135,6 +1132,7 @@ exports.listMine = async (req, res) => {
             "contract.endDate",
             "createdAt",
             "updatedAt",
+            "terminationRequest",
           ].join(" ")
         )
         .populate("buildingId", "name")

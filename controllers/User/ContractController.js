@@ -77,7 +77,18 @@ exports.listMyContracts = async (req, res) => {
     const [items, total] = await Promise.all([
       Contract.find(filter)
         .select(
-          "_id status createdAt updatedAt buildingId roomId contract.no contract.startDate contract.endDate"
+          [
+            "_id",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "buildingId",
+            "roomId",
+            "contract.no",
+            "contract.startDate",
+            "contract.endDate",
+            "terminationRequest",
+          ].join(" ")
         )
         .populate("buildingId", "name")
         .populate("roomId", "roomNumber")
@@ -532,7 +543,7 @@ exports.listUpcomingExpire = async (req, res) => {
     const tenantId = req.user?._id;
     const { days = 30, page = 1, limit = 20 } = req.query;
 
-    const numDays = Math.max(Number(days) || 30, 1); // ít nhất 1 ngày
+    const numDays = Math.max(Number(days) || 30, 1);
 
     const now = new Date();
     const future = new Date();
@@ -549,7 +560,16 @@ exports.listUpcomingExpire = async (req, res) => {
     const [items, total] = await Promise.all([
       Contract.find(filter)
         .select(
-          "_id status buildingId roomId contract.no contract.startDate contract.endDate"
+          [
+            "_id",
+            "status",
+            "buildingId",
+            "roomId",
+            "contract.no",
+            "contract.startDate",
+            "contract.endDate",
+            "terminationRequest",
+          ].join(" ")
         )
         .populate("buildingId", "name address")
         .populate("roomId", "roomNumber")
@@ -571,6 +591,7 @@ exports.listUpcomingExpire = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
+
 
 // ============ Helpers chung ============
 
