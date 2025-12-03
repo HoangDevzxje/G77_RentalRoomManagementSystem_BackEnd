@@ -66,7 +66,7 @@ const createOrUpdateRating = async (req, res) => {
         )
             .populate({
                 path: 'userId',
-                select: 'email',
+                select: '_id email',
                 populate: {
                     path: 'userInfo',
                     select: 'fullName'
@@ -137,6 +137,7 @@ const createOrUpdateRating = async (req, res) => {
                 comment: updatedRating.comment,
                 images: updatedRating.images,
                 user: {
+                    _id: updatedRating.userId?._id?.toString(),
                     fullName: updatedRating.userId?.userInfo?.fullName,
                     email: updatedRating.userId?.email
                 },
@@ -221,7 +222,7 @@ const getBuildingRatings = async (req, res) => {
             .sort({ createdAt: -1 })
             .populate({
                 path: 'userId',
-                select: 'email',
+                select: '_id email',
                 populate: { path: 'userInfo', select: 'fullName' }
             })
             .lean();
@@ -237,6 +238,7 @@ const getBuildingRatings = async (req, res) => {
             images: r.images || [],
             createdAt: r.createdAt,
             user: {
+                _id: r.userId._id.toString(),
                 fullName: r.userId?.userInfo?.fullName || 'Người dùng hệ thống',
             }
         }));

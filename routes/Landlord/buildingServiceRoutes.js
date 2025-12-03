@@ -301,7 +301,7 @@ const { PERMISSIONS } = require("../../constants/permissions");
 // Lấy danh sách dịch vụ của 1 tòa
 router.get(
   "/:buildingId/services",
-  checkAuthorize(["admin", "landlord", "staff"]),
+  checkAuthorize(["admin", "landlord", "staff", "resident"]),
   checkStaffPermission(PERMISSIONS.SERVICE_VIEW, {
     checkBuilding: true,
     buildingField: "buildingId"

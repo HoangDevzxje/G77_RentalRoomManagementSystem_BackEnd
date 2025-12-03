@@ -38,7 +38,7 @@ const list = async (req, res) => {
         .populate({
           path: "landlordId",
           select: "email role userInfo fullName",
-          populate: { path: "userInfo", select: "fullName phone" },
+          populate: { path: "userInfo", select: "fullName phoneNumber" },
         })
         .lean(),
       Building.countDocuments(filter),
@@ -66,7 +66,7 @@ const getById = async (req, res) => {
       .populate({
         path: "landlordId",
         select: "email role userInfo fullName",
-        populate: { path: "userInfo", select: "fullName phone" },
+        populate: { path: "userInfo", select: "fullName phoneNumber" },
       })
       .lean();
 
