@@ -229,18 +229,34 @@ exports.requestBankTransferConfirmation = async (req, res) => {
   try {
     const tenantId = req.user?._id;
     const { id } = req.params;
-    const { note, amount } = req.body;
+    const { note, proofImageUrl } = req.body;
+
     if (!tenantId) {
       return res
         .status(401)
         .json({ message: "Không xác định được người dùng" });
     }
+
     const file = req.file;
-    if (!file || !file.path) {
+
+    // Ưu tiên file upload, nếu không có thì dùng URL
+    let imageUrl = null;
+
+    if (file && file.path) {
+      imageUrl = file.path; // đường dẫn Cloudinary do multer-storage-cloudinary trả về
+    } else if (proofImageUrl && typeof proofImageUrl === "string") {
+      const trimmed = proofImageUrl.trim();
+      if (trimmed) {
+        imageUrl = trimmed; // dùng URL do frontend gửi lên
+      }
+    }
+
+    if (!imageUrl) {
       return res
         .status(400)
-        .json({ message: "Thiếu ảnh chứng từ chuyển khoản" });
+        .json({ message: "Thiếu ảnh chứng từ chuyển khoản (file hoặc URL)" });
     }
+
     const invoice = await Invoice.findOne({
       _id: id,
       tenantId,
@@ -252,21 +268,29 @@ exports.requestBankTransferConfirmation = async (req, res) => {
         select: "userInfo",
         populate: { path: "userInfo", select: "fullName" },
       });
+
     if (!invoice)
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+
     if (["paid", "cancelled"].includes(invoice.status)) {
       return res.status(400).json({ message: "Hóa đơn đã được xử lý" });
     }
+
     if (!["sent", "overdue", "transfer_pending"].includes(invoice.status)) {
       return res
         .status(400)
         .json({ message: "Trạng thái hóa đơn không hợp lệ" });
     }
-    invoice.transferProofImageUrl = file.path;
+
+    // Lưu lại ảnh chứng từ (file Cloudinary hoặc URL ngoài)
+    invoice.transferProofImageUrl = imageUrl;
     invoice.transferRequestedAt = new Date();
     invoice.status = "transfer_pending";
+
     if (note) invoice.paymentNote = note;
+
     await invoice.save();
+
     return res.json({
       message:
         "Đã gửi yêu cầu xác nhận chuyển khoản. Vui lòng chờ chủ trọ kiểm tra.",

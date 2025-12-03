@@ -250,26 +250,33 @@ router.post(
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
+ *               proofImage:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh chứng từ tải trực tiếp từ máy (file)
  *               proofImageUrl:
  *                 type: string
- *               amount:
- *                 type: number
+ *                 description: URL ảnh chứng từ (trong trường hợp đã có link sẵn)
  *               note:
  *                 type: string
+ *                 description: Ghi chú thêm cho chủ trọ
+ *             description: "Chỉ cần gửi một trong hai: proofImage (file) HOẶC proofImageUrl (URL)."
  *     responses:
  *       200:
  *         description: Gửi yêu cầu thành công
  *       400:
  *         description: Hóa đơn không hợp lệ hoặc đã được xử lý
  */
+
 router.post(
   "/:id/request-transfer-confirmation",
-  uploadTransferProof,
   checkAuthorize("resident"),
+  uploadTransferProof,
   tenantInvoiceController.requestBankTransferConfirmation
 );
+
 module.exports = router;
