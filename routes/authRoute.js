@@ -343,7 +343,7 @@ router.post("/refresh-token", authController.refreshToken);
  *                   type: string
  *                   example: "Lỗi hệ thống!"
  */
-router.post("/change-password", checkAuthorize(["user", "landlord"]), authController.changePassword);
+router.post("/change-password", checkAuthorize(["resident", "landlord"]), authController.changePassword);
 
 // /**
 //  * @swagger
