@@ -3,7 +3,9 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 const invoiceController = require("../../controllers/Landlord/InvoiceController");
 const checkSubscription = require("../../middleware/checkSubscription");
 const { PERMISSIONS } = require("../../constants/permissions");
-const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const {
+  checkStaffPermission,
+} = require("../../middleware/checkStaffPermission");
 /**
  * @swagger
  * tags:
@@ -78,10 +80,12 @@ const { checkStaffPermission } = require("../../middleware/checkStaffPermission"
  *       200:
  *         description: Danh sách hóa đơn
  */
-router.get("/",
+router.get(
+  "/",
   checkAuthorize(["landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.INVOICE_VIEW),
-  invoiceController.getInvoices);
+  invoiceController.getInvoices
+);
 
 /**
  * @swagger
@@ -369,7 +373,30 @@ router.get(
  * @swagger
  * /landlords/invoices/{id}:
  *   patch:
- *     summary: Cập nhật một số thông tin hóa đơn
+ *     summary: Cập nhật một số thông tin hóa đơn (theo trạng thái)
+ *     description: >
+ *       Quy tắc theo trạng thái hiện tại của hóa đơn:
+ *
+ *       - **draft**:
+ *         - Được chỉnh full các field: `items`, `note`, `discountAmount`, `lateFee`, `status`.
+ *         - Cho phép chỉnh sửa / thêm / xoá mọi loại dòng: `rent`, `electric`, `water`, `service`, `other`.
+ *
+ *       - **sent**:
+ *         - Chỉ được chỉnh: `items`, `note`, `discountAmount`, `lateFee`.
+ *         - Trong `items`:
+ *           * KHÔNG được sửa / xoá / thêm các dòng có `type` ∈ [`rent`, `electric`, `water`, `service`].
+ *           * CHỈ được phép thêm mới hoặc chỉnh sửa các dòng có `type = "other"`.
+ *         - Nếu request cố gắng thay đổi bất kỳ dòng `rent/electric/water/service`, API sẽ trả lỗi 400.
+ *
+ *       - **overdue**:
+ *         - Chỉ được chỉnh: `note`, `discountAmount`, `lateFee`.
+ *         - Mọi thay đổi `items` đều bị từ chối (API sẽ trả lỗi 400).
+ *
+ *       - **transfer_pending / paid / cancelled**:
+ *         - Không được phép cập nhật. API sẽ trả lỗi 400.
+ *
+ *       - Không cho phép đặt trạng thái `paid` hoặc `transfer_pending` qua API này.
+ *         Việc thanh toán phải dùng endpoint: `PATCH /landlords/invoices/{id}/pay`.
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -388,18 +415,30 @@ router.get(
  *             properties:
  *               items:
  *                 type: array
+ *                 description: >
+ *                   Danh sách các dòng khoản thu:
+ *                   - Ở trạng thái **draft**: được phép chỉnh toàn bộ, bao gồm rent/electric/water/service/other.
+ *                   - Ở trạng thái **sent**: chỉ được chỉnh hoặc thêm dòng `type = "other"`.
+ *                     Mọi thay đổi trên dòng `rent/electric/water/service` sẽ bị từ chối.
+ *                   - Ở trạng thái **overdue**: mọi thay đổi `items` sẽ bị từ chối.
  *               note:
  *                 type: string
+ *                 description: Ghi chú gửi kèm cho người thuê.
  *               discountAmount:
  *                 type: number
+ *                 description: Số tiền giảm giá áp dụng cho hóa đơn.
  *               lateFee:
  *                 type: number
+ *                 description: Phí trễ hạn (nếu có).
  *               status:
  *                 type: string
- *                 enum: [draft, sent, paid, overdue, cancelled]
+ *                 description: >
+ *                   Chỉ hóa đơn ở trạng thái **draft** mới được phép đổi status qua API này.
+ *                   Không được phép đặt trạng thái `paid` hoặc `transfer_pending` qua API này.
+ *                 enum: [draft, sent, cancelled, overdue]
  *     responses:
  *       200:
- *         description: Cập nhật thành công
+ *         description: Cập nhật hóa đơn thành công
  */
 router.patch(
   "/:id",
@@ -407,6 +446,32 @@ router.patch(
   checkStaffPermission(PERMISSIONS.INVOICE_EDIT),
   checkSubscription,
   invoiceController.updateInvoice
+);
+
+/**
+ * @swagger
+ * /landlords/invoices/{id}:
+ *   delete:
+ *     summary: Xóa hóa đơn (chỉ draft)
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Xóa hóa đơn thành công
+ */
+router.delete(
+  "/:id",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_EDIT),
+  checkSubscription,
+  invoiceController.deleteInvoice
 );
 
 /**

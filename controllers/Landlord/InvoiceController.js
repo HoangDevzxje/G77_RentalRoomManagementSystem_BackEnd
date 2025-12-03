@@ -75,8 +75,9 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
     : "N/A";
 
-  let html = `<p>Chào ${tenant.userInfo?.fullName || "Anh/Chị"
-    },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  let html = `<p>Chào ${
+    tenant.userInfo?.fullName || "Anh/Chị"
+  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
   html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
   html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
   html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
@@ -152,8 +153,9 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
     const amount = Number(invoice.totalAmount) || 0;
     if (amount <= 0) return;
 
-    const title = `Thu tiền hóa đơn ${invoice.invoiceNumber || String(invoice._id)
-      }`;
+    const title = `Thu tiền hóa đơn ${
+      invoice.invoiceNumber || String(invoice._id)
+    }`;
 
     const descParts = [];
     if (invoice.roomSnapshot?.roomNumber) {
@@ -222,10 +224,11 @@ exports.generateMonthlyInvoice = async (req, res) => {
     }
 
     // 1. Kiểm tra phòng + quyền landlord
-    const room = await Room.findById(roomId).populate({
-      path: "buildingId",
-      select: "landlordId status isDeleted",
-    })
+    const room = await Room.findById(roomId)
+      .populate({
+        path: "buildingId",
+        select: "landlordId status isDeleted",
+      })
       .lean();
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
@@ -385,12 +388,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-            ? "Gửi xe"
-            : sv.name === "cleaning"
-              ? "Phí vệ sinh"
-              : sv.name === "security"
-                ? "Bảo vệ"
-                : "Dịch vụ khác");
+          ? "Gửi xe"
+          : sv.name === "cleaning"
+          ? "Phí vệ sinh"
+          : sv.name === "security"
+          ? "Bảo vệ"
+          : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -547,8 +550,7 @@ exports.getInvoices = async (req, res) => {
           });
         }
         filter.buildingId = buildingId;
-      }
-      else {
+      } else {
         filter.buildingId = { $in: req.staff.assignedBuildingIds };
       }
 
@@ -656,7 +658,9 @@ exports.getInvoiceDetail = async (req, res) => {
       const buildingId = invoice.buildingId?._id?.toString();
 
       if (!buildingId) {
-        return res.status(500).json({ message: "Dữ liệu hóa đơn bị lỗi (thiếu buildingId)" });
+        return res
+          .status(500)
+          .json({ message: "Dữ liệu hóa đơn bị lỗi (thiếu buildingId)" });
       }
 
       if (!req.staff.assignedBuildingIds.includes(buildingId)) {
@@ -682,22 +686,7 @@ exports.updateInvoice = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
 
-    const allowedFields = [
-      "items",
-      "note",
-      "discountAmount",
-      "lateFee",
-      "status",
-    ];
-
-    const update = {};
-    for (const field of allowedFields) {
-      if (field in req.body) {
-        update[field] = req.body[field];
-      }
-    }
-
-    let invoice = await Invoice.findOne({
+    const invoice = await Invoice.findOne({
       _id: id,
       landlordId,
       isDeleted: false,
@@ -706,33 +695,271 @@ exports.updateInvoice = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
-    if (isStaff) {
-      const buildingId = invoice.buildingId?._id?.toString();
 
+    // Check quyền staff theo tòa nhà
+    if (isStaff) {
+      const buildingId = invoice.buildingId?.toString();
       if (!buildingId) {
-        return res.status(500).json({ message: "Hóa đơn không có thông tin tòa nhà" });
+        return res
+          .status(500)
+          .json({ message: "Không xác định được tòa nhà của hóa đơn" });
       }
 
-      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+      const allowed = (req.staff.assignedBuildingIds || []).map(String);
+      if (!allowed.includes(buildingId)) {
         return res.status(403).json({
           message: "Bạn không được phép sửa hóa đơn của tòa nhà này",
           buildingId,
-          yourAssigned: req.staff.assignedBuildingIds,
+          yourAssigned: allowed,
         });
       }
     }
-    Object.assign(invoice, update);
 
-    invoice.recalculateTotals();
+    const currentStatus = invoice.status;
+
+    // Không cho sửa trong các trạng thái bị khóa
+    if (["transfer_pending", "paid", "cancelled"].includes(currentStatus)) {
+      return res.status(400).json({
+        message: `Hóa đơn ở trạng thái '${currentStatus}' không được phép cập nhật`,
+      });
+    }
+
+    // Map quyền sửa theo trạng thái
+    const editableFieldsByStatus = {
+      draft: ["items", "note", "discountAmount", "lateFee", "status"],
+      sent: ["items", "note", "discountAmount", "lateFee"], // chỉ thêm/sửa item other
+      overdue: ["note", "discountAmount", "lateFee"], // không động tới items
+    };
+
+    const editableFields = editableFieldsByStatus[currentStatus] || [];
+
+    const body = req.body || {};
+    const payload = {};
+
+    // Lọc field theo trạng thái
+    for (const field of editableFields) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) {
+        payload[field] = body[field];
+      }
+    }
+
+    // Xử lý riêng cho status (chỉ cho đổi ở trạng thái draft)
+    if (
+      currentStatus === "draft" &&
+      Object.prototype.hasOwnProperty.call(body, "status")
+    ) {
+      const nextStatus = body.status;
+      const allowedNextStatuses = ["draft", "sent", "cancelled", "overdue"];
+
+      if (!allowedNextStatuses.includes(nextStatus)) {
+        return res.status(400).json({
+          message:
+            "Trạng thái mới không hợp lệ. Chỉ cho phép: draft, sent, cancelled, overdue",
+        });
+      }
+
+      // Không cho chuyển trực tiếp sang paid / transfer_pending bằng API này
+      if (["paid", "transfer_pending"].includes(nextStatus)) {
+        return res.status(400).json({
+          message:
+            "Không thể đặt trạng thái paid/transfer_pending bằng API update. Hãy dùng API thanh toán.",
+        });
+      }
+
+      payload.status = nextStatus;
+    }
+
+    // --- RULE ĐẶC BIỆT KHI STATUS = 'sent' VÀ CÓ items ---
+    if (
+      currentStatus === "sent" &&
+      Object.prototype.hasOwnProperty.call(payload, "items")
+    ) {
+      if (!Array.isArray(payload.items)) {
+        return res.status(400).json({
+          message: "Trường items phải là một mảng",
+        });
+      }
+
+      // Lấy danh sách item KHÔNG phải 'other' trước & sau update
+      const oldNonOther = (invoice.items || []).filter(
+        (it) => it && it.type && it.type !== "other"
+      );
+      const newNonOther = (payload.items || []).filter(
+        (it) => it && it.type && it.type !== "other"
+      );
+
+      // Hàm chuẩn hóa item không phải other để so sánh
+      const normalizeItem = (it) => {
+        return JSON.stringify({
+          type: it.type || null,
+          label: it.label || null,
+          description: it.description || null,
+          quantity: Number(it.quantity) || 0,
+          unitPrice: Number(it.unitPrice) || 0,
+          amount: Number(it.amount) || 0,
+          utilityReadingId: it.utilityReadingId
+            ? String(it.utilityReadingId)
+            : null,
+        });
+      };
+
+      const buildMultiSet = (items) => {
+        const map = new Map();
+        for (const it of items) {
+          const key = normalizeItem(it);
+          map.set(key, (map.get(key) || 0) + 1);
+        }
+        return map;
+      };
+
+      const equalMultiSet = (a, b) => {
+        if (a.size !== b.size) return false;
+        for (const [key, count] of a.entries()) {
+          if (!b.has(key) || b.get(key) !== count) return false;
+        }
+        return true;
+      };
+
+      const oldSet = buildMultiSet(oldNonOther);
+      const newSet = buildMultiSet(newNonOther);
+
+      if (!equalMultiSet(oldSet, newSet)) {
+        return res.status(400).json({
+          message:
+            "Ở trạng thái 'sent', không được phép sửa/xóa/thêm các dòng tiền phòng/điện/nước/dịch vụ. Chỉ được thêm/chỉnh sửa các dòng type = 'other'.",
+        });
+      }
+      // => qua được đoạn này nghĩa là non-other giữ nguyên 100%
+      // chỉ khác ở các dòng 'other' (cho phép)
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return res.status(400).json({
+        message:
+          "Không có dữ liệu hợp lệ để cập nhật cho trạng thái hiện tại của hóa đơn",
+      });
+    }
+
+    // Gán dữ liệu
+    if (Object.prototype.hasOwnProperty.call(payload, "items")) {
+      invoice.items = Array.isArray(payload.items) ? payload.items : [];
+    }
+    if (payload.note != null) {
+      invoice.note = payload.note;
+    }
+    if (payload.discountAmount != null) {
+      invoice.discountAmount = Number(payload.discountAmount) || 0;
+    }
+    if (payload.lateFee != null) {
+      invoice.lateFee = Number(payload.lateFee) || 0;
+    }
+    if (payload.status) {
+      invoice.status = payload.status;
+      if (payload.status === "cancelled") {
+        invoice.cancelledAt = new Date();
+      }
+    }
+
+    invoice.updatedBy = req.user._id;
+
+    // Recalc tổng nếu có thay đổi liên quan tiền
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "items") ||
+      Object.prototype.hasOwnProperty.call(payload, "discountAmount") ||
+      Object.prototype.hasOwnProperty.call(payload, "lateFee")
+    ) {
+      invoice.recalculateTotals();
+    }
+
     await invoice.save();
 
     return res.json({
-      message: "Cập nhật hoá đơn thành công",
+      message: "Cập nhật hóa đơn thành công",
       data: invoice,
     });
   } catch (e) {
     console.error("updateInvoice error:", e);
-    return res.status(500).json({ message: "Server error", error: e.message });
+    return res.status(400).json({ message: e.message });
+  }
+};
+
+exports.deleteInvoice = async (req, res) => {
+  try {
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
+    const { id } = req.params;
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      landlordId,
+      isDeleted: false,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+    }
+
+    // Check quyền staff theo tòa nhà
+    if (isStaff) {
+      const buildingId = invoice.buildingId?.toString();
+      if (!buildingId) {
+        return res
+          .status(500)
+          .json({ message: "Không xác định được tòa nhà của hóa đơn" });
+      }
+
+      const allowed = (req.staff.assignedBuildingIds || []).map(String);
+      if (!allowed.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được phép xóa hóa đơn của tòa nhà này",
+          buildingId,
+          yourAssigned: allowed,
+        });
+      }
+    }
+
+    // Chỉ cho xóa hóa đơn ở trạng thái draft
+    if (invoice.status !== "draft") {
+      return res.status(400).json({
+        message:
+          "Chỉ được xóa hóa đơn ở trạng thái draft. Các trạng thái khác hãy dùng Hủy (cancelled).",
+      });
+    }
+
+    // Gỡ link với UtilityReading (nếu có) để có thể tạo hóa đơn lại
+    const utilityReadingIds =
+      (invoice.items || [])
+        .map((it) => it.utilityReadingId)
+        .filter((id) => !!id) || [];
+
+    if (utilityReadingIds.length > 0) {
+      await UtilityReading.updateMany(
+        {
+          _id: { $in: utilityReadingIds },
+          landlordId,
+          isDeleted: false,
+          status: "billed",
+          invoiceId: invoice._id,
+        },
+        {
+          $set: {
+            status: "confirmed",
+            invoiceId: null,
+          },
+        }
+      );
+    }
+
+    invoice.isDeleted = true;
+    invoice.deletedAt = new Date();
+    await invoice.save();
+
+    return res.json({
+      message: "Xóa hóa đơn thành công (soft delete)",
+    });
+  } catch (e) {
+    console.error("deleteInvoice error:", e);
+    return res.status(400).json({ message: e.message });
   }
 };
 
@@ -766,12 +993,15 @@ exports.markInvoicePaid = async (req, res) => {
       const buildingId = invoice.buildingId?._id?.toString();
 
       if (!buildingId) {
-        return res.status(500).json({ message: "Hóa đơn không có thông tin tòa nhà" });
+        return res
+          .status(500)
+          .json({ message: "Hóa đơn không có thông tin tòa nhà" });
       }
 
       if (!req.staff.assignedBuildingIds.includes(buildingId)) {
         return res.status(403).json({
-          message: "Bạn không được phép ghi nhận thanh toán cho hóa đơn của tòa nhà này",
+          message:
+            "Bạn không được phép ghi nhận thanh toán cho hóa đơn của tòa nhà này",
           buildingId,
           yourAssigned: req.staff.assignedBuildingIds,
         });
@@ -841,7 +1071,9 @@ exports.markInvoicePaid = async (req, res) => {
     await ensureRevenueLogForInvoicePaid(invoice, { actorId: req.user?._id });
     const room = invoice.roomId;
     if (room && room.currentTenantIds && room.currentTenantIds.length > 0) {
-      const affectedTenantIds = room.currentTenantIds.map(id => id.toString());
+      const affectedTenantIds = room.currentTenantIds.map((id) =>
+        id.toString()
+      );
       const roomNumber = room.roomNumber;
       const buildingName = room.buildingId?.name;
 
@@ -851,7 +1083,8 @@ exports.markInvoicePaid = async (req, res) => {
         landlordId,
         createByRole: "system",
         title: "Thanh toán thành công",
-        content: `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n` +
+        content:
+          `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n` +
           `Phòng ${roomNumber} – ${buildingName}\n` +
           `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
           `Đã được ghi nhận thanh toán thành công vào ngày ${paidDateStr}.\n` +
@@ -875,12 +1108,16 @@ exports.markInvoicePaid = async (req, res) => {
           },
         };
 
-        affectedTenantIds.forEach(tenantId => {
+        affectedTenantIds.forEach((tenantId) => {
           io.to(`user:${tenantId}`).emit("new_notification", payload);
-          io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+          io.to(`user:${tenantId}`).emit("unread_count_increment", {
+            increment: 1,
+          });
         });
 
-        console.log(`[PAYMENT] ĐÃ XÁC NHẬN] Đã gửi thông báo thanh toán thành công đến ${affectedTenantIds.length} người – Hóa đơn ${invoice.invoiceNumber}`);
+        console.log(
+          `[PAYMENT] ĐÃ XÁC NHẬN] Đã gửi thông báo thanh toán thành công đến ${affectedTenantIds.length} người – Hóa đơn ${invoice.invoiceNumber}`
+        );
       }
     }
     return res.json({
@@ -914,7 +1151,7 @@ exports.sendInvoiceEmail = async (req, res) => {
         },
       })
       .lean();
-    console.log(invoice)
+    console.log(invoice);
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
@@ -938,7 +1175,9 @@ exports.sendInvoiceEmail = async (req, res) => {
         skipped: true,
       });
     }
-    const affectedTenantIds = invoice.roomId.currentTenantIds.map(id => id.toString());
+    const affectedTenantIds = invoice.roomId.currentTenantIds.map((id) =>
+      id.toString()
+    );
 
     const roomNumber = invoice.roomId.roomNumber;
     const buildingName = invoice.roomId.buildingId?.name;
@@ -951,7 +1190,8 @@ exports.sendInvoiceEmail = async (req, res) => {
       landlordId,
       createByRole: "system",
       title: "Hóa đơn mới",
-      content: `Bạn nhận được hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n` +
+      content:
+        `Bạn nhận được hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n` +
         `phòng ${roomNumber} – ${buildingName}\n` +
         `với số tiền ${invoice.totalAmount.toLocaleString("vi-VN")} ₫.\n` +
         `Vui lòng thanh toán trước ngày ${dueDateStr}.`,
@@ -973,12 +1213,16 @@ exports.sendInvoiceEmail = async (req, res) => {
         },
       };
 
-      affectedTenantIds.forEach(tenantId => {
+      affectedTenantIds.forEach((tenantId) => {
         io.to(`user:${tenantId}`).emit("new_notification", payload);
-        io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+        io.to(`user:${tenantId}`).emit("unread_count_increment", {
+          increment: 1,
+        });
       });
 
-      console.log(`[INVOICE] Đã gửi thông báo hóa đơn đến ${affectedTenantIds.length} người`);
+      console.log(
+        `[INVOICE] Đã gửi thông báo hóa đơn đến ${affectedTenantIds.length} người`
+      );
     }
     // Nếu email đã được gửi thành công, cập nhật trạng thái hoá đơn sang "sent" nếu đang là "draft"
     try {
@@ -1229,12 +1473,12 @@ exports.generateInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-            ? "Gửi xe"
-            : sv.name === "cleaning"
-              ? "Phí vệ sinh"
-              : sv.name === "security"
-                ? "Bảo vệ"
-                : "Dịch vụ khác");
+          ? "Gửi xe"
+          : sv.name === "cleaning"
+          ? "Phí vệ sinh"
+          : sv.name === "security"
+          ? "Bảo vệ"
+          : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -1591,7 +1835,10 @@ exports.listRoomsForInvoice = async (req, res) => {
         const room = await Room.findById(roomId).select("buildingId").lean();
         if (room) {
           const roomBuildingId = room.buildingId?.toString();
-          if (roomBuildingId && !req.staff.assignedBuildingIds.includes(roomBuildingId)) {
+          if (
+            roomBuildingId &&
+            !req.staff.assignedBuildingIds.includes(roomBuildingId)
+          ) {
             return res.status(403).json({
               message: "Phòng này không thuộc tòa nhà bạn được quản lý",
             });
@@ -1797,7 +2044,7 @@ exports.sendAllDraftInvoices = async (req, res) => {
 
         await Invoice.updateOne({ _id: inv._id }, { $set: { status: "sent" } });
         const tenantIds = inv.roomId?.currentTenantIds || [];
-        const affectedTenantIds = tenantIds.map(id => id.toString());
+        const affectedTenantIds = tenantIds.map((id) => id.toString());
 
         if (affectedTenantIds.length > 0) {
           const roomNumber = inv.roomId.roomNumber;
@@ -1810,7 +2057,8 @@ exports.sendAllDraftInvoices = async (req, res) => {
             landlordId,
             createByRole: "system",
             title: "Hóa đơn mới",
-            content: `Hóa đơn tháng ${inv.periodMonth}/${inv.periodYear} – phòng ${roomNumber}, ${buildingName}\n` +
+            content:
+              `Hóa đơn tháng ${inv.periodMonth}/${inv.periodYear} – phòng ${roomNumber}, ${buildingName}\n` +
               `Số tiền: ${inv.totalAmount.toLocaleString("vi-VN")} ₫\n` +
               `Hạn thanh toán: ${dueDateStr}`,
             type: "reminder",
@@ -1830,12 +2078,16 @@ exports.sendAllDraftInvoices = async (req, res) => {
               },
             };
 
-            affectedTenantIds.forEach(tenantId => {
+            affectedTenantIds.forEach((tenantId) => {
               io.to(`user:${tenantId}`).emit("new_notification", payload);
-              io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+              io.to(`user:${tenantId}`).emit("unread_count_increment", {
+                increment: 1,
+              });
             });
           }
-          console.log(`[BATCH INVOICE] Đã gửi thông báo cho ${affectedTenantIds.length} người – Hóa đơn ${inv.invoiceNumber}`);
+          console.log(
+            `[BATCH INVOICE] Đã gửi thông báo cho ${affectedTenantIds.length} người – Hóa đơn ${inv.invoiceNumber}`
+          );
         }
 
         row.success = true;
