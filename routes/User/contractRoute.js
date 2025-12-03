@@ -598,7 +598,7 @@ router.get(
 );
 router.patch(
   "/:id/request-terminate",
-  checkAuthorize,
+  checkAuthorize("resident"),
   contractController.requestTerminate
 );
 

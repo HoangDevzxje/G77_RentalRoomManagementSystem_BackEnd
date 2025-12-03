@@ -1228,14 +1228,14 @@ router.get(
 );
 router.patch(
   "/:id/approve-terminate",
-  checkAuthorize,
+  checkAuthorize(["landlord", "staff"]),
   checkSubscription,
   contractController.approveTerminate
 );
 
 router.patch(
   "/:id/reject-terminate",
-  checkAuthorize,
+  checkAuthorize(["landlord", "staff"]),
   checkSubscription,
   contractController.rejectTerminate
 );
