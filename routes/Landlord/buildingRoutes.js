@@ -278,7 +278,7 @@ router.post(
  */
 router.get(
   "/:id",
-  checkAuthorize(["admin", "landlord", "staff"]),
+  checkAuthorize(["admin", "landlord", "staff", "resident"]),
   BuildingCtrl.getById
 );
 
