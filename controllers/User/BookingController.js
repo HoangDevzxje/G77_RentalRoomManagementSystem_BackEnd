@@ -212,7 +212,7 @@ const create = async (req, res) => {
         content: `${contactName} (${contactPhone}) muốn xem phòng của tòa nhà ${schedule.buildingId.name} vào ngày ${dayjs(date).format("DD/MM/YYYY")} lúc ${timeSlot}`,
         // type: "booking_request",
         target: { buildings: [buildingId] },
-        link: `/landlord/bookings`,
+        link: `/landlord/appointment-management`,
       });
 
       const payload = {
@@ -270,7 +270,7 @@ const getMyBookings = async (req, res) => {
       tenantId,
       isDeleted: false
     })
-      .populate("postId", "title address")
+      .populate("postId", "title address roomIds")
       .populate("buildingId", "name")
       .populate("landlordId", "email")
       .sort({ createdAt: -1 });

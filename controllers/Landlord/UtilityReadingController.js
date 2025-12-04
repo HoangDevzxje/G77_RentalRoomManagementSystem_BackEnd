@@ -361,7 +361,7 @@ exports.getReading = async (req, res) => {
 /**
  * PUT /landlords/utility-readings/:id
  * Chỉ số đã billed (hoặc có invoiceId) thì không cho sửa index/tiền/kỳ/phòng.
- * Chỉ cho phép sửa ePreviousIndex/wPreviousIndex ở bản ghi ĐẦU TIÊN của phòng đó.
+ * Chỉ cho phép sửa ePreviousIndex/wPreviousIndex lớn hơn hoặc bằng chỉ số cũ.
  */
 exports.updateReading = async (req, res) => {
   try {
@@ -400,22 +400,23 @@ exports.updateReading = async (req, res) => {
     if (!reading) {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
     }
+
+    // Kiểm tra quyền staff
     if (isStaff) {
       const buildingIdFromRoom = reading.roomId?.buildingId?._id?.toString();
       if (!buildingIdFromRoom) {
         return res.status(500).json({ message: "Dữ liệu phòng/tòa nhà bị lỗi" });
       }
-
       if (!req.staff.assignedBuildingIds.includes(buildingIdFromRoom)) {
         return res.status(403).json({
           message: "Bạn không được phép chỉnh sửa chỉ số của tòa nhà này",
-          buildingId: buildingIdFromRoom,
-          yourAssigned: req.staff.assignedBuildingIds,
         });
       }
     }
+
     const locked = reading.status === "billed" || !!reading.invoiceId;
 
+    // Nếu đã lập hóa đơn → chỉ được sửa note hoặc status
     if (locked) {
       if (
         ePreviousIndex != null ||
@@ -436,9 +437,11 @@ exports.updateReading = async (req, res) => {
       }
     }
 
-    // NEW: kiểm tra bản ghi đầu tiên của phòng
     let canEditPrevIndex = false;
+    let isFirstReadingOfRoom = false;
+
     if (!locked && (ePreviousIndex != null || wPreviousIndex != null)) {
+      // Kiểm tra đây có phải bản ghi đầu tiên của phòng không
       const firstReading = await UtilityReading.findOne({
         landlordId,
         roomId: reading.roomId,
@@ -448,111 +451,98 @@ exports.updateReading = async (req, res) => {
         .select("_id")
         .lean();
 
-      if (firstReading && String(firstReading._id) === String(reading._id)) {
+      isFirstReadingOfRoom = firstReading && String(firstReading._id) === String(reading._id);
+
+      if (isFirstReadingOfRoom) {
+        // Kỳ đầu tiên → cho phép sửa thoải mái (bao gồm cả giảm về 0)
         canEditPrevIndex = true;
       } else {
-        return res.status(400).json({
-          message:
-            "Chỉ được phép chỉnh ePreviousIndex / wPreviousIndex ở bản ghi chỉ số ĐẦU TIÊN của phòng.",
-        });
+        // Các kỳ sau → chỉ được TĂNG hoặc giữ nguyên PreviousIndex, KHÔNG ĐƯỢC GIẢM
+        const newEPrev = ePreviousIndex !== undefined ? Number(ePreviousIndex) : reading.ePreviousIndex;
+        const newWPrev = wPreviousIndex !== undefined ? Number(wPreviousIndex) : reading.wPreviousIndex;
+
+        if (
+          (ePreviousIndex != null && newEPrev < reading.ePreviousIndex) ||
+          (wPreviousIndex != null && newWPrev < reading.wPreviousIndex)
+        ) {
+          return res.status(400).json({
+            message:
+              "Không được giảm chỉ số đầu kỳ. Chỉ được phép tăng hoặc giữ nguyên.",
+          });
+        }
+        canEditPrevIndex = true; // được tăng → cho phép sửa
       }
     }
-    // END NEW
 
-    // Nếu chưa lock, cho phép cập nhật nhưng phải validate
     if (!locked) {
-      // ePreviousIndex - chỉ cho sửa nếu là bản đầu tiên (canEditPrevIndex)
-      if (ePreviousIndex != null) {
-        if (!canEditPrevIndex) {
-          return res.status(400).json({
-            message:
-              "Chỉ được chỉnh ePreviousIndex ở bản ghi chỉ số đầu tiên của phòng.",
-          });
-        }
-        const prev = Number(ePreviousIndex);
-        if (!Number.isFinite(prev) || prev < 0) {
-          return res
-            .status(400)
-            .json({ message: "ePreviousIndex phải là số >= 0" });
-        }
-        reading.ePreviousIndex = prev;
+      // Không cho đổi room/building/kỳ
+      if (roomId != null || buildingId != null || periodMonth != null || periodYear != null) {
+        return res.status(400).json({
+          message: "Không được thay đổi phòng/tòa/kỳ. Vui lòng xoá và tạo lại bản ghi.",
+        });
       }
 
-      // wPreviousIndex - chỉ cho sửa nếu là bản đầu tiên (canEditPrevIndex)
+      // Cập nhật ePreviousIndex
+      if (ePreviousIndex != null) {
+        if (!canEditPrevIndex) {
+          return res.status(400).json({ message: "Không được phép sửa ePreviousIndex." });
+        }
+        const val = Number(ePreviousIndex);
+        if (!Number.isFinite(val) || val < 0) {
+          return res.status(400).json({ message: "ePreviousIndex phải là số >= 0" });
+        }
+        reading.ePreviousIndex = val;
+      }
+
+      // Cập nhật wPreviousIndex
       if (wPreviousIndex != null) {
         if (!canEditPrevIndex) {
-          return res.status(400).json({
-            message:
-              "Chỉ được chỉnh wPreviousIndex ở bản ghi chỉ số đầu tiên của phòng.",
-          });
+          return res.status(400).json({ message: "Không được phép sửa wPreviousIndex." });
         }
-        const prev = Number(wPreviousIndex);
-        if (!Number.isFinite(prev) || prev < 0) {
-          return res
-            .status(400)
-            .json({ message: "wPreviousIndex phải là số >= 0" });
+        const val = Number(wPreviousIndex);
+        if (!Number.isFinite(val) || val < 0) {
+          return res.status(400).json({ message: "wPreviousIndex phải là số >= 0" });
         }
-        reading.wPreviousIndex = prev;
+        reading.wPreviousIndex = val;
       }
 
       // eCurrentIndex
       if (eCurrentIndex != null) {
-        const curr = Number(eCurrentIndex);
-        if (!Number.isFinite(curr) || curr < 0) {
-          return res
-            .status(400)
-            .json({ message: "eCurrentIndex phải là số >= 0" });
+        const val = Number(eCurrentIndex);
+        if (!Number.isFinite(val) || val < 0) {
+          return res.status(400).json({ message: "eCurrentIndex phải là số >= 0" });
         }
-        reading.eCurrentIndex = curr;
+        reading.eCurrentIndex = val;
       }
 
       // wCurrentIndex
       if (wCurrentIndex != null) {
-        const curr = Number(wCurrentIndex);
-        if (!Number.isFinite(curr) || curr < 0) {
-          return res
-            .status(400)
-            .json({ message: "wCurrentIndex phải là số >= 0" });
+        const val = Number(wCurrentIndex);
+        if (!Number.isFinite(val) || val < 0) {
+          return res.status(400).json({ message: "wCurrentIndex phải là số >= 0" });
         }
-        reading.wCurrentIndex = curr;
+        reading.wCurrentIndex = val;
       }
 
       // eUnitPrice
       if (eUnitPrice != null) {
-        const price = Number(eUnitPrice);
-        if (!Number.isFinite(price) || price < 0) {
-          return res
-            .status(400)
-            .json({ message: "eUnitPrice phải là số >= 0" });
+        const val = Number(eUnitPrice);
+        if (!Number.isFinite(val) || val < 0) {
+          return res.status(400).json({ message: "eUnitPrice phải là số >= 0" });
         }
-        reading.eUnitPrice = price;
+        reading.eUnitPrice = val;
       }
 
       // wUnitPrice
       if (wUnitPrice != null) {
-        const price = Number(wUnitPrice);
-        if (!Number.isFinite(price) || price < 0) {
-          return res
-            .status(400)
-            .json({ message: "wUnitPrice phải là số >= 0" });
+        const val = Number(wUnitPrice);
+        if (!Number.isFinite(val) || val < 0) {
+          return res.status(400).json({ message: "wUnitPrice phải là số >= 0" });
         }
-        reading.wUnitPrice = price;
+        reading.wUnitPrice = val;
       }
 
-      // Không cho đổi roomId / buildingId / periodMonth / periodYear qua API update
-      if (
-        roomId != null ||
-        buildingId != null ||
-        periodMonth != null ||
-        periodYear != null
-      ) {
-        return res.status(400).json({
-          message:
-            "Không được thay đổi phòng / tòa / kỳ qua API update. Vui lòng xoá và tạo lại.",
-        });
-      }
-
-      // Recalculate consumptions & amounts
+      // Tính lại tiêu thụ & thành tiền
       if (
         reading.eCurrentIndex != null &&
         Number.isFinite(reading.eCurrentIndex) &&
@@ -560,16 +550,11 @@ exports.updateReading = async (req, res) => {
       ) {
         if (reading.eCurrentIndex < reading.ePreviousIndex) {
           return res.status(400).json({
-            message:
-              "eCurrentIndex phải >= ePreviousIndex (chỉ số điện kỳ trước)",
+            message: "eCurrentIndex phải ≥ ePreviousIndex",
           });
         }
         reading.eConsumption = reading.eCurrentIndex - reading.ePreviousIndex;
-        if (
-          reading.eUnitPrice != null &&
-          Number.isFinite(reading.eUnitPrice) &&
-          reading.eUnitPrice >= 0
-        ) {
+        if (reading.eUnitPrice >= 0) {
           reading.eAmount = reading.eConsumption * reading.eUnitPrice;
         }
       }
@@ -581,42 +566,33 @@ exports.updateReading = async (req, res) => {
       ) {
         if (reading.wCurrentIndex < reading.wPreviousIndex) {
           return res.status(400).json({
-            message:
-              "wCurrentIndex phải >= wPreviousIndex (chỉ số nước kỳ trước)",
+            message: "wCurrentIndex phải ≥ wPreviousIndex",
           });
         }
         reading.wConsumption = reading.wCurrentIndex - reading.wPreviousIndex;
-        if (
-          reading.wUnitPrice != null &&
-          Number.isFinite(reading.wUnitPrice) &&
-          reading.wUnitPrice >= 0
-        ) {
+        if (reading.wUnitPrice >= 0) {
           reading.wAmount = reading.wConsumption * reading.wUnitPrice;
         }
       }
     }
 
-    // Các field luôn cho phép (kể cả locked)
-    if (typeof note === "string") {
-      reading.note = note;
-    }
-
+    // Luôn cho phép cập nhật note và status
+    if (typeof note === "string") reading.note = note.trim();
     if (status && ["draft", "confirmed", "billed"].includes(status)) {
       reading.status = status;
     }
 
     await reading.save();
 
-    res.json({
+    return res.json({
       message: "Cập nhật chỉ số tiện ích thành công",
       data: reading.toJSON(),
     });
   } catch (e) {
     console.error("updateReading error:", e);
-    res.status(400).json({ message: e.message });
+    return res.status(500).json({ message: e.message || "Lỗi server" });
   }
 };
-
 /**
  * POST /landlords/utility-readings/:id/confirm
  * Chỉ cho confirm khi đang draft.
