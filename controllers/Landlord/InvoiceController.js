@@ -786,15 +786,22 @@ exports.updateInvoice = async (req, res) => {
         });
       }
 
-      // Lấy danh sách item KHÔNG phải 'other' trước & sau update
-      const oldNonOther = (invoice.items || []).filter(
-        (it) => it && it.type && it.type !== "other"
-      );
-      const newNonOther = (payload.items || []).filter(
+      const oldItems = invoice.items || [];
+
+      // Tách item gốc (non-other) và item other trong DB
+      const oldNonOther = oldItems.filter(
         (it) => it && it.type && it.type !== "other"
       );
 
-      // Hàm chuẩn hóa item không phải other để so sánh
+      // Tách item non-other & other trong payload
+      const payloadNonOther = (payload.items || []).filter(
+        (it) => it && it.type && it.type !== "other"
+      );
+      const payloadOther = (payload.items || []).filter(
+        (it) => it && it.type === "other"
+      );
+
+      // Hàm chuẩn hóa item non-other để so sánh
       const normalizeItem = (it) => {
         return JSON.stringify({
           type: it.type || null,
@@ -826,17 +833,24 @@ exports.updateInvoice = async (req, res) => {
         return true;
       };
 
-      const oldSet = buildMultiSet(oldNonOther);
-      const newSet = buildMultiSet(newNonOther);
+      // Nếu payload có gửi kèm non-other thì phải y chang DB (không được sửa/xoá/thêm)
+      if (payloadNonOther.length > 0) {
+        const oldSet = buildMultiSet(oldNonOther);
+        const newSet = buildMultiSet(payloadNonOther);
 
-      if (!equalMultiSet(oldSet, newSet)) {
-        return res.status(400).json({
-          message:
-            "Ở trạng thái 'sent', không được phép sửa/xóa/thêm các dòng tiền phòng/điện/nước/dịch vụ. Chỉ được thêm/chỉnh sửa các dòng type = 'other'.",
-        });
+        if (!equalMultiSet(oldSet, newSet)) {
+          return res.status(400).json({
+            message:
+              "Ở trạng thái 'sent', không được phép sửa/xóa/thêm các dòng tiền phòng/điện/nước/dịch vụ. Chỉ được thêm/chỉnh sửa các dòng type = 'other'.",
+          });
+        }
       }
-      // => qua được đoạn này nghĩa là non-other giữ nguyên 100%
-      // chỉ khác ở các dòng 'other' (cho phép)
+
+      // Tới đây coi như non-other giữ nguyên. Ta sẽ:
+      // - Giữ nguyên toàn bộ non-other trong DB
+      // - Thay toàn bộ các dòng other bằng list other từ payload (cho phép chỉnh/sửa/xoá other cũ, thêm other mới)
+      const newItems = [...oldNonOther, ...payloadOther];
+      payload.items = newItems; // override để bên dưới gán invoice.items = payload.items
     }
 
     if (Object.keys(payload).length === 0) {
