@@ -38,16 +38,18 @@ exports.listReadings = async (req, res) => {
     const filter = { isDeleted: false, landlordId };
 
     if (isStaff) {
-      const allowedBuildingIds = req.staff.assignedBuildingIds.map(id => id.toString());
+      const allowedBuildingIds = req.staff.assignedBuildingIds.map((id) =>
+        id.toString()
+      );
 
       if (buildingId) {
         if (!allowedBuildingIds.includes(buildingId.toString())) {
-          return res.status(403).json({ message: "Bạn không quản lý tòa nhà này" });
+          return res
+            .status(403)
+            .json({ message: "Bạn không quản lý tòa nhà này" });
         }
         filter.buildingId = buildingId;
-      }
-
-      else if (roomId) {
+      } else if (roomId) {
         const room = await Room.findById(roomId)
           .select("buildingId isDeleted")
           .lean();
@@ -58,13 +60,15 @@ exports.listReadings = async (req, res) => {
 
         const roomBuildingId = room.buildingId.toString();
         if (!allowedBuildingIds.includes(roomBuildingId)) {
-          return res.status(403).json({ message: "Phòng này không thuộc tòa nhà bạn được quản lý" });
+          return res
+            .status(403)
+            .json({
+              message: "Phòng này không thuộc tòa nhà bạn được quản lý",
+            });
         }
 
         filter.roomId = roomId;
-      }
-
-      else {
+      } else {
         filter.buildingId = { $in: req.staff.assignedBuildingIds };
       }
     } else {
@@ -120,12 +124,12 @@ async function getPreviousIndexes(roomId, landlordId) {
     return {
       ePreviousIndex:
         typeof last.eCurrentIndex === "number" &&
-          Number.isFinite(last.eCurrentIndex)
+        Number.isFinite(last.eCurrentIndex)
           ? last.eCurrentIndex
           : 0,
       wPreviousIndex:
         typeof last.wCurrentIndex === "number" &&
-          Number.isFinite(last.wCurrentIndex)
+        Number.isFinite(last.wCurrentIndex)
           ? last.wCurrentIndex
           : 0,
     };
@@ -228,7 +232,10 @@ exports.createReading = async (req, res) => {
     }
 
     // previous indexes
-    const { ePreviousIndex, wPreviousIndex } = await getPreviousIndexes(roomId, landlordId);
+    const { ePreviousIndex, wPreviousIndex } = await getPreviousIndexes(
+      roomId,
+      landlordId
+    );
 
     // Validate current indexes
     let eCurr = null;
@@ -340,7 +347,9 @@ exports.getReading = async (req, res) => {
       const buildingIdFromRoom = doc.roomId?.buildingId?.toString();
       if (!buildingIdFromRoom) {
         // Trường hợp cực hiếm: roomId bị null hoặc populate lỗi
-        return res.status(403).json({ message: "Không xác định được tòa nhà của chỉ số này" });
+        return res
+          .status(403)
+          .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
       if (!req.staff.assignedBuildingIds.includes(buildingIdFromRoom)) {
@@ -405,7 +414,9 @@ exports.updateReading = async (req, res) => {
     if (isStaff) {
       const buildingIdFromRoom = reading.roomId?.buildingId?._id?.toString();
       if (!buildingIdFromRoom) {
-        return res.status(500).json({ message: "Dữ liệu phòng/tòa nhà bị lỗi" });
+        return res
+          .status(500)
+          .json({ message: "Dữ liệu phòng/tòa nhà bị lỗi" });
       }
       if (!req.staff.assignedBuildingIds.includes(buildingIdFromRoom)) {
         return res.status(403).json({
@@ -414,7 +425,9 @@ exports.updateReading = async (req, res) => {
       }
     }
 
-    const locked = reading.status === "billed" || !!reading.invoiceId;
+    const lockedStatuses = ["confirmed", "billed"];
+    const locked =
+      lockedStatuses.includes(reading.status) || !!reading.invoiceId;
 
     // Nếu đã lập hóa đơn → chỉ được sửa note hoặc status
     if (locked) {
@@ -451,15 +464,22 @@ exports.updateReading = async (req, res) => {
         .select("_id")
         .lean();
 
-      isFirstReadingOfRoom = firstReading && String(firstReading._id) === String(reading._id);
+      isFirstReadingOfRoom =
+        firstReading && String(firstReading._id) === String(reading._id);
 
       if (isFirstReadingOfRoom) {
         // Kỳ đầu tiên → cho phép sửa thoải mái (bao gồm cả giảm về 0)
         canEditPrevIndex = true;
       } else {
         // Các kỳ sau → chỉ được TĂNG hoặc giữ nguyên PreviousIndex, KHÔNG ĐƯỢC GIẢM
-        const newEPrev = ePreviousIndex !== undefined ? Number(ePreviousIndex) : reading.ePreviousIndex;
-        const newWPrev = wPreviousIndex !== undefined ? Number(wPreviousIndex) : reading.wPreviousIndex;
+        const newEPrev =
+          ePreviousIndex !== undefined
+            ? Number(ePreviousIndex)
+            : reading.ePreviousIndex;
+        const newWPrev =
+          wPreviousIndex !== undefined
+            ? Number(wPreviousIndex)
+            : reading.wPreviousIndex;
 
         if (
           (ePreviousIndex != null && newEPrev < reading.ePreviousIndex) ||
@@ -476,20 +496,30 @@ exports.updateReading = async (req, res) => {
 
     if (!locked) {
       // Không cho đổi room/building/kỳ
-      if (roomId != null || buildingId != null || periodMonth != null || periodYear != null) {
+      if (
+        roomId != null ||
+        buildingId != null ||
+        periodMonth != null ||
+        periodYear != null
+      ) {
         return res.status(400).json({
-          message: "Không được thay đổi phòng/tòa/kỳ. Vui lòng xoá và tạo lại bản ghi.",
+          message:
+            "Không được thay đổi phòng/tòa/kỳ. Vui lòng xoá và tạo lại bản ghi.",
         });
       }
 
       // Cập nhật ePreviousIndex
       if (ePreviousIndex != null) {
         if (!canEditPrevIndex) {
-          return res.status(400).json({ message: "Không được phép sửa ePreviousIndex." });
+          return res
+            .status(400)
+            .json({ message: "Không được phép sửa ePreviousIndex." });
         }
         const val = Number(ePreviousIndex);
         if (!Number.isFinite(val) || val < 0) {
-          return res.status(400).json({ message: "ePreviousIndex phải là số >= 0" });
+          return res
+            .status(400)
+            .json({ message: "ePreviousIndex phải là số >= 0" });
         }
         reading.ePreviousIndex = val;
       }
@@ -497,11 +527,15 @@ exports.updateReading = async (req, res) => {
       // Cập nhật wPreviousIndex
       if (wPreviousIndex != null) {
         if (!canEditPrevIndex) {
-          return res.status(400).json({ message: "Không được phép sửa wPreviousIndex." });
+          return res
+            .status(400)
+            .json({ message: "Không được phép sửa wPreviousIndex." });
         }
         const val = Number(wPreviousIndex);
         if (!Number.isFinite(val) || val < 0) {
-          return res.status(400).json({ message: "wPreviousIndex phải là số >= 0" });
+          return res
+            .status(400)
+            .json({ message: "wPreviousIndex phải là số >= 0" });
         }
         reading.wPreviousIndex = val;
       }
@@ -510,7 +544,9 @@ exports.updateReading = async (req, res) => {
       if (eCurrentIndex != null) {
         const val = Number(eCurrentIndex);
         if (!Number.isFinite(val) || val < 0) {
-          return res.status(400).json({ message: "eCurrentIndex phải là số >= 0" });
+          return res
+            .status(400)
+            .json({ message: "eCurrentIndex phải là số >= 0" });
         }
         reading.eCurrentIndex = val;
       }
@@ -519,7 +555,9 @@ exports.updateReading = async (req, res) => {
       if (wCurrentIndex != null) {
         const val = Number(wCurrentIndex);
         if (!Number.isFinite(val) || val < 0) {
-          return res.status(400).json({ message: "wCurrentIndex phải là số >= 0" });
+          return res
+            .status(400)
+            .json({ message: "wCurrentIndex phải là số >= 0" });
         }
         reading.wCurrentIndex = val;
       }
@@ -528,7 +566,9 @@ exports.updateReading = async (req, res) => {
       if (eUnitPrice != null) {
         const val = Number(eUnitPrice);
         if (!Number.isFinite(val) || val < 0) {
-          return res.status(400).json({ message: "eUnitPrice phải là số >= 0" });
+          return res
+            .status(400)
+            .json({ message: "eUnitPrice phải là số >= 0" });
         }
         reading.eUnitPrice = val;
       }
@@ -537,7 +577,9 @@ exports.updateReading = async (req, res) => {
       if (wUnitPrice != null) {
         const val = Number(wUnitPrice);
         if (!Number.isFinite(val) || val < 0) {
-          return res.status(400).json({ message: "wUnitPrice phải là số >= 0" });
+          return res
+            .status(400)
+            .json({ message: "wUnitPrice phải là số >= 0" });
         }
         reading.wUnitPrice = val;
       }
@@ -622,7 +664,9 @@ exports.confirmReading = async (req, res) => {
     if (isStaff) {
       const buildingId = doc.roomId?.buildingId?._id?.toString();
       if (!buildingId) {
-        return res.status(500).json({ message: "Không xác định được tòa nhà của chỉ số này" });
+        return res
+          .status(500)
+          .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
       if (!req.staff.assignedBuildingIds.includes(buildingId)) {
@@ -775,7 +819,9 @@ exports.deleteReading = async (req, res) => {
       const buildingId = doc.roomId?.buildingId?._id?.toString();
 
       if (!buildingId) {
-        return res.status(500).json({ message: "Không xác định được tòa nhà của chỉ số này" });
+        return res
+          .status(500)
+          .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
       if (!req.staff.assignedBuildingIds.includes(buildingId)) {
@@ -822,7 +868,7 @@ exports.bulkCreateReadings = async (req, res) => {
       });
     }
     const allowedBuildingIds = isStaff
-      ? req.staff.assignedBuildingIds.map(id => id.toString())
+      ? req.staff.assignedBuildingIds.map((id) => id.toString())
       : null;
 
     const results = [];
@@ -963,12 +1009,12 @@ exports.bulkCreateReadings = async (req, res) => {
 
         const eUnitPrice =
           typeof building.ePrice === "number" &&
-            Number.isFinite(building.ePrice)
+          Number.isFinite(building.ePrice)
             ? building.ePrice
             : 0;
         const wUnitPrice =
           typeof building.wPrice === "number" &&
-            Number.isFinite(building.wPrice)
+          Number.isFinite(building.wPrice)
             ? building.wPrice
             : 0;
 

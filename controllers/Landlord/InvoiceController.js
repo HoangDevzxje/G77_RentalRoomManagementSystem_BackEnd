@@ -685,7 +685,6 @@ exports.getInvoiceDetail = async (req, res) => {
 };
 
 // PATCH /landlords/invoices/:id
-// Cập nhật hoá đơn (chỉ cho phép sửa một số field)
 exports.updateInvoice = async (req, res) => {
   try {
     const isStaff = req.user.role === "staff";
@@ -699,203 +698,361 @@ exports.updateInvoice = async (req, res) => {
     });
 
     if (!invoice) {
-      return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+      return res.status(404).json({ message: "Không tìm thấy hoá đơn" });
     }
 
-    // Check quyền staff theo tòa nhà
+    // Check quyền staff theo toà nhà
     if (isStaff) {
       const buildingId = invoice.buildingId?.toString();
-      if (!buildingId) {
-        return res
-          .status(500)
-          .json({ message: "Không xác định được tòa nhà của hóa đơn" });
-      }
-
       const allowed = (req.staff.assignedBuildingIds || []).map(String);
       if (!allowed.includes(buildingId)) {
         return res.status(403).json({
-          message: "Bạn không được phép sửa hóa đơn của tòa nhà này",
-          buildingId,
-          yourAssigned: allowed,
+          message: "Bạn không được phép sửa hoá đơn của toà nhà này",
         });
       }
     }
 
     const currentStatus = invoice.status;
 
-    // Không cho sửa trong các trạng thái bị khóa
+    // Các trạng thái bị khoá hoàn toàn
     if (["transfer_pending", "paid", "cancelled"].includes(currentStatus)) {
       return res.status(400).json({
-        message: `Hóa đơn ở trạng thái '${currentStatus}' không được phép cập nhật`,
+        message: `Hoá đơn ở trạng thái '${currentStatus}' không được phép cập nhật`,
       });
     }
 
-    // Map quyền sửa theo trạng thái
-    const editableFieldsByStatus = {
-      draft: ["items", "note", "discountAmount", "lateFee", "status"],
-      sent: ["items", "note", "discountAmount", "lateFee"], // chỉ thêm/sửa item other
-      overdue: ["note", "discountAmount", "lateFee"], // không động tới items
-    };
-
-    const editableFields = editableFieldsByStatus[currentStatus] || [];
-
     const body = req.body || {};
-    const payload = {};
+    const rawItems = Array.isArray(body.items) ? body.items : [];
 
-    // Lọc field theo trạng thái
-    for (const field of editableFields) {
-      if (Object.prototype.hasOwnProperty.call(body, field)) {
-        payload[field] = body[field];
-      }
+    // ==========================
+    // 1. Update note / discount / lateFee (dùng chung cho các trạng thái)
+    // ==========================
+    if (body.note !== undefined) {
+      invoice.note = String(body.note || "");
     }
 
-    // Xử lý riêng cho status (chỉ cho đổi ở trạng thái draft)
-    if (
-      currentStatus === "draft" &&
-      Object.prototype.hasOwnProperty.call(body, "status")
-    ) {
-      const nextStatus = body.status;
-      const allowedNextStatuses = ["draft", "sent", "cancelled", "overdue"];
-
-      if (!allowedNextStatuses.includes(nextStatus)) {
-        return res.status(400).json({
-          message:
-            "Trạng thái mới không hợp lệ. Chỉ cho phép: draft, sent, cancelled, overdue",
-        });
+    if (body.discountAmount !== undefined) {
+      const val = Number(body.discountAmount);
+      if (!Number.isFinite(val) || val < 0) {
+        return res
+          .status(400)
+          .json({ message: "discountAmount phải là số >= 0" });
       }
-
-      // Không cho chuyển trực tiếp sang paid / transfer_pending bằng API này
-      if (["paid", "transfer_pending"].includes(nextStatus)) {
-        return res.status(400).json({
-          message:
-            "Không thể đặt trạng thái paid/transfer_pending bằng API update. Hãy dùng API thanh toán.",
-        });
-      }
-
-      payload.status = nextStatus;
+      invoice.discountAmount = val;
     }
 
-    // --- RULE ĐẶC BIỆT KHI STATUS = 'sent' VÀ CÓ items ---
-    if (
-      currentStatus === "sent" &&
-      Object.prototype.hasOwnProperty.call(payload, "items")
-    ) {
-      if (!Array.isArray(payload.items)) {
-        return res.status(400).json({
-          message: "Trường items phải là một mảng",
-        });
+    if (body.lateFee !== undefined) {
+      const val = Number(body.lateFee);
+      if (!Number.isFinite(val) || val < 0) {
+        return res.status(400).json({ message: "lateFee phải là số >= 0" });
+      }
+      invoice.lateFee = val;
+    }
+
+    // ==========================
+    // 2. Xử lý theo trạng thái
+    // ==========================
+
+    // ---------- DRAFT ----------
+    if (currentStatus === "draft") {
+      // Cho phép sửa items + status (mặc định bạn đã xử lý trước đó, mình giữ đơn giản)
+      // Ở đây mình chỉ validate discount/lateFee/note, và nếu bạn cần custom nhiều cho draft
+      // có thể giữ lại logic cũ của bạn.
+      if (Array.isArray(body.items)) {
+        invoice.items = body.items;
       }
 
-      const oldItems = invoice.items || [];
-
-      // Tách item gốc (non-other) và item other trong DB
-      const oldNonOther = oldItems.filter(
-        (it) => it && it.type && it.type !== "other"
-      );
-
-      // Tách item non-other & other trong payload
-      const payloadNonOther = (payload.items || []).filter(
-        (it) => it && it.type && it.type !== "other"
-      );
-      const payloadOther = (payload.items || []).filter(
-        (it) => it && it.type === "other"
-      );
-
-      // Hàm chuẩn hóa item non-other để so sánh
-      const normalizeItem = (it) => {
-        return JSON.stringify({
-          type: it.type || null,
-          label: it.label || null,
-          description: it.description || null,
-          quantity: Number(it.quantity) || 0,
-          unitPrice: Number(it.unitPrice) || 0,
-          amount: Number(it.amount) || 0,
-          utilityReadingId: it.utilityReadingId
-            ? String(it.utilityReadingId)
-            : null,
-        });
-      };
-
-      const buildMultiSet = (items) => {
-        const map = new Map();
-        for (const it of items) {
-          const key = normalizeItem(it);
-          map.set(key, (map.get(key) || 0) + 1);
-        }
-        return map;
-      };
-
-      const equalMultiSet = (a, b) => {
-        if (a.size !== b.size) return false;
-        for (const [key, count] of a.entries()) {
-          if (!b.has(key) || b.get(key) !== count) return false;
-        }
-        return true;
-      };
-
-      // Nếu payload có gửi kèm non-other thì phải y chang DB (không được sửa/xoá/thêm)
-      if (payloadNonOther.length > 0) {
-        const oldSet = buildMultiSet(oldNonOther);
-        const newSet = buildMultiSet(payloadNonOther);
-
-        if (!equalMultiSet(oldSet, newSet)) {
+      if (body.status !== undefined) {
+        const nextStatus = String(body.status);
+        const allowedNext = ["draft", "sent", "cancelled", "overdue"];
+        if (!allowedNext.includes(nextStatus)) {
           return res.status(400).json({
             message:
-              "Ở trạng thái 'sent', không được phép sửa/xóa/thêm các dòng tiền phòng/điện/nước/dịch vụ. Chỉ được thêm/chỉnh sửa các dòng type = 'other'.",
+              "Trạng thái mới không hợp lệ. Chỉ cho phép: draft, sent, cancelled, overdue",
+          });
+        }
+        if (["paid", "transfer_pending"].includes(nextStatus)) {
+          return res.status(400).json({
+            message:
+              "Không thể đặt trạng thái paid/transfer_pending bằng API này",
+          });
+        }
+        invoice.status = nextStatus;
+        if (nextStatus === "sent" && !invoice.sentAt) {
+          invoice.sentAt = new Date();
+        }
+        if (nextStatus === "cancelled") {
+          invoice.cancelledAt = new Date();
+        }
+      }
+
+      // Recalc tổng nếu có items
+      if (
+        Array.isArray(body.items) ||
+        body.discountAmount !== undefined ||
+        body.lateFee !== undefined
+      ) {
+        invoice.recalculateTotals();
+      }
+
+      invoice.updatedBy = req.user._id;
+      await invoice.save();
+
+      return res.json({
+        message: "Cập nhật hoá đơn thành công (draft)",
+        data: invoice,
+      });
+    }
+
+    // ---------- OVERDUE ----------
+    if (currentStatus === "overdue") {
+      // Không cho sửa items
+      if (body.items !== undefined) {
+        return res.status(400).json({
+          message:
+            "Ở trạng thái 'overdue', không được phép chỉnh sửa danh sách items của hoá đơn.",
+        });
+      }
+
+      // Chỉ recalc nếu discount/lateFee đổi
+      if (body.discountAmount !== undefined || body.lateFee !== undefined) {
+        invoice.recalculateTotals();
+      }
+
+      invoice.updatedBy = req.user._id;
+      await invoice.save();
+
+      return res.json({
+        message: "Cập nhật hoá đơn thành công (overdue)",
+        data: invoice,
+      });
+    }
+
+    // ---------- SENT ----------
+    if (currentStatus === "sent") {
+      const originalItems = invoice.items || [];
+
+      // Tách items cũ
+      const oldRentService = originalItems.filter(
+        (it) => it && (it.type === "rent" || it.type === "service")
+      );
+      const oldElectricWater = originalItems.filter(
+        (it) => it && (it.type === "electric" || it.type === "water")
+      );
+      const oldOther = originalItems.filter((it) => it && it.type === "other");
+
+      // Không cho phép sửa/thêm/xoá rent + service → nếu body gửi các dòng này thì báo lỗi luôn
+      const hasRentOrServiceInBody = rawItems.some(
+        (it) => it && (it.type === "rent" || it.type === "service")
+      );
+      if (hasRentOrServiceInBody) {
+        return res.status(400).json({
+          message:
+            "Ở trạng thái 'sent', không được phép sửa/thêm/xoá các dòng tiền phòng (rent) hoặc dịch vụ (service).",
+        });
+      }
+
+      // Tách items body
+      const bodyElectricWater = rawItems.filter(
+        (it) => it && (it.type === "electric" || it.type === "water")
+      );
+      const bodyOther = rawItems.filter((it) => it && it.type === "other");
+
+      // Map electric/water cũ theo utilityReadingId để đảm bảo KHÔNG THÊM MỚI
+      const oldEWByReadingId = new Map(); // key: type + readingId
+      for (const it of oldElectricWater) {
+        const rid = it.utilityReadingId ? String(it.utilityReadingId) : null;
+        const key = `${it.type || ""}:${rid || ""}`;
+        oldEWByReadingId.set(key, it);
+      }
+
+      const newElectricWaterItems = [];
+
+      // Xử lý bodyElectricWater:
+      // - Chỉ cho phép UPDATE chỉ số cuối (meta.currentIndex) của các dòng đã tồn tại
+      // - Nếu gặp utilityReadingId không tồn tại trong hoá đơn → báo lỗi (không cho thêm mới)
+      for (const bodyItem of bodyElectricWater) {
+        if (!bodyItem.utilityReadingId) {
+          return res.status(400).json({
+            message:
+              "Dòng điện/nước trong trạng thái 'sent' bắt buộc phải có utilityReadingId.",
+          });
+        }
+
+        const key = `${bodyItem.type || ""}:${String(
+          bodyItem.utilityReadingId
+        )}`;
+        const oldItem = oldEWByReadingId.get(key);
+
+        if (!oldItem) {
+          return res.status(400).json({
+            message:
+              "Ở trạng thái 'sent', không được phép thêm mới dòng điện/nước. Chỉ được cập nhật các dòng đã có.",
+          });
+        }
+
+        // Tìm UtilityReading tương ứng
+        const reading = await UtilityReading.findOne({
+          _id: bodyItem.utilityReadingId,
+          landlordId,
+          isDeleted: false,
+        });
+
+        if (!reading) {
+          return res.status(404).json({
+            message:
+              "Không tìm thấy bản ghi UtilityReading tương ứng với dòng điện/nước.",
+          });
+        }
+
+        // Đọc currentIndex mới
+        let newCurrentIndex = null;
+        if (
+          bodyItem.meta &&
+          Object.prototype.hasOwnProperty.call(bodyItem.meta, "currentIndex")
+        ) {
+          newCurrentIndex = Number(bodyItem.meta.currentIndex);
+        }
+
+        // Nếu không gửi currentIndex mới → giữ lại item cũ
+        if (newCurrentIndex == null || Number.isNaN(newCurrentIndex)) {
+          newElectricWaterItems.push(oldItem);
+          continue;
+        }
+
+        if (newCurrentIndex < 0) {
+          return res
+            .status(400)
+            .json({ message: "Chỉ số cuối phải là số >= 0" });
+        }
+
+        // Cập nhật reading + recalc từ reading
+        if (bodyItem.type === "electric") {
+          const prev = reading.ePreviousIndex ?? 0;
+          if (newCurrentIndex < prev) {
+            return res.status(400).json({
+              message:
+                "Chỉ số điện cuối phải >= chỉ số đầu (eCurrentIndex >= ePreviousIndex).",
+            });
+          }
+          reading.eCurrentIndex = newCurrentIndex;
+        } else {
+          const prev = reading.wPreviousIndex ?? 0;
+          if (newCurrentIndex < prev) {
+            return res.status(400).json({
+              message:
+                "Chỉ số nước cuối phải >= chỉ số đầu (wCurrentIndex >= wPreviousIndex).",
+            });
+          }
+          reading.wCurrentIndex = newCurrentIndex;
+        }
+
+        await reading.save(); // hook trong model sẽ tự calc consumption/amount nếu bạn có
+
+        // Build lại item từ reading + giữ label/unitPrice gốc
+        if (bodyItem.type === "electric") {
+          const quantity = reading.eConsumption || 0;
+          const unitPrice =
+            reading.eUnitPrice != null
+              ? reading.eUnitPrice
+              : oldItem.unitPrice || 0;
+          const amount = Math.max(0, quantity * unitPrice);
+
+          newElectricWaterItems.push({
+            ...(oldItem.toObject?.() ? oldItem.toObject() : oldItem),
+            quantity,
+            unitPrice,
+            amount,
+            meta: {
+              previousIndex: reading.ePreviousIndex,
+              currentIndex: reading.eCurrentIndex,
+            },
+          });
+        } else {
+          const quantity = reading.wConsumption || 0;
+          const unitPrice =
+            reading.wUnitPrice != null
+              ? reading.wUnitPrice
+              : oldItem.unitPrice || 0;
+          const amount = Math.max(0, quantity * unitPrice);
+
+          newElectricWaterItems.push({
+            ...(oldItem.toObject?.() ? oldItem.toObject() : oldItem),
+            quantity,
+            unitPrice,
+            amount,
+            meta: {
+              previousIndex: reading.wPreviousIndex,
+              currentIndex: reading.wCurrentIndex,
+            },
           });
         }
       }
 
-      // Tới đây coi như non-other giữ nguyên. Ta sẽ:
-      // - Giữ nguyên toàn bộ non-other trong DB
-      // - Thay toàn bộ các dòng other bằng list other từ payload (cho phép chỉnh/sửa/xoá other cũ, thêm other mới)
-      const newItems = [...oldNonOther, ...payloadOther];
-      payload.items = newItems; // override để bên dưới gán invoice.items = payload.items
-    }
+      // Những dòng electric/water cũ mà body KHÔNG gửi gì → giữ nguyên
+      for (const oldItem of oldElectricWater) {
+        const key = `${oldItem.type || ""}:${
+          oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
+        }`;
+        const touched = bodyElectricWater.some(
+          (b) => `${b.type || ""}:${String(b.utilityReadingId || "")}` === key
+        );
+        if (!touched) {
+          newElectricWaterItems.push(oldItem);
+        }
+      }
 
-    if (Object.keys(payload).length === 0) {
-      return res.status(400).json({
+      // Xử lý other: thay toàn bộ other bằng list mới trong body
+      const newOtherItems = [];
+      for (const it of bodyOther) {
+        const label = String(it.label || "").trim();
+        if (!label) continue;
+
+        const quantity = Number(it.quantity) || 0;
+        const unitPrice = Number(it.unitPrice) || 0;
+        if (quantity < 0 || unitPrice < 0) {
+          return res.status(400).json({
+            message: "quantity/unitPrice của dòng other phải >= 0",
+          });
+        }
+
+        newOtherItems.push({
+          type: "other",
+          label,
+          description: it.description ? String(it.description) : undefined,
+          quantity,
+          unitPrice,
+          amount: quantity * unitPrice,
+          meta: it.meta || {},
+        });
+      }
+
+      // Ghép final items:
+      // - rent + service: giữ nguyên
+      // - electric + water: bản đã update chỉ số
+      // - other: thay bằng list mới
+      invoice.items = [
+        ...oldRentService,
+        ...newElectricWaterItems,
+        ...newOtherItems,
+      ];
+
+      // Recalc tổng (subtotal/total)
+      invoice.recalculateTotals();
+      invoice.updatedBy = req.user._id;
+
+      await invoice.save();
+
+      return res.json({
         message:
-          "Không có dữ liệu hợp lệ để cập nhật cho trạng thái hiện tại của hóa đơn",
+          "Cập nhật hoá đơn thành công (sent) – chỉ update chỉ số điện/nước & dòng other",
+        data: invoice,
       });
     }
 
-    // Gán dữ liệu
-    if (Object.prototype.hasOwnProperty.call(payload, "items")) {
-      invoice.items = Array.isArray(payload.items) ? payload.items : [];
-    }
-    if (payload.note != null) {
-      invoice.note = payload.note;
-    }
-    if (payload.discountAmount != null) {
-      invoice.discountAmount = Number(payload.discountAmount) || 0;
-    }
-    if (payload.lateFee != null) {
-      invoice.lateFee = Number(payload.lateFee) || 0;
-    }
-    if (payload.status) {
-      invoice.status = payload.status;
-      if (payload.status === "cancelled") {
-        invoice.cancelledAt = new Date();
-      }
-    }
-
-    invoice.updatedBy = req.user._id;
-
-    // Recalc tổng nếu có thay đổi liên quan tiền
-    if (
-      Object.prototype.hasOwnProperty.call(payload, "items") ||
-      Object.prototype.hasOwnProperty.call(payload, "discountAmount") ||
-      Object.prototype.hasOwnProperty.call(payload, "lateFee")
-    ) {
-      invoice.recalculateTotals();
-    }
-
-    await invoice.save();
-
-    return res.json({
-      message: "Cập nhật hóa đơn thành công",
-      data: invoice,
+    // Fallback (không rơi vào draft/sent/overdue đã xử lý ở trên)
+    return res.status(400).json({
+      message: `Trạng thái hiện tại '${currentStatus}' chưa hỗ trợ cập nhật bằng API này`,
     });
   } catch (e) {
     console.error("updateInvoice error:", e);

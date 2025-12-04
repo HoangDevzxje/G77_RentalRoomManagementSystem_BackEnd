@@ -384,9 +384,12 @@ router.get(
  *       - **sent**:
  *         - Chỉ được chỉnh: `items`, `note`, `discountAmount`, `lateFee`.
  *         - Trong `items`:
- *           * KHÔNG được sửa / xoá / thêm các dòng có `type` ∈ [`rent`, `electric`, `water`, `service`].
- *           * CHỈ được phép thêm mới hoặc chỉnh sửa các dòng có `type = "other"`.
- *         - Nếu request cố gắng thay đổi bất kỳ dòng `rent/electric/water/service`, API sẽ trả lỗi 400.
+ *           * **KHÔNG** được sửa / xoá / thêm các dòng có `type` ∈ [`rent`, `service`].
+ *           * **KHÔNG** được thêm mới dòng `electric` hoặc `water`.
+ *           * Được phép **cập nhật chỉ số cuối** (`meta.currentIndex`) của các dòng `electric` / `water` đã tồn tại
+ *             (dựa trên `utilityReadingId`). Hệ thống sẽ tự tính lại `quantity`, `amount` từ bảng UtilityReading
+ *             và đồng bộ ngược lại UtilityReading.
+ *           * Được phép thêm mới / chỉnh sửa các dòng `type = "other"` (các khoản thu phát sinh).
  *
  *       - **overdue**:
  *         - Chỉ được chỉnh: `note`, `discountAmount`, `lateFee`.
@@ -394,9 +397,6 @@ router.get(
  *
  *       - **transfer_pending / paid / cancelled**:
  *         - Không được phép cập nhật. API sẽ trả lỗi 400.
- *
- *       - Không cho phép đặt trạng thái `paid` hoặc `transfer_pending` qua API này.
- *         Việc thanh toán phải dùng endpoint: `PATCH /landlords/invoices/{id}/pay`.
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -416,20 +416,23 @@ router.get(
  *               items:
  *                 type: array
  *                 description: >
- *                   Danh sách các dòng khoản thu:
- *                   - Ở trạng thái **draft**: được phép chỉnh toàn bộ, bao gồm rent/electric/water/service/other.
- *                   - Ở trạng thái **sent**: chỉ được chỉnh hoặc thêm dòng `type = "other"`.
- *                     Mọi thay đổi trên dòng `rent/electric/water/service` sẽ bị từ chối.
- *                   - Ở trạng thái **overdue**: mọi thay đổi `items` sẽ bị từ chối.
+ *                   Danh sách các dòng khoản thu, cấu trúc theo `Invoice.items`.
+ *                   - Ở trạng thái **draft**: được phép chỉnh full rent/electric/water/service/other.
+ *                   - Ở trạng thái **sent**:
+ *                     * Giữ nguyên các dòng `rent` và `service` (không được sửa/xóa/thêm).
+ *                     * Cho phép thêm mới/cập nhật các dòng `electric`/`water` thông qua `utilityReadingId`
+ *                       và `meta.currentIndex`.
+ *                     * Cho phép thêm mới/chỉnh sửa các dòng `other`.
+ *                   - Ở trạng thái **overdue**: không được phép chỉnh `items`.
  *               note:
  *                 type: string
  *                 description: Ghi chú gửi kèm cho người thuê.
  *               discountAmount:
  *                 type: number
- *                 description: Số tiền giảm giá áp dụng cho hóa đơn.
+ *                 description: Số tiền giảm giá áp dụng cho hóa đơn (cho phép chỉnh ở draft/sent/overdue).
  *               lateFee:
  *                 type: number
- *                 description: Phí trễ hạn (nếu có).
+ *                 description: Phí trễ hạn (cho phép chỉnh ở draft/sent/overdue).
  *               status:
  *                 type: string
  *                 description: >
