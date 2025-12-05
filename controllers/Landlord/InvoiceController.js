@@ -761,11 +761,134 @@ exports.updateInvoice = async (req, res) => {
 
     // ---------- DRAFT ----------
     if (currentStatus === "draft") {
-      // Cho phép sửa items + status
+      // Nếu có gửi items lên thì xử lý
       if (Array.isArray(body.items)) {
+        // Gán items mới từ body
         invoice.items = body.items;
+
+        // Đồng bộ các dòng điện/nước với UtilityReading
+        for (const item of invoice.items) {
+          if (!item || (item.type !== "electric" && item.type !== "water"))
+            continue;
+
+          if (!item.utilityReadingId) {
+            return res.status(400).json({
+              message:
+                "Dòng điện/nước trong trạng thái 'draft' bắt buộc phải có utilityReadingId.",
+            });
+          }
+
+          const reading = await UtilityReading.findOne({
+            _id: item.utilityReadingId,
+            landlordId,
+            isDeleted: false,
+          });
+
+          if (!reading) {
+            return res.status(404).json({
+              message:
+                "Không tìm thấy bản ghi UtilityReading tương ứng với dòng điện/nước.",
+            });
+          }
+
+          // Lấy chỉ số cuối mới từ meta.currentIndex (nếu có)
+          let newCurrentIndex = null;
+          if (
+            item.meta &&
+            Object.prototype.hasOwnProperty.call(item.meta, "currentIndex")
+          ) {
+            newCurrentIndex = Number(item.meta.currentIndex);
+            if (Number.isNaN(newCurrentIndex)) {
+              newCurrentIndex = null;
+            }
+          }
+
+          // Nếu có gửi chỉ số cuối mới thì validate + cập nhật vào UtilityReading
+          if (newCurrentIndex != null) {
+            if (newCurrentIndex < 0) {
+              return res
+                .status(400)
+                .json({ message: "Chỉ số cuối phải là số >= 0" });
+            }
+
+            if (item.type === "electric") {
+              const prev = reading.ePreviousIndex ?? 0;
+              if (newCurrentIndex < prev) {
+                return res.status(400).json({
+                  message:
+                    "Chỉ số điện cuối phải >= chỉ số đầu (eCurrentIndex >= ePreviousIndex).",
+                });
+              }
+              reading.eCurrentIndex = newCurrentIndex;
+            } else {
+              const prev = reading.wPreviousIndex ?? 0;
+              if (newCurrentIndex < prev) {
+                return res.status(400).json({
+                  message:
+                    "Chỉ số nước cuối phải >= chỉ số đầu (wCurrentIndex >= wPreviousIndex).",
+                });
+              }
+              reading.wCurrentIndex = newCurrentIndex;
+            }
+
+            // Lưu lại để hook trong UtilityReading tự tính consumption / amount
+            await reading.save();
+          }
+
+          // Sau khi save (hoặc không đổi chỉ số), luôn sync ngược lại vào item trong hoá đơn
+          if (item.type === "electric") {
+            const quantity =
+              reading.eConsumption != null
+                ? reading.eConsumption
+                : Math.max(
+                    0,
+                    (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
+                  );
+
+            const unitPrice =
+              reading.eUnitPrice != null
+                ? reading.eUnitPrice
+                : Number(item.unitPrice || 0);
+
+            const amount = Math.max(0, quantity * unitPrice);
+
+            item.quantity = quantity;
+            item.unitPrice = unitPrice;
+            item.amount = amount;
+            item.meta = {
+              ...(item.meta || {}),
+              previousIndex: reading.ePreviousIndex,
+              currentIndex: reading.eCurrentIndex,
+            };
+          } else {
+            const quantity =
+              reading.wConsumption != null
+                ? reading.wConsumption
+                : Math.max(
+                    0,
+                    (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
+                  );
+
+            const unitPrice =
+              reading.wUnitPrice != null
+                ? reading.wUnitPrice
+                : Number(item.unitPrice || 0);
+
+            const amount = Math.max(0, quantity * unitPrice);
+
+            item.quantity = quantity;
+            item.unitPrice = unitPrice;
+            item.amount = amount;
+            item.meta = {
+              ...(item.meta || {}),
+              previousIndex: reading.wPreviousIndex,
+              currentIndex: reading.wCurrentIndex,
+            };
+          }
+        }
       }
 
+      // Xử lý đổi status ở draft (giữ như cũ)
       if (body.status !== undefined) {
         const nextStatus = String(body.status);
         const allowedNext = ["draft", "sent", "cancelled", "overdue"];
@@ -790,7 +913,7 @@ exports.updateInvoice = async (req, res) => {
         }
       }
 
-      // Recalc tổng nếu có thay đổi
+      // Recalc tổng nếu có thay đổi tiền
       if (
         Array.isArray(body.items) ||
         body.discountAmount !== undefined ||
