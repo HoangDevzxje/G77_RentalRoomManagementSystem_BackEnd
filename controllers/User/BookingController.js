@@ -4,6 +4,7 @@ const Post = require("../../models/Post");
 const dayjs = require("dayjs");
 const Staff = require("../../models/Staff");
 const Notification = require("../../models/Notification");
+const validateUtils = require("../../utils/validateInput")
 
 const getAvailableSlots = async (req, res) => {
   try {
@@ -92,7 +93,34 @@ const create = async (req, res) => {
         message: "Vui lòng nhập đầy đủ thông tin đặt lịch!",
       });
     }
-
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập ngày đặt lịch!",
+      });
+    }
+    if (!timeSlot) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập giờ đặt lịch!",
+      });
+    }
+    if (!contactName) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập tên người đặt lịch!",
+      });
+    }
+    if (!contactPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập sđt người đặt lịch!",
+      });
+    }
+    const checkPhone = validateUtils.validatePhone(contactPhone);
+    if (checkPhone !== null) {
+      return res.status(400).json({ message: checkPhone });
+    }
     const post = await Post.findById(postId).populate("landlordId");
     if (!post) {
       return res.status(404).json({ success: false, message: "Bài đăng không tồn tại!" });

@@ -4,6 +4,7 @@ const Building = require('../../models/Building');
 const BuildingService = require('../../models/BuildingService');
 const Regulation = require('../../models/Regulation');
 const mongoose = require("mongoose");
+const Contract = require('../../models/Contract');
 
 const getBuildingInfo = async (req, res) => {
     try {
@@ -19,14 +20,72 @@ const getBuildingInfo = async (req, res) => {
             if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
                 return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
             }
-        }
-        else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
+        } else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
             return res.status(403).json({ message: "Không có quyền" });
         }
 
-        const [rooms, services, regulations] = await Promise.all([
-            Room.find({ buildingId, status: 'available', isDeleted: false })
-                .select('id roomNumber floorId price area').lean(),
+        const thresholdDate = new Date();
+        thresholdDate.setDate(thresholdDate.getDate() + 30);
+
+        const soonAvailableRooms = await Room.aggregate([
+            {
+                $match: {
+                    buildingId: new mongoose.Types.ObjectId(buildingId),
+                    status: "rented",
+                    isDeleted: false
+                }
+            },
+            {
+                $lookup: {
+                    from: "contracts",
+                    localField: "_id",
+                    foreignField: "roomId",
+                    as: "contract"
+                }
+            },
+            { $unwind: "$contract" },
+            {
+                $match: {
+                    "contract.status": "completed",
+                    "contract.moveInConfirmedAt": { $exists: true },
+                    "contract.contract.endDate": { $lte: thresholdDate }
+                }
+            },
+            {
+                $addFields: {
+                    currentContractEndDate: "$contract.contract.endDate",
+                    expectedAvailableDate: {
+                        $dateAdd: {
+                            startDate: "$contract.contract.endDate",  // ← Sửa ở đây
+                            unit: "day",
+                            amount: 1
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    roomNumber: 1,
+                    floorId: 1,
+                    price: 1,
+                    area: 1,
+                    status: 1,
+                    currentContractEndDate: 1,
+                    expectedAvailableDate: 1,
+                    _id: 1
+                }
+            }
+        ]);
+
+        // Phòng trống bình thường
+        const availableRooms = await Room.find({
+            buildingId,
+            status: "available",
+            isDeleted: false
+        }).select('roomNumber floorId price area status _id').lean();
+        // Gộp lại + đánh dấu loại phòng
+        const rooms = [...availableRooms, ...soonAvailableRooms];
+        const [services, regulations] = await Promise.all([
             BuildingService.find({ buildingId, isDeleted: false })
                 .select('name label description chargeType fee currency').lean(),
             Regulation.find({ buildingId, status: 'active' })
@@ -35,7 +94,12 @@ const getBuildingInfo = async (req, res) => {
 
         res.json({
             success: true,
-            data: { building: b, rooms, services, regulations },
+            data: {
+                building: b,
+                rooms,
+                services,
+                regulations
+            },
         });
     } catch (err) {
         console.error('Lỗi getBuildingInfo:', err);
@@ -92,12 +156,52 @@ const createPost = async (req, res) => {
         const rooms = await Room.find({
             _id: { $in: roomObjectIds },
             buildingId,
-            status: "available",
             isDeleted: false,
-        }).select("price area");
+            $or: [
+                { status: "available" },
+                {
+                    status: "rented",
+                    _id: { $in: roomObjectIds },
+                }
+            ]
+        });
 
-        if (!rooms.length) {
-            return res.status(400).json({ message: "Không tìm thấy phòng hợp lệ hoặc phòng không available!" });
+        const now = new Date();
+        const threshold = new Date();
+        threshold.setDate(now.getDate() + 30);
+
+        const validRooms = [];
+        const warnings = [];
+
+        for (const room of rooms) {
+            if (room.status === "available") {
+                validRooms.push(room);
+                continue;
+            }
+
+            // Nếu là rented → kiểm tra hợp đồng
+            const activeContract = await Contract.findOne({
+                roomId: room._id,
+                status: "completed",
+                moveInConfirmedAt: { $exists: true },
+                endDate: { $lte: threshold }
+            });
+
+            if (activeContract) {
+                validRooms.push(room);
+                warnings.push({
+                    roomNumber: room.roomNumber,
+                    expectedAvailableDate: new Date(activeContract.endDate.getTime() + 24 * 60 * 60 * 1000), // +1 ngày
+                    message: `Phòng sẽ trống từ ${formatDateVN(activeContract.endDate)}`
+                });
+            }
+        }
+
+        if (validRooms.length === 0) {
+            return res.status(400).json({
+                message: "Không có phòng nào hợp lệ để đăng!",
+                tip: "Chỉ được chọn phòng trống hoặc phòng có hợp đồng còn ≤ 30 ngày"
+            });
         }
 
         const prices = rooms.map(r => r.price);

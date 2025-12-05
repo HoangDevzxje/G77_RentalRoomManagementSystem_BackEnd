@@ -4,7 +4,7 @@ const Room = require("../../models/Room");
 const Post = require("../../models/Post");
 const Notification = require("../../models/Notification");
 const Staff = require("../../models/Staff");
-
+const validateUtils = require("../../utils/validateInput")
 const createContact = async (req, res) => {
   try {
     const tenantId = req.user._id;
@@ -17,8 +17,17 @@ const createContact = async (req, res) => {
       tenantNote,
     } = req.body;
 
-    if (!buildingId || !roomId || !contactName || !contactPhone)
-      return res.status(400).json({ message: "Thiếu thông tin bắt buộc!" });
+    if (!buildingId || !roomId)
+      return res.status(400).json({ message: "Vui lòng nhập đầy đủ thông tin bắt buộc!" });
+    if (!contactName)
+      return res.status(400).json({ message: "Vui lòng nhập đầy đủ tên!" });
+    if (!contactPhone)
+      return res.status(400).json({ message: "Vui lòng nhập đày đủ sđt!" });
+
+    const checkPhone = validateUtils.validatePhone(contactPhone);
+    if (checkPhone !== null) {
+      return res.status(400).json({ message: checkPhone });
+    }
 
     const building = await Building.findById(buildingId);
     if (!building)

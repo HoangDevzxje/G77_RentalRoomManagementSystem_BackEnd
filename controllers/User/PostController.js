@@ -104,13 +104,92 @@ const getDetailPostByTenant = async (req, res) => {
 
     let roomList = [];
     if (post.roomIds?.length) {
-      const Room = mongoose.model("Room");
-      roomList = await Room.find({
-        _id: { $in: post.roomIds },
-        isDeleted: false,
-      })
-        .select("_id name price status roomNumber images area")
-        .lean();
+      const thresholdDate = new Date();
+      thresholdDate.setDate(thresholdDate.getDate() + 30)
+
+      roomList = await Room.aggregate([
+        {
+          $match: {
+            _id: { $in: post.roomIds.map(id => new mongoose.Types.ObjectId(id)) },
+            isDeleted: false
+          }
+        },
+        {
+          $lookup: {
+            from: "contracts",
+            localField: "_id",
+            foreignField: "roomId",
+            as: "contract"
+          }
+        },
+        { $unwind: { path: "$contract", preserveNullAndEmptyArrays: true } },
+
+        // Tìm hợp đồng đang active + sắp hết (nếu có)
+        {
+          $addFields: {
+            activeContract: {
+              $cond: {
+                if: {
+                  $and: [
+                    { $ne: ["$contract", null] },
+                    { $eq: ["$contract.status", "completed"] },
+                    { $ne: ["$contract.moveInConfirmedAt", null] },
+                    { $ne: ["$contract.contract.endDate", null] }
+                  ]
+                },
+                then: "$contract",
+                else: null
+              }
+            }
+          }
+        },
+
+        // Tính ngày hết hợp đồng & ngày trống dự kiến (chỉ nếu còn <= 30 ngày)
+        {
+          $addFields: {
+            currentContractEndDate: {
+              $cond: {
+                if: {
+                  $and: [
+                    { $ne: ["$activeContract", null] },
+                    { $lte: ["$activeContract.contract.endDate", thresholdDate] }
+                  ]
+                },
+                then: "$activeContract.contract.endDate",
+                else: null
+              }
+            }
+          }
+        },
+        {
+          $addFields: {
+            expectedAvailableDate: {
+              $cond: {
+                if: { $ne: ["$currentContractEndDate", null] },
+                then: { $dateAdd: { startDate: "$currentContractEndDate", unit: "day", amount: 1 } },
+                else: null
+              }
+            }
+          }
+        },
+
+        {
+          $project: {
+            _id: 1,
+            roomNumber: 1,
+            name: 1,
+            price: 1,
+            area: 1,
+            status: 1,
+            images: 1,
+            currentContractEndDate: 1,
+            expectedAvailableDate: 1,
+            isSoonAvailable: { $ne: ["$expectedAvailableDate", null] },
+            isRented: { $eq: ["$status", "rented"] },
+            isAvailable: { $eq: ["$status", "available"] }
+          }
+        }
+      ]);
     }
 
     res.json({
