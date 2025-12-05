@@ -180,6 +180,73 @@ router.get(
 );
 /**
  * @swagger
+ * /invoices/{id}/history:
+ *   get:
+ *     summary: Tenant xem lịch sử chỉnh sửa một hóa đơn
+ *     description: >
+ *       Trả về lịch sử các lần landlord cập nhật hóa đơn khi hóa đơn đang ở trạng thái **sent**
+ *       (ví dụ chỉnh lại chỉ số điện/nước, thêm/bớt khoản thu `other`, thay đổi note, discountAmount, lateFee).
+ *
+ *       Dữ liệu lấy từ trường `history` trong Invoice, mỗi record gồm:
+ *       - `action`: loại hành động (hiện tại là `"update_sent_invoice"`).
+ *       - `itemsDiff`: diff các dòng khoản thu:
+ *         * `updated`: các dòng thay đổi (quantity, unitPrice, amount, currentIndex...).
+ *         * `added`: các dòng được thêm mới (thường là `other`).
+ *         * `removed`: các dòng bị xóa (thường là `other`).
+ *       - `metaDiff`: thay đổi ở `note`, `discountAmount`, `lateFee`.
+ *       - `updatedBy`: thông tin người chỉnh sửa (landlord/staff).
+ *       - `updatedAt`: thời điểm chỉnh sửa.
+ *     tags: [Resident Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của hóa đơn
+ *     responses:
+ *       200:
+ *         description: Lấy lịch sử chỉnh sửa hóa đơn thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 invoiceId:
+ *                   type: string
+ *                 invoiceNumber:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                 history:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       action:
+ *                         type: string
+ *                       itemsDiff:
+ *                         type: object
+ *                       metaDiff:
+ *                         type: object
+ *                       updatedBy:
+ *                         type: object
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *       404:
+ *         description: Không tìm thấy hóa đơn hoặc không thuộc tenant
+ */
+router.get(
+  "/:id/history",
+  checkAuthorize("resident"),
+  tenantInvoiceController.getMyInvoiceHistory
+);
+
+/**
+ * @swagger
  * /invoices/{id}/pay:
  *   post:
  *     summary: Tạo link thanh toán MoMo cho hóa đơn

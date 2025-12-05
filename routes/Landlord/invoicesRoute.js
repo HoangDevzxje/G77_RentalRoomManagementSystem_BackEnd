@@ -528,5 +528,69 @@ router.post(
   checkSubscription,
   invoiceController.sendInvoiceEmail
 );
+/**
+ * @swagger
+ * /landlords/invoices/{id}/history:
+ *   get:
+ *     summary: Xem lịch sử chỉnh sửa hóa đơn (sau khi đã gửi)
+ *     description: >
+ *       Trả về danh sách các lần cập nhật hóa đơn khi hóa đơn đang ở trạng thái **sent**,
+ *       bao gồm thay đổi ở dòng điện/nước, các khoản `other` và thay đổi `note`, `discountAmount`, `lateFee`.
+ *
+ *       Dữ liệu được lưu trong trường `history` của Invoice:
+ *       - `action`: loại hành động (hiện tại là `"update_sent_invoice"`).
+ *       - `itemsDiff`: diff các dòng khoản thu:
+ *         * `updated`: các dòng thay đổi (quantity, unitPrice, amount, currentIndex...).
+ *         * `added`: các dòng được thêm (thường là `other`).
+ *         * `removed`: các dòng bị xóa (thường là `other`).
+ *       - `metaDiff`: thay đổi ở `note`, `discountAmount`, `lateFee`.
+ *       - `updatedBy`: người chỉnh sửa.
+ *       - `updatedAt`: thời điểm chỉnh sửa.
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của hóa đơn
+ *     responses:
+ *       200:
+ *         description: Lấy lịch sử chỉnh sửa hóa đơn thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 invoiceId:
+ *                   type: string
+ *                 history:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       action:
+ *                         type: string
+ *                       itemsDiff:
+ *                         type: object
+ *                       metaDiff:
+ *                         type: object
+ *                       updatedBy:
+ *                         type: object
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *       404:
+ *         description: Không tìm thấy hóa đơn
+ */
+router.get(
+  "/:id/history",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_VIEW),
+  checkSubscription,
+  invoiceController.getInvoiceHistory
+);
 
 module.exports = router;

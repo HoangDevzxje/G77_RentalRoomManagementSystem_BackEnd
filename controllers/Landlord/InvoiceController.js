@@ -7,6 +7,7 @@ const BuildingService = require("../../models/BuildingService");
 const RevenueExpenditure = require("../../models/RevenueExpenditures");
 const Notification = require("../../models/Notification");
 const sendEmail = require("../../utils/sendMail");
+const { buildItemsDiff, isItemsDiffEmpty } = require("../../utils/invoiceDiff");
 
 function getPeriodRange(periodMonth, periodYear) {
   const start = new Date(periodYear, periodMonth - 1, 1, 0, 0, 0, 0);
@@ -724,6 +725,11 @@ exports.updateInvoice = async (req, res) => {
     const body = req.body || {};
     const rawItems = Array.isArray(body.items) ? body.items : [];
 
+    // Lưu lại giá trị cũ để log metaDiff (sent)
+    const oldNote = invoice.note || "";
+    const oldDiscountAmount = invoice.discountAmount || 0;
+    const oldLateFee = invoice.lateFee || 0;
+
     // ==========================
     // 1. Update note / discount / lateFee (dùng chung cho các trạng thái)
     // ==========================
@@ -755,9 +761,7 @@ exports.updateInvoice = async (req, res) => {
 
     // ---------- DRAFT ----------
     if (currentStatus === "draft") {
-      // Cho phép sửa items + status (mặc định bạn đã xử lý trước đó, mình giữ đơn giản)
-      // Ở đây mình chỉ validate discount/lateFee/note, và nếu bạn cần custom nhiều cho draft
-      // có thể giữ lại logic cũ của bạn.
+      // Cho phép sửa items + status
       if (Array.isArray(body.items)) {
         invoice.items = body.items;
       }
@@ -786,7 +790,7 @@ exports.updateInvoice = async (req, res) => {
         }
       }
 
-      // Recalc tổng nếu có items
+      // Recalc tổng nếu có thay đổi
       if (
         Array.isArray(body.items) ||
         body.discountAmount !== undefined ||
@@ -830,16 +834,17 @@ exports.updateInvoice = async (req, res) => {
 
     // ---------- SENT ----------
     if (currentStatus === "sent") {
-      const originalItems = invoice.items || [];
+      const originalItems =
+        invoice.items && typeof invoice.items.toObject === "function"
+          ? invoice.items.toObject()
+          : [...(invoice.items || [])];
 
-      // Tách items cũ
-      const oldRentService = originalItems.filter(
+      const oldRentService = (invoice.items || []).filter(
         (it) => it && (it.type === "rent" || it.type === "service")
       );
-      const oldElectricWater = originalItems.filter(
+      const oldElectricWater = (invoice.items || []).filter(
         (it) => it && (it.type === "electric" || it.type === "water")
       );
-      const oldOther = originalItems.filter((it) => it && it.type === "other");
 
       // Không cho phép sửa/thêm/xoá rent + service → nếu body gửi các dòng này thì báo lỗi luôn
       const hasRentOrServiceInBody = rawItems.some(
@@ -861,8 +866,8 @@ exports.updateInvoice = async (req, res) => {
       // Map electric/water cũ theo utilityReadingId để đảm bảo KHÔNG THÊM MỚI
       const oldEWByReadingId = new Map(); // key: type + readingId
       for (const it of oldElectricWater) {
-        const rid = it.utilityReadingId ? String(it.utilityReadingId) : null;
-        const key = `${it.type || ""}:${rid || ""}`;
+        const rid = it.utilityReadingId ? String(it.utilityReadingId) : "";
+        const key = `${it.type || ""}:${rid}`;
         oldEWByReadingId.set(key, it);
       }
 
@@ -870,7 +875,7 @@ exports.updateInvoice = async (req, res) => {
 
       // Xử lý bodyElectricWater:
       // - Chỉ cho phép UPDATE chỉ số cuối (meta.currentIndex) của các dòng đã tồn tại
-      // - Nếu gặp utilityReadingId không tồn tại trong hoá đơn → báo lỗi (không cho thêm mới)
+      // - Nếu gặp utilityReadingId không tồn tại → báo lỗi (không cho thêm mới)
       for (const bodyItem of bodyElectricWater) {
         if (!bodyItem.utilityReadingId) {
           return res.status(400).json({
@@ -947,7 +952,7 @@ exports.updateInvoice = async (req, res) => {
           reading.wCurrentIndex = newCurrentIndex;
         }
 
-        await reading.save(); // hook trong model sẽ tự calc consumption/amount nếu bạn có
+        await reading.save();
 
         // Build lại item từ reading + giữ label/unitPrice gốc
         if (bodyItem.type === "electric") {
@@ -959,7 +964,9 @@ exports.updateInvoice = async (req, res) => {
           const amount = Math.max(0, quantity * unitPrice);
 
           newElectricWaterItems.push({
-            ...(oldItem.toObject?.() ? oldItem.toObject() : oldItem),
+            ...(typeof oldItem.toObject === "function"
+              ? oldItem.toObject()
+              : oldItem),
             quantity,
             unitPrice,
             amount,
@@ -977,7 +984,9 @@ exports.updateInvoice = async (req, res) => {
           const amount = Math.max(0, quantity * unitPrice);
 
           newElectricWaterItems.push({
-            ...(oldItem.toObject?.() ? oldItem.toObject() : oldItem),
+            ...(typeof oldItem.toObject === "function"
+              ? oldItem.toObject()
+              : oldItem),
             quantity,
             unitPrice,
             amount,
@@ -1031,26 +1040,72 @@ exports.updateInvoice = async (req, res) => {
       // - rent + service: giữ nguyên
       // - electric + water: bản đã update chỉ số
       // - other: thay bằng list mới
-      invoice.items = [
+      const finalItems = [
         ...oldRentService,
         ...newElectricWaterItems,
         ...newOtherItems,
       ];
 
-      // Recalc tổng (subtotal/total)
+      // Gắn items mới + recalc
+      invoice.items = finalItems;
       invoice.recalculateTotals();
-      invoice.updatedBy = req.user._id;
 
+      // ====== LOG LỊCH SỬ THAY ĐỔI (chỉ cho trạng thái sent) ======
+      const itemsDiff = buildItemsDiff(originalItems, finalItems);
+
+      const metaDiff = {};
+      if (
+        body.note !== undefined &&
+        String(oldNote || "") !== String(invoice.note || "")
+      ) {
+        metaDiff.note = { before: oldNote, after: invoice.note };
+      }
+      if (
+        body.discountAmount !== undefined &&
+        Number(oldDiscountAmount) !== Number(invoice.discountAmount || 0)
+      ) {
+        metaDiff.discountAmount = {
+          before: oldDiscountAmount,
+          after: invoice.discountAmount || 0,
+        };
+      }
+      if (
+        body.lateFee !== undefined &&
+        Number(oldLateFee) !== Number(invoice.lateFee || 0)
+      ) {
+        metaDiff.lateFee = {
+          before: oldLateFee,
+          after: invoice.lateFee || 0,
+        };
+      }
+
+      const hasMetaDiff = Object.keys(metaDiff).length > 0;
+
+      if (!isItemsDiffEmpty(itemsDiff) || hasMetaDiff) {
+        if (!Array.isArray(invoice.history)) {
+          invoice.history = [];
+        }
+        invoice.history.push({
+          action: "update_sent_invoice",
+          itemsDiff,
+          metaDiff,
+          updatedBy: req.user._id,
+          updatedAt: new Date(),
+        });
+      }
+      // =====================
+
+      invoice.updatedBy = req.user._id;
       await invoice.save();
 
       return res.json({
         message:
-          "Cập nhật hoá đơn thành công (sent) – chỉ update chỉ số điện/nước & dòng other",
+          "Cập nhật hoá đơn thành công (sent) – chỉ update chỉ số điện/nước & dòng other, có log lịch sử",
         data: invoice,
       });
     }
 
-    // Fallback (không rơi vào draft/sent/overdue đã xử lý ở trên)
+    // Fallback (không rơi vào draft/sent/overdue)
     return res.status(400).json({
       message: `Trạng thái hiện tại '${currentStatus}' chưa hỗ trợ cập nhật bằng API này`,
     });
@@ -2299,5 +2354,41 @@ exports.sendAllDraftInvoices = async (req, res) => {
     return res.status(500).json({
       message: e.message || "Server error",
     });
+  }
+};
+// GET /landlords/invoices/:id/history
+exports.getInvoiceHistory = async (req, res) => {
+  try {
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
+    const { id } = req.params;
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      landlordId,
+      isDeleted: false,
+    }).populate("history.updatedBy", "fullName email");
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Không tìm thấy hoá đơn" });
+    }
+
+    if (isStaff) {
+      const buildingId = invoice.buildingId?.toString();
+      const allowed = (req.staff.assignedBuildingIds || []).map(String);
+      if (!allowed.includes(buildingId)) {
+        return res.status(403).json({
+          message: "Bạn không được xem lịch sử hoá đơn của toà nhà này",
+        });
+      }
+    }
+
+    return res.json({
+      invoiceId: invoice._id,
+      history: invoice.history || [],
+    });
+  } catch (e) {
+    console.error("getInvoiceHistory error:", e);
+    return res.status(400).json({ message: e.message });
   }
 };

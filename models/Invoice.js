@@ -223,6 +223,18 @@ const invoiceSchema = new mongoose.Schema(
         note: { type: String },
       },
     ],
+    history: [
+      {
+        action: { type: String }, // "update_sent_invoice"
+        itemsDiff: { type: mongoose.Schema.Types.Mixed }, // log thay đổi item
+        metaDiff: { type: mongoose.Schema.Types.Mixed }, // log note/discount/lateFee
+        updatedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Account",
+        },
+        updatedAt: { type: Date, default: Date.now },
+      },
+    ],
 
     // Thông tin nội bộ
     note: { type: String },

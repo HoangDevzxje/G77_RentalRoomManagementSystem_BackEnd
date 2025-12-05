@@ -305,3 +305,33 @@ exports.requestBankTransferConfirmation = async (req, res) => {
     return res.status(500).json({ message: e.message || "Server error" });
   }
 };
+// GET /invoices/:id/history
+// Tenant xem lịch sử chỉnh sửa hoá đơn (log từ landlord chỉnh khi status = sent)
+exports.getMyInvoiceHistory = async (req, res) => {
+  try {
+    const tenantId = req.user._id;
+    const { id } = req.params;
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      tenantId,
+      isDeleted: false,
+    }).populate("history.updatedBy", "fullName email role");
+
+    if (!invoice) {
+      return res.status(404).json({
+        message: "Không tìm thấy hoá đơn hoặc hoá đơn không thuộc về bạn",
+      });
+    }
+
+    return res.json({
+      invoiceId: invoice._id,
+      invoiceNumber: invoice.invoiceNumber,
+      status: invoice.status,
+      history: invoice.history || [],
+    });
+  } catch (e) {
+    console.error("getMyInvoiceHistory error:", e);
+    return res.status(400).json({ message: e.message });
+  }
+};
