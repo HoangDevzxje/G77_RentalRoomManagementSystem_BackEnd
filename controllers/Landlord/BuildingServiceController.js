@@ -22,7 +22,16 @@ async function assertCanAccessBuilding(req, buildingId) {
     if (!b) throw Object.assign(new Error("Không tìm thấy tòa nhà"), { statusCode: 404 });
     return b;
   }
+  if (user.role === "resident") {
+    const b = await Building.findById(buildingId)
+      .select("_id landlordId name address")
+      .lean();
 
+    if (!b || b.isDeleted) {
+      throw Object.assign(new Error("Không tìm thấy tòa nhà"), { statusCode: 404 });
+    }
+    return b;
+  }
   throw Object.assign(new Error("Vai trò không hợp lệ"), { statusCode: 403 });
 }
 
