@@ -189,33 +189,36 @@ const getMyNotifications = async (req, res) => {
     try {
         let matchQuery = { isDeleted: false };
         if (user.role === "resident") {
-
             const rooms = await Room.find({
                 currentTenantIds: user._id,
                 active: true,
                 isDeleted: { $ne: true }
             }).select("buildingId floorId _id").lean();
 
-            if (!rooms.length) {
-                return res.json({ success: true, data: [], pagination: { total: 0, page, limit, pages: 0 } });
-            }
-
             const buildingIds = rooms.map(r => r.buildingId);
             const floorIds = rooms.map(r => r.floorId).filter(Boolean);
             const roomIds = rooms.map(r => r._id);
 
-            const building = await Building.findById(buildingIds[0]).select("landlordId").lean();
-            const landlordId = building?.landlordId;
+            const baseConditions = {
+                isDeleted: false,
+                createByRole: { $in: ["landlord", "staff", "system"] }
+            };
 
-            matchQuery = {
-                landlordId,
-                createByRole: { $in: ["landlord", "staff", "system"] },
-                $or: [
+            const targetConditions = [
+                { "target.residents": user._id },
+            ];
+
+            if (buildingIds.length > 0) {
+                targetConditions.push(
                     { "target.buildings": { $in: buildingIds } },
                     { "target.floors": { $in: floorIds } },
-                    { "target.rooms": { $in: roomIds } },
-                    { "target.residents": user._id }
-                ]
+                    { "target.rooms": { $in: roomIds } }
+                );
+            }
+
+            matchQuery = {
+                ...baseConditions,
+                $or: targetConditions
             };
         }
         else if (user.role === "landlord") {
