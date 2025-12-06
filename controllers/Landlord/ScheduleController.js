@@ -7,7 +7,8 @@ const upsertSchedule = async (req, res) => {
 
         // === ÉP CHO MIDDLEWARE ===
         req.body.buildingId = buildingId;
-
+        if (!buildingId)
+            return res.status(400).json({ message: "Thiếu buildingId" });
         const building = await Building.findOne({ _id: buildingId, isDeleted: false });
         if (!building) {
             return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
@@ -25,7 +26,7 @@ const upsertSchedule = async (req, res) => {
             data: schedule,
         });
     } catch (err) {
-        console.error("Lỗi upsertSchedule:", err);
+        console.error("Lỗi upsertSchedule:", err.message);
         res.status(500).json({ message: "Lỗi hệ thống khi cập nhật lịch!" });
     }
 };
@@ -33,7 +34,8 @@ const upsertSchedule = async (req, res) => {
 const getSchedule = async (req, res) => {
     try {
         const { buildingId } = req.params;
-
+        if (!buildingId)
+            return res.status(400).json({ message: "Thiếu buildingId" });
         // === ÉP CHO MIDDLEWARE ===
         req.query.buildingId = buildingId;
 
@@ -53,7 +55,7 @@ const getSchedule = async (req, res) => {
 
         res.json({ success: true, data: schedule });
     } catch (err) {
-        console.error("Lỗi getSchedule:", err);
+        console.error("Lỗi getSchedule:", err.message);
         res.status(500).json({ message: "Lỗi hệ thống khi lấy lịch!" });
     }
 };
@@ -64,7 +66,8 @@ const deleteSchedule = async (req, res) => {
 
         // === ÉP CHO MIDDLEWARE ===
         req.query.buildingId = buildingId;
-
+        if (!buildingId)
+            return res.status(400).json({ message: "Thiếu buildingId" });
         const building = await Building.findOne({ _id: buildingId, isDeleted: false });
         if (!building) {
             return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
@@ -77,7 +80,7 @@ const deleteSchedule = async (req, res) => {
 
         res.json({ success: true, message: "Đã xóa lịch của tòa!" });
     } catch (err) {
-        console.error("Lỗi deleteSchedule:", err);
+        console.error("Lỗi deleteSchedule:", err.message);
         res.status(500).json({ message: "Lỗi hệ thống khi xóa lịch!" });
     }
 };

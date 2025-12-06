@@ -5,6 +5,7 @@ const PERMISSIONS = {
     ROOM_CREATE: "room:create",
     ROOM_EDIT: "room:edit",
     ROOM_DELETE: "room:delete",
+    BUILDING_VIEW: "building:view",
 
     // dịch vụ tòa nhà
     SERVICE_VIEW: "service:view",

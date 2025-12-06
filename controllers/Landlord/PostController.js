@@ -449,8 +449,7 @@ const listByLandlord = async (req, res) => {
             }
 
             filter.buildingId = { $in: req.staff.assignedBuildingIds };
-            filter.createdBy = req.user._id;
-
+            // filter.createdBy = req.user._id;
         } else if (req.user.role === "landlord") {
             filter.landlordId = req.user._id;
         } else {

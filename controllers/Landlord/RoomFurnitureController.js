@@ -118,7 +118,7 @@ exports.getAll = async (req, res) => {
     res.json(list);
 
   } catch (err) {
-    console.error("[RoomFurniture] Lỗi getAll:", err);
+    console.error("[RoomFurniture] Lỗi getAll:", err.message);
     res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
