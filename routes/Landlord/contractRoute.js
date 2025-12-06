@@ -1229,6 +1229,12 @@ router.get(
 router.patch(
   "/:id/approve-terminate",
   checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.approveTerminate
 );
@@ -1236,6 +1242,12 @@ router.patch(
 router.patch(
   "/:id/reject-terminate",
   checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.CONTRACT_EDIT, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Contract",
+    idField: "id",
+  }),
   checkSubscription,
   contractController.rejectTerminate
 );

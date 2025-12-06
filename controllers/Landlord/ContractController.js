@@ -453,7 +453,18 @@ exports.deleteContract = async (req, res) => {
         message: "Chỉ được xóa hợp đồng ở trạng thái nháp (draft)",
       });
     }
-
+    if (isStaff) {
+      if (
+        !contract.createBy ||
+        contract.createBy.toString() !== req.user._id.toString()
+      ) {
+        return res.status(403).json({
+          message: "Bạn chỉ được xóa hợp đồng do chính bạn tạo",
+          createdBy: contract.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     contract.isDeleted = true;
     contract.deletedAt = new Date();
     await contract.save();
@@ -471,7 +482,8 @@ exports.deleteContract = async (req, res) => {
       id: contract._id,
     });
   } catch (e) {
-    return res.status(400).json({ message: e.message });
+    console.log(e.message);
+    return res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -1208,12 +1220,12 @@ exports.approveExtension = async (req, res) => {
     }
     if (isStaff) {
       if (
-        !old.createBy ||
-        old.createBy.toString() !== req.user._id.toString()
+        !contract.createBy ||
+        contract.createBy.toString() !== req.user._id.toString()
       ) {
         return res.status(403).json({
-          message: "Bạn chỉ được chấm dút hợp đồng do chính mình tạo",
-          createdBy: old.createBy?.toString(),
+          message: "Bạn chỉ được chấp nhận hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
           yourId: req.user._id.toString(),
         });
       }
@@ -1297,12 +1309,12 @@ exports.rejectExtension = async (req, res) => {
     }
     if (isStaff) {
       if (
-        !old.createBy ||
-        old.createBy.toString() !== req.user._id.toString()
+        !contract.createBy ||
+        contract.createBy.toString() !== req.user._id.toString()
       ) {
         return res.status(403).json({
-          message: "Bạn chỉ được chấm dút hợp đồng do chính mình tạo",
-          createdBy: old.createBy?.toString(),
+          message: "Bạn chỉ được từ chối hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
           yourId: req.user._id.toString(),
         });
       }
@@ -1941,10 +1953,15 @@ exports.downloadContractPdf = async (req, res) => {
 };
 exports.approveTerminate = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
-    const contract = await Contract.findOne({ _id: id, landlordId });
+    if (!id) {
+      return res.status(400).json({ message: "Thiếu id" });
+    }
+    const contract = await Contract.findOne({ _id: id, landlordId })
+      .populate("buildingId", "name")
+      .populate("roomId", "roomNumber");
     if (!contract)
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
 
@@ -1954,7 +1971,18 @@ exports.approveTerminate = async (req, res) => {
         .status(400)
         .json({ message: "Không có yêu cầu chấm dứt đang chờ xử lý" });
     }
-
+    if (isStaff) {
+      if (
+        !contract.createBy ||
+        contract.createBy.toString() !== req.user._id.toString()
+      ) {
+        return res.status(403).json({
+          message: "Bạn chỉ được chấp nhận hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     // Cập nhật request
     reqData.status = "approved";
     reqData.processedAt = new Date();
@@ -1980,7 +2008,31 @@ exports.approveTerminate = async (req, res) => {
         status: "available",
       }
     );
+    if (contract.tenantId) {
+      const notiResident = await Notification.create({
+        landlordId,
+        createByRole: "system",
+        title: "Quản lý tòa nhà đã chấp nhận yêu cầu chấm rất hợp đồng",
+        content: `Quản lý tòa nhà ${contract.A.name} đã chấp nhận yêu cầu chấm rất hợp đồng của tòa ${contract.buildingId?.name} phòng ${contract.roomId?.roomNumber} cho bạn.`,
+        target: { residents: [contract.tenantId] },
+        createdAt: new Date(),
+      });
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user:${contract.tenantId}`).emit("new_notification", {
+          _id: notiResident._id,
+          title: notiResident.title,
+          content: notiResident.content,
+          type: notiResident.type,
+          createdAt: notiResident.createdAt,
+          createBy: { role: "system" },
+        });
 
+        io.to(`user:${contract.tenantId}`).emit("unread_count_increment", {
+          increment: 1,
+        });
+      }
+    }
     res.json({
       message: "Đã duyệt yêu cầu chấm dứt hợp đồng",
       contractStatus: contract.status,
@@ -1992,11 +2044,17 @@ exports.approveTerminate = async (req, res) => {
 };
 exports.rejectTerminate = async (req, res) => {
   try {
-    const landlordId = req.user._id;
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: "Thiếu id" });
+    }
     const { rejectedReason } = req.body || {};
 
-    const contract = await Contract.findOne({ _id: id, landlordId });
+    const contract = await Contract.findOne({ _id: id, landlordId })
+      .populate("buildingId", "name")
+      .populate("roomId", "roomNumber");
     if (!contract)
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
 
@@ -2006,13 +2064,48 @@ exports.rejectTerminate = async (req, res) => {
         .status(400)
         .json({ message: "Không có yêu cầu chấm dứt đang chờ" });
     }
-
+    if (isStaff) {
+      if (
+        !contract.createBy ||
+        contract.createBy.toString() !== req.user._id.toString()
+      ) {
+        return res.status(403).json({
+          message: "Bạn chỉ được từ chối hợp đồng do chính mình tạo",
+          createdBy: contract.createBy?.toString(),
+          yourId: req.user._id.toString(),
+        });
+      }
+    }
     reqData.status = "rejected";
     reqData.rejectedReason = rejectedReason || "";
     reqData.processedAt = new Date();
     reqData.processedById = landlordId;
     reqData.processedByRole = "landlord";
+    if (contract.tenantId) {
+      const notiResident = await Notification.create({
+        landlordId,
+        createByRole: "system",
+        title: "Quản lý tòa nhà đã từ chối yêu cầu chấm rất hợp đồng",
+        content: `Quản lý tòa nhà ${contract.A.name} đã từ chối yêu cầu chấm rất hợp đồng của tòa ${contract.buildingId?.name} phòng ${contract.roomId?.roomNumber} cho bạn.`,
+        target: { residents: [contract.tenantId] },
+        createdAt: new Date(),
+      });
+      const io = req.app.get("io");
+      if (io) {
+        io.to(`user:${contract.tenantId}`).emit("new_notification", {
+          _id: notiResident._id,
+          title: notiResident.title,
+          content: notiResident.content,
+          type: notiResident.type,
+          createdAt: notiResident.createdAt,
+          createBy: { role: "system" },
+        });
 
+        io.to(`user:${contract.tenantId}`).emit("unread_count_increment", {
+          increment: 1,
+        });
+      }
+    }
     await contract.save();
 
     res.json({
