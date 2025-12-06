@@ -7,7 +7,10 @@ exports.getList = async (req, res) => {
     const { buildingId } = req.query;
     if (!buildingId)
       return res.status(400).json({ message: "Thiếu buildingId" });
-
+    const building = await Building.findOne({ _id: buildingId, isDeleted: false });
+    if (!building) {
+      return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
+    }
     req.query.buildingId = buildingId;
 
     if (req.user.role === "staff") {
@@ -74,6 +77,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id) return res.status(400).json({ message: "Thiếu id" });
     const reg = await Regulation.findById(id).populate("buildingId");
     if (!reg)
       return res.status(404).json({ message: "Không tìm thấy quy định" });
@@ -102,6 +106,7 @@ exports.update = async (req, res) => {
 exports.remove = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id) return res.status(400).json({ message: "Thiếu id" });
     const reg = await Regulation.findById(id).populate("buildingId");
     if (!reg)
       return res.status(404).json({ message: "Không tìm thấy quy định" });

@@ -9,10 +9,10 @@ const renderRoomNumber = require("../../utils/renderRoomNumber");
 function getCloudinaryPublicId(url) {
   try {
     const u = new URL(url);
-    const afterUpload = u.pathname.split("/upload/")[1]; 
+    const afterUpload = u.pathname.split("/upload/")[1];
     if (!afterUpload) return null;
-    const noVersion = afterUpload.replace(/^v\d+\//, ""); 
-    return noVersion.replace(/\.[^/.]+$/, ""); 
+    const noVersion = afterUpload.replace(/^v\d+\//, "");
+    return noVersion.replace(/\.[^/.]+$/, "");
   } catch (_) {
     return null;
   }
@@ -251,7 +251,7 @@ const addImages = async (req, res) => {
 
     const b = await Building.findById(room.buildingId);
     const isOwner =
-      req.user.role === "admin" ||
+      req.user.role === "staff" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
@@ -282,7 +282,7 @@ const removeImages = async (req, res) => {
 
     const b = await Building.findById(room.buildingId);
     const isOwner =
-      req.user.role === "admin" ||
+      req.user.role === "staff" ||
       (req.user.role === "landlord" &&
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
@@ -336,7 +336,7 @@ const remove = async (req, res) => {
     }
 
     await doc.deleteOne();
-    res.json({ success: true });
+    res.json({ success: true, message: "Đã xoá phòng" });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -362,7 +362,7 @@ const update = async (req, res) => {
       return res
         .status(403)
         .json({ message: "Tòa nhà đang tạm dừng hoạt động" });
-    
+
     // Parse JSON data from the 'data' field (similar to create function)
     let updateData;
     if (req.body && req.body.data) {
@@ -372,7 +372,7 @@ const update = async (req, res) => {
       // Fallback: old format for backward compatibility
       updateData = req.body || {};
     }
-    
+
     let {
       roomNumber,
       area,
@@ -511,6 +511,7 @@ const softDelete = async (req, res) => {
   try {
     const { id } = req.params;
     const { force } = req.query;
+    if (!id) return res.status(400).json({ message: 'Thiếu id' });
     const r = await Room.findById(id).select("buildingId isDeleted");
     if (!r || r.isDeleted)
       return res.status(404).json({ message: "Không tìm thấy phòng" });

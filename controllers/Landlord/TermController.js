@@ -44,7 +44,9 @@ const getTermsByBuilding = async (req, res) => {
     try {
         const { buildingId } = req.params;
         const { status, page = 1, limit = 10 } = req.query;
-
+        if (!buildingId) {
+            return res.status(400).json({ message: "Thiếu buildingId!" });
+        }
         let filter = { isDeleted: false };
         let landlordId = req.user._id;
 
@@ -75,7 +77,7 @@ const getTermsByBuilding = async (req, res) => {
             data: terms,
         });
     } catch (err) {
-        console.error("Error getTermsByBuilding:", err);
+        console.error("Error getTermsByBuilding:", err.message);
         res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };

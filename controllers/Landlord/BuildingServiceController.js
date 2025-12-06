@@ -38,6 +38,7 @@ async function assertCanAccessBuilding(req, buildingId) {
 exports.listByBuilding = async (req, res) => {
   try {
     const { buildingId } = req.params;
+    if (!buildingId) return res.status(400).json({ message: "Thiếu buildingId" });
     await assertCanAccessBuilding(req, buildingId);
 
     const filter = { buildingId };

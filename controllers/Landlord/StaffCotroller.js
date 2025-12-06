@@ -7,6 +7,7 @@ const Permission = require('../../models/Permission');
 const validateUtils = require("../../utils/validateInput");
 const sendStaffWelcomeEmail = require("../../utils/sendStaffWelcomeEmail");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const createStaff = async (req, res) => {
     const {
         email,
@@ -119,7 +120,7 @@ const createStaff = async (req, res) => {
 
     } catch (err) {
         console.error('Lỗi tạo nhân viên:', err);
-        return res.status(500).json({ message: 'Lỗi server' });
+        return res.status(500).json({ message: 'Lỗi hệ thống' });
     }
 };
 
@@ -162,7 +163,12 @@ const updateStaffStatus = async (req, res) => {
     const { staffId } = req.params;
     const { isActive } = req.body;
     const landlordId = req.user._id;
-
+    if (!staffId) {
+        return res.status(400).json({ message: 'Thiếu staffId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(staffId)) {
+        return res.status(400).json({ message: 'StaffId không hợp lệ' });
+    }
     if (typeof isActive !== 'boolean') {
         return res.status(400).json({ message: "isActive phải là true/false" });
     }
@@ -185,8 +191,8 @@ const updateStaffStatus = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('Lỗi cập nhật trạng thái nhân viên:', err);
-        return res.status(500).json({ message: 'Lỗi server' });
+        console.error('Lỗi cập nhật trạng thái nhân viên:', err.message);
+        return res.status(500).json({ message: 'Lỗi hệ thống' });
     }
 };
 
@@ -252,7 +258,12 @@ const updateStaffPermissions = async (req, res) => {
     const { staffId } = req.params;
     const landlordId = req.user._id;
     const { permissions, assignedBuildings } = req.body;
-
+    if (!staffId) {
+        return res.status(400).json({ message: 'Thieu staffId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(staffId)) {
+        return res.status(400).json({ message: 'staffId không hợp lệ' });
+    }
     try {
         const employee = await Employee.findOne({ _id: staffId, landlordId });
         if (!employee) {
@@ -297,7 +308,12 @@ const updateStaffPermissions = async (req, res) => {
 const resendFirstPasswordLink = async (req, res) => {
     const { staffId } = req.params;
     const landlordId = req.user._id;
-
+    if (!staffId) {
+        return res.status(400).json({ message: 'Thiếu staffId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(staffId)) {
+        return res.status(400).json({ message: 'staffId không hợp lệ' });
+    }
     try {
         const employee = await Employee.findOne({ _id: staffId, landlordId });
         if (!employee) {
