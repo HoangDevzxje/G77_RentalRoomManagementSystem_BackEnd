@@ -9,6 +9,12 @@ const Contract = require('../../models/Contract');
 const getBuildingInfo = async (req, res) => {
     try {
         const { buildingId } = req.params;
+        if (!buildingId) {
+            return res.status(400).json({ message: 'Thiếu buildingId' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+            return res.status(400).json({ message: 'buildingId không hợp lệ' });
+        }
 
         const b = await Building.findById(buildingId)
             .select('name address eIndexType ePrice wIndexType wPrice description status landlordId')
@@ -110,7 +116,11 @@ const getBuildingInfo = async (req, res) => {
 const createPost = async (req, res) => {
     try {
         const buildingId = req.query.buildingId || req.body.buildingId;
-
+        if (!buildingId) {
+            return res.status(400).json({
+                message: "Thiếu buildingId!"
+            });
+        }
         const { title, description, address, roomIds } = req.body;
         let { isDraft } = req.body;
 
@@ -251,7 +261,12 @@ const updatePost = async (req, res) => {
         const { id } = req.params;
         const { title, description, address, buildingId, roomIds } = req.body;
         let { isDraft } = req.body;
-
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const post = await Post.findById(id);
         if (!post || post.isDeleted) {
             return res.status(404).json({ message: 'Không tìm thấy bài đăng!' });
@@ -329,8 +344,8 @@ const updatePost = async (req, res) => {
         await post.save();
         res.json({ success: true, message: 'Cập nhật bài đăng thành công!', data: post });
     } catch (err) {
-        console.error('Lỗi updatePost:', err);
-        res.status(500).json({ message: 'Lỗi server', error: err.message });
+        console.error('Lỗi updatePost:', err.message);
+        res.status(500).json({ message: 'Lỗi hệ thống' });
     }
 };
 
@@ -501,7 +516,12 @@ const listByLandlord = async (req, res) => {
 const getPostDetail = async (req, res) => {
     try {
         const { id } = req.params;
-
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const post = await Post.findById(id)
             .populate('buildingId', 'name address eIndexType ePrice wIndexType wPrice description status landlordId')
             .populate({
@@ -554,7 +574,12 @@ const getPostDetail = async (req, res) => {
 const softDelete = async (req, res) => {
     try {
         const { id } = req.params;
-
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const post = await Post.findById(id);
         if (!post || post.isDeleted) {
             return res.status(404).json({ message: 'Không tìm thấy bài đăng!' });
@@ -579,8 +604,8 @@ const softDelete = async (req, res) => {
 
         res.json({ success: true, message: 'Đã xóa bài đăng (mềm)!' });
     } catch (err) {
-        console.error('Lỗi softDelete:', err);
-        res.status(500).json({ message: err.message });
+        console.error('Lỗi softDelete:', err.message);
+        res.status(500).json({ message: "Lỗi hệ thống khi xóa bài đăng" });
     }
 };
 

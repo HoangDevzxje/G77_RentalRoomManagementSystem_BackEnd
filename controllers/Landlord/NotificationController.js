@@ -175,8 +175,8 @@ const createNotification = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Create notification error:", error);
-        return res.status(500).json({ message: "Lỗi server" });
+        console.error("Create notification error:", error.message);
+        return res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 
@@ -311,8 +311,8 @@ const getMyNotifications = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("getMyNotifications error:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error("getMyNotifications error:", error.message);
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 
@@ -344,8 +344,8 @@ const markAsRead = async (req, res) => {
 
         res.json({ success: true, message: "Đã đánh dấu đã đọc" });
     } catch (error) {
-        console.error("markAsRead error:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error("markAsRead error:", error.message);
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 const updateNotification = async (req, res) => {
@@ -354,6 +354,12 @@ const updateNotification = async (req, res) => {
     const user = req.user;
 
     try {
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const noti = await Notification.findById(id);
         if (!noti || noti.isDeleted) return res.status(404).json({ message: "Thông báo không tồn tại" });
 
@@ -420,8 +426,8 @@ const updateNotification = async (req, res) => {
         // =====================================================================
         res.json({ success: true, message: "Cập nhật thành công", data: noti });
     } catch (error) {
-        console.error("updateNotification error:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error("updateNotification error:", error.message);
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 const deleteNotification = async (req, res) => {
@@ -429,6 +435,12 @@ const deleteNotification = async (req, res) => {
     const user = req.user;
 
     try {
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const noti = await Notification.findById(id);
         if (!noti) {
             return res.status(404).json({ message: "Không tìm thấy thông báo" });
@@ -458,14 +470,20 @@ const deleteNotification = async (req, res) => {
 
         res.json({ success: true, message: "Xóa thông báo thành công" });
     } catch (error) {
-        console.error("deleteNotification error:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error("deleteNotification error:", error.message);
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 
 const getNotificationById = async (req, res) => {
     const { id } = req.params;
     try {
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const noti = await Notification.findById(id)
             .populate("createBy", "fullName username avatar")
             .lean();
@@ -474,8 +492,8 @@ const getNotificationById = async (req, res) => {
 
         res.json({ success: true, data: { ...noti, id: noti._id.toString() } });
     } catch (error) {
-        console.error("getNotificationById error:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error("getNotificationById error:", error.message);
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 const getMySentNotifications = async (req, res) => {
@@ -569,8 +587,8 @@ const getMySentNotifications = async (req, res) => {
             data: result
         });
     } catch (error) {
-        console.error("getMySentNotifications error:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error("getMySentNotifications error:", error.message);
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 const getUnreadCount = async (req, res) => {
@@ -646,7 +664,7 @@ const getUnreadCount = async (req, res) => {
 
     } catch (error) {
         console.error("getUnreadCount error:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 

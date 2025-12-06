@@ -463,8 +463,8 @@ const monthlyComparison = async (req, res) => {
       data: comparedData,
     });
   } catch (err) {
-    console.error("Lỗi so sánh hàng tháng:", err);
-    res.status(500).json({ message: err.message });
+    console.error("Lỗi so sánh hàng tháng:", err.message);
+    res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
 
