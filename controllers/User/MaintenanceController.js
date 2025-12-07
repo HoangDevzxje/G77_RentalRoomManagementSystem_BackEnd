@@ -261,13 +261,21 @@ exports.createRequest = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Đã có lỗi xảy ra khi gửi yêu cầu bảo trì",
+      message: "Lỗi hệ thống",
     });
   }
 };
 // Chi tiết phiếu
 exports.getRequest = async (req, res) => {
   try {
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ message: "Thiếu id" });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID phòng không hợp lệ",
+      });
+    }
     const doc = await MaintenanceRequest.findById(req.params.id)
       .populate("roomId", "roomNumber buildingId")
       .populate("furnitureId", "name")
@@ -308,6 +316,12 @@ exports.addComment = async (req, res) => {
   try {
     const { id } = req.params;
     const { note } = req.body;
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     if (!note?.trim()) {
       return res.status(400).json({ success: false, message: "Nội dung bình luận không được để trống" });
     }
@@ -400,6 +414,18 @@ exports.updateComment = async (req, res) => {
   try {
     const { id, commentId } = req.params;
     const { note } = req.body;
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
+    if (!commentId) {
+      return res.status(400).json({ message: 'Thiếu commentId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(commentId)) {
+      return res.status(400).json({ message: 'commentId không hợp lệ' });
+    }
     if (!note?.trim()) return res.status(400).json({ success: false, message: "Nội dung không được để trống" });
 
     const maintenance = await MaintenanceRequest.findById(id).populate("buildingId", "landlordId");
@@ -470,7 +496,18 @@ exports.updateComment = async (req, res) => {
 exports.deleteComment = async (req, res) => {
   try {
     const { id, commentId } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
+    if (!commentId) {
+      return res.status(400).json({ message: 'Thiếu commentId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(commentId)) {
+      return res.status(400).json({ message: 'commentId không hợp lệ' });
+    }
     const maintenance = await MaintenanceRequest.findById(id)
       .populate("buildingId", "landlordId _id")
       .populate("roomId", "roomNumber");

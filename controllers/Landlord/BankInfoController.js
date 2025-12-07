@@ -43,8 +43,8 @@ exports.getMyBankInfo = async (req, res) => {
       bankInfo,
     });
   } catch (e) {
-    console.error("getMyBankInfo error:", e);
-    return res.status(500).json({ message: e.message || "Server error" });
+    console.error("getMyBankInfo error:", e.message);
+    return res.status(500).json({ message: e.message || "Lỗi hệ thống" });
   }
 };
 
@@ -109,8 +109,8 @@ exports.updateMyBankInfo = async (req, res) => {
       bankInfo: userInfoDoc.bankInfo,
     });
   } catch (e) {
-    console.error("updateMyBankInfo error:", e);
-    return res.status(500).json({ message: e.message || "Server error" });
+    console.error("updateMyBankInfo error:", e.message);
+    return res.status(500).json({ message: e.message || "Lỗi hệ thống" });
   }
 };
 
@@ -166,6 +166,6 @@ exports.uploadBankQr = async (req, res) => {
     });
   } catch (e) {
     console.error("uploadBankQr error:", e);
-    return res.status(500).json({ message: e.message || "Server error" });
+    return res.status(500).json({ message: e.message || "Lỗi hệ thống" });
   }
 };

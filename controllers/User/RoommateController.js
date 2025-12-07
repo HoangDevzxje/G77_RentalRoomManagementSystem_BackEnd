@@ -9,7 +9,9 @@ const addRoommate = async (req, res) => {
     if (!roomId || !userIds) {
         return res.status(400).json({ message: 'Thiếu roomId hoặc userIds' });
     }
-
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+        return res.status(400).json({ message: 'roomId không hợp lệ' });
+    }
     if (!Array.isArray(userIds)) {
         userIds = [userIds];
     }
@@ -153,7 +155,9 @@ const removeRoommate = async (req, res) => {
     if (!roomId || !userIds) {
         return res.status(400).json({ message: 'Thiếu roomId hoặc userIds' });
     }
-
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+        return res.status(400).json({ message: 'roomId không hợp lệ' });
+    }
     if (!Array.isArray(userIds)) {
         userIds = [userIds];
     }
@@ -312,6 +316,12 @@ const getMyRoommates = async (req, res) => {
     const userId = req.user.id;
 
     try {
+        if (!roomId) {
+            return res.status(400).json({ message: 'Thiếu roomId' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(roomId)) {
+            return res.status(400).json({ message: 'roomId không hợp lệ' });
+        }
         const room = await Room.findById(roomId)
             .populate({
                 path: 'currentTenantIds',
@@ -376,6 +386,12 @@ const getRoommateDetail = async (req, res) => {
     const requesterId = req.user.id;
 
     try {
+        if (!userId) {
+            return res.status(400).json({ message: 'Thiếu userId' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ message: 'userId không hợp lệ' });
+        }
         const room = await Room.findOne({
             status: 'rented',
             currentTenantIds: { $all: [requesterId, userId] }

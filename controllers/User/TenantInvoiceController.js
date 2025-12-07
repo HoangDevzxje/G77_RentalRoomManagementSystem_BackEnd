@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const Invoice = require("../../models/Invoice");
 const Account = require("../../models/Account");
 const UserInformation = require("../../models/UserInformation");
-
+const mongoose = require("mongoose");
 exports.listMyInvoices = async (req, res) => {
   try {
     const tenantId = req.user?._id;
@@ -78,8 +78,8 @@ exports.listMyInvoices = async (req, res) => {
       totalPages: Math.ceil(total / pageSize),
     });
   } catch (e) {
-    console.error("listMyInvoices error:", e);
-    res.status(400).json({ message: e.message });
+    console.error("listMyInvoices error:", e.message);
+    res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -88,7 +88,12 @@ exports.getMyInvoiceDetail = async (req, res) => {
   try {
     const tenantId = req.user?._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       tenantId,
@@ -110,8 +115,8 @@ exports.getMyInvoiceDetail = async (req, res) => {
 
     res.json(invoice);
   } catch (e) {
-    console.error("getMyInvoiceDetail error:", e);
-    res.status(400).json({ message: e.message });
+    console.error("getMyInvoiceDetail error:", e.message);
+    res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 // POST /tenants/invoices/:id/pay
@@ -236,7 +241,12 @@ exports.requestBankTransferConfirmation = async (req, res) => {
         .status(401)
         .json({ message: "Không xác định được người dùng" });
     }
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const file = req.file;
 
     // Ưu tiên file upload, nếu không có thì dùng URL
@@ -311,7 +321,12 @@ exports.getMyInvoiceHistory = async (req, res) => {
   try {
     const tenantId = req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       tenantId,
@@ -331,7 +346,7 @@ exports.getMyInvoiceHistory = async (req, res) => {
       history: invoice.history || [],
     });
   } catch (e) {
-    console.error("getMyInvoiceHistory error:", e);
-    return res.status(400).json({ message: e.message });
+    console.error("getMyInvoiceHistory error:", e.message);
+    return res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };

@@ -1,5 +1,5 @@
 const Account = require("../../models/Account");
-
+const mongoose = require("mongoose");
 const getAllUsers = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -37,10 +37,15 @@ const getAllUsers = async (req, res) => {
 const getAccountInfo = async (req, res) => {
     try {
         const accountId = req.params.id;
-
+        if (!accountId) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(accountId)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const account = await Account.findById(accountId)
             .select("-password -accessToken -refreshToken")
-            .populate("userInfo"); 
+            .populate("userInfo");
 
         if (!account) {
             return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
@@ -60,7 +65,21 @@ const updateRole = async (req, res) => {
     try {
         const { id } = req.params;
         const { role } = req.body;
-
+        const validRoles = ["resident", "landlord", "admin", "staff"];
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
+        if (!role) {
+            return res.status(400).json({ message: 'Thiếu role' });
+        }
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({
+                message: `Role không hợp lệ. Chỉ chấp nhận: ${validRoles.join(", ")}`
+            });
+        }
         const updateUserRole = await Account.findByIdAndUpdate(
             id,
             { role },
@@ -74,13 +93,19 @@ const updateRole = async (req, res) => {
         })
     } catch (err) {
         console.log(err);
-        res.status(500).json({ message: "Lỗi cập nhaajpp role người dùng" });
+        res.status(500).json({ message: "Lỗi cập nhập role người dùng" });
     }
 };
 
 const channgStatusUser = async (req, res) => {
     try {
         const userId = req.params.id;
+        if (!userId) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const user = await Account.findById(userId).select("isActivated");
         if (!user) {
             return res.status(404).json({ message: "Không tìm thấy người dùng" });

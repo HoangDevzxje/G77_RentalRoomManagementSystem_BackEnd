@@ -1,9 +1,38 @@
 const Package = require('../../models/Package');
 const Subscription = require('../../models/Subscription');
-
+const mongoose = require('mongoose');
 const create = async (req, res) => {
     try {
         const { name, price, durationDays, roomLimit, description, type, isActive } = req.body;
+        const validTypes = ["trial", "paid"];
+
+        if (!name) return res.status(400).json({ message: "Tên gói không được để trống" });
+        if (!durationDays) return res.status(400).json({ message: "Thiếu durationDays" });
+        if (!roomLimit) return res.status(400).json({ message: "Thiếu roomLimit" });
+
+        if (type && !validTypes.includes(type)) {
+            return res.status(400).json({
+                message: `Type không hợp lệ. Chỉ chấp nhận: ${validTypes.join(", ")}`
+            });
+        }
+
+        if (type !== "trial") {
+            if (price == null || price < 0) {
+                return res.status(400).json({ message: "Giá không hợp lệ" });
+            }
+        }
+
+        if (durationDays <= 0) {
+            return res.status(400).json({ message: "durationDays phải lớn hơn 0" });
+        }
+        if (roomLimit <= 0) {
+            return res.status(400).json({ message: "roomLimit phải lớn hơn 0" });
+        }
+
+        if (isActive !== undefined && typeof isActive !== "boolean") {
+            return res.status(400).json({ message: "isActive phải là boolean" });
+        }
+
         const finalPrice = type === 'trial' ? 0 : price;
         const pkg = new Package({
             name,
@@ -34,17 +63,32 @@ const list = async (req, res) => {
 
 const getById = async (req, res) => {
     try {
-        const pkg = await Package.findById(req.params.id);
+        const id = req.params.id;
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
+        const pkg = await Package.findById(id);
         if (!pkg) return res.status(404).json({ message: 'Không tìm thấy gói dịch vụ' });
         res.json({ success: true, data: pkg });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        console.error(err.message);
+        res.status(500).json({ message: "Lỗi hệ thống" });
     }
 };
 
 const update = async (req, res) => {
     try {
-        const pkg = await Package.findById(req.params.id);
+        const id = req.params.id;
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
+        const pkg = await Package.findById(id);
         if (!pkg) return res.status(404).json({ success: false, message: 'Không tìm thấy gói dịch vụ' });
 
         if (req.user.role !== 'admin' && String(pkg.createdBy) !== String(req.user._id)) {
@@ -63,17 +107,24 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
     try {
-        const pkg = await Package.findById(req.params.id);
+        const id = req.params.id;
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
+        const pkg = await Package.findById(id);
         if (!pkg) return res.status(404).json({ message: 'Không tìm thấy gói dịch vụ' });
         if (req.user.role !== 'admin' && String(pkg.createdBy) !== String(req.user._id)) {
             return res.status(403).json({ message: 'Không có quyền' });
         }
         const subCount = await Subscription.countDocuments({ packageId: pkg._id });
         if (subCount > 0) {
-            return res.status(409).json({ message: 'Hãy xóa các subscription liên quan trước' });
+            return res.status(409).json({ message: 'Đang có người dùng gói này không thể xóa' });
         }
         await pkg.deleteOne();
-        res.json({ success: true });
+        res.json({ success: true, message: 'Đã xóa gói dịch vụ' });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -81,6 +132,12 @@ const remove = async (req, res) => {
 const updateIsActive = async (req, res) => {
     try {
         const id = req.params.id;
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const pkg = await Package.findById(id);
 
         if (!pkg) {
@@ -107,8 +164,14 @@ const changeType = async (req, res) => {
         if (!['trial', 'paid'].includes(type)) {
             return res.status(400).json({ success: false, message: 'Giá trị type không hợp lệ (chỉ trial hoặc paid)' });
         }
-
-        const pkg = await Package.findById(req.params.id);
+        const id = req.params.id;
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
+        const pkg = await Package.findById(id);
         if (!pkg) return res.status(404).json({ success: false, message: 'Không tìm thấy gói dịch vụ' });
 
         pkg.type = type;

@@ -7,11 +7,16 @@ const Notification = require('../../models/Notification');
 const createOrUpdateRating = async (req, res) => {
     const { buildingId, rating, comment } = req.body;
     const userId = req.user.id;
-
-    if (!buildingId || !rating) {
+    if (!buildingId) {
+        return res.status(400).json({ message: 'Thiếu buildingId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+        return res.status(400).json({ message: 'buildingId không hợp lệ' });
+    }
+    if (!rating) {
         return res.status(400).json({
             success: false,
-            message: 'Thiếu buildingId hoặc điểm đánh giá'
+            message: 'Thiếu điểm đánh giá'
         });
     }
 
@@ -157,13 +162,16 @@ const createOrUpdateRating = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: 'Đã có lỗi xảy ra, vui lòng thử lại sau'
+            message: 'Lỗi hệ thống'
         });
     }
 };
 const deleteMyRating = async (req, res) => {
     const { ratingId } = req.params;
     const userId = req.user.id;
+    if (!ratingId) {
+        return res.status(400).json({ message: 'Thiếu ratingId' });
+    }
 
     if (!mongoose.Types.ObjectId.isValid(ratingId)) {
         return res.status(400).json({
@@ -202,7 +210,9 @@ const deleteMyRating = async (req, res) => {
 };
 const getBuildingRatings = async (req, res) => {
     const { buildingId } = req.params;
-
+    if (!buildingId) {
+        return res.status(400).json({ message: 'Thiếu ratingId' });
+    }
     if (!mongoose.Types.ObjectId.isValid(buildingId)) {
         return res.status(400).json({
             success: false,

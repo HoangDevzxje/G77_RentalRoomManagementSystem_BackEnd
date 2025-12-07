@@ -5,12 +5,17 @@ const dayjs = require("dayjs");
 const Staff = require("../../models/Staff");
 const Notification = require("../../models/Notification");
 const validateUtils = require("../../utils/validateInput")
-
+const mongoose = require("mongoose");
 const getAvailableSlots = async (req, res) => {
   try {
     const { buildingId } = req.params;
     const { startDate, endDate } = req.query;
-
+    if (!buildingId) {
+      return res.status(400).json({ message: 'Thiếu buildingId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ message: 'buildingId không hợp lệ' });
+    }
     const start = startDate ? dayjs(startDate) : dayjs().startOf("day");
     const end = endDate ? dayjs(endDate) : start.add(6, "day");
 
@@ -86,12 +91,17 @@ const create = async (req, res) => {
   try {
     const tenantId = req.user._id;
     const { postId, buildingId, date, timeSlot, tenantNote, contactName, contactPhone } = req.body;
-
-    if (!postId || !buildingId || !date || !timeSlot || !contactName || !contactPhone) {
-      return res.status(400).json({
-        success: false,
-        message: "Vui lòng nhập đầy đủ thông tin đặt lịch!",
-      });
+    if (!postId) {
+      return res.status(400).json({ message: 'Thiếu postId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      return res.status(400).json({ message: 'postId không hợp lệ' });
+    }
+    if (!buildingId) {
+      return res.status(400).json({ message: 'Thiếu buildingId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ message: 'buildingId không hợp lệ' });
     }
     if (!date) {
       return res.status(400).json({
@@ -317,7 +327,12 @@ const cancel = async (req, res) => {
   try {
     const tenantId = req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const booking = await Booking.findOne({ _id: id, tenantId, isDeleted: false }).populate("buildingId", "name");
     if (!booking) return res.status(404).json({ message: "Không tìm thấy lịch đặt!" });
 
