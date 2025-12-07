@@ -116,7 +116,7 @@ exports.listRequests = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("listRequests error:", error);
+    console.error("listRequests error:", error.message);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
@@ -164,7 +164,7 @@ exports.getRequest = async (req, res) => {
     return res.json({ success: true, data: doc });
 
   } catch (error) {
-    console.error("getRequest error:", error);
+    console.error("getRequest error:", error.message);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
@@ -172,6 +172,12 @@ exports.getRequest = async (req, res) => {
 exports.updateRequest = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const { status, repairCost, note } = req.body;
 
     const maintenance = await MaintenanceRequest.findById(id)
@@ -310,7 +316,7 @@ exports.updateRequest = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("updateRequest error:", error);
+    console.error("updateRequest error:", error.message);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
@@ -319,6 +325,12 @@ exports.comment = async (req, res) => {
   try {
     const { id } = req.params;
     const { note } = req.body;
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     if (!note?.trim()) return res.status(400).json({ success: false, message: "Nội dung không được trống" });
 
     const maintenance = await MaintenanceRequest.findById(id)
@@ -398,7 +410,7 @@ exports.comment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("comment error:", error);
+    console.error("comment error:", error.message);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
@@ -407,6 +419,18 @@ exports.updateComment = async (req, res) => {
   try {
     const { id, commentId } = req.params;
     const { note } = req.body;
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
+    if (!commentId) {
+      return res.status(400).json({ message: 'Thiếu commentId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(commentId)) {
+      return res.status(400).json({ message: 'commentId không hợp lệ' });
+    }
     if (!note?.trim()) return res.status(400).json({ success: false, message: "Nội dung không được trống" });
 
     const maintenance = await MaintenanceRequest.findById(id)
@@ -471,7 +495,7 @@ exports.updateComment = async (req, res) => {
     return res.json({ success: true, message: "Đã sửa bình luận" });
 
   } catch (error) {
-    console.error("updateComment error:", error);
+    console.error("updateComment error:", error.message);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };
@@ -480,7 +504,18 @@ exports.updateComment = async (req, res) => {
 exports.deleteComment = async (req, res) => {
   try {
     const { id, commentId } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
+    if (!commentId) {
+      return res.status(400).json({ message: 'Thiếu commentId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(commentId)) {
+      return res.status(400).json({ message: 'commentId không hợp lệ' });
+    }
     const maintenance = await MaintenanceRequest.findById(id)
       .populate("roomId", "currentTenantIds")
       .populate("buildingId", "landlordId");
@@ -536,7 +571,7 @@ exports.deleteComment = async (req, res) => {
     return res.json({ success: true, message: "Đã xóa bình luận" });
 
   } catch (error) {
-    console.error("deleteComment error:", error);
+    console.error("deleteComment error:", error.message);
     return res.status(500).json({ success: false, message: "Lỗi hệ thống" });
   }
 };

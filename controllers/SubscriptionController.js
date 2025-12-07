@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const qs = require('qs');
 const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
-
+const mongoose = require('mongoose');
 const Subscription = require('../models/Subscription');
 const Package = require('../models/Package');
 const sendTrialWelcomeEmail = require('../utils/sendTrialWelcomeEmail');
@@ -121,8 +121,8 @@ const startTrial = async (req, res) => {
         }, 'Dùng thử kích hoạt thành công! Email xác nhận đã được gửi.');
 
     } catch (err) {
-        console.error("Lỗi startTrial:", err);
-        return sendError(res, 500, 'Đã có lỗi xảy ra');
+        console.error("Lỗi startTrial:", err.message);
+        return sendError(res, 500, 'Lỗi hệ thống');
     }
 };
 
@@ -130,7 +130,9 @@ const buyPackage = async (req, res) => {
     try {
         const { packageId } = req.body;
         if (!packageId) return sendError(res, 400, 'Thiếu packageId');
-
+        if (!mongoose.Types.ObjectId.isValid(packageId)) {
+            return sendError(res, 400, 'packageId không hợp lệ');
+        }
         const pkg = await Package.findById(packageId);
         if (!pkg || !pkg.isActive || pkg.type === 'trial') {
             return sendError(res, 400, 'Gói không hợp lệ');
@@ -242,10 +244,10 @@ const renewPackage = async (req, res) => {
             return sendError(res, 400, `Còn ${daysLeft} ngày. Chỉ gia hạn khi còn ≤ 30 ngày.`);
         }
 
-        
+
         const existingRenewal = await Subscription.findOne({
             landlordId,
-            renewedFrom: currentSub._id,                  
+            renewedFrom: currentSub._id,
             isRenewal: true,
             status: { $in: ['pending_payment', 'upcoming'] }
         });
@@ -320,7 +322,7 @@ const renewPackage = async (req, res) => {
 
     } catch (err) {
         console.error('Lỗi renewPackage:', err);
-        return sendError(res, 500, err.message || 'Lỗi server');
+        return sendError(res, 500, err.message || 'Lỗi hệ thống');
     }
 };
 
@@ -461,7 +463,8 @@ const getStatusPackage = async (req, res) => {
             action,
         });
     } catch (err) {
-        return sendError(res, 500, err.message);
+        console.error('Lỗi getStatusPackage:', err.message);
+        return sendError(res, 500, "Lỗi hệ thống");
     }
 };
 
@@ -526,7 +529,9 @@ const getDetailPackage = async (req, res) => {
     try {
         const { subscriptionId } = req.params;
         if (!subscriptionId) return sendError(res, 400, 'Thiếu subscriptionId');
-
+        if (!mongoose.Types.ObjectId.isValid(subscriptionId)) {
+            return sendError(res, 400, 'subscriptionId không hợp lệ');
+        }
         const sub = await Subscription.findById(subscriptionId)
             .populate('packageId', 'name price durationDays roomLimit type description');
 
@@ -626,35 +631,78 @@ const getCurrentPackage = async (req, res) => {
     }
 };
 
+// const cancelledSubscription = async (req, res) => {
+//     try {
+//         const landlordId = req.user._id;
+
+//         const sub = await Subscription.findOne({
+//             landlordId,
+//             status: { $in: ['active', 'upcoming'] },
+//             endDate: { $gt: new Date() }
+//         }).populate('packageId');
+
+//         if (!sub) {
+//             return sendError(res, 400, 'Không có gói nào đang active để hủy.');
+//         }
+
+//         if (sub.isTrial) {
+//             return sendError(res, 400, 'Không thể hủy gói dùng thử.');
+//         }
+
+//         sub.status = 'cancelled';
+//         await sub.save();
+
+//         return sendSuccess(res, {
+//             status: sub.status,
+//             message: 'Đã hủy gói thành công. Bạn có thể mua gói mới ngay!'
+//         });
+
+//     } catch (err) {
+//         console.error('Lỗi cancel:', err);
+//         return sendError(res, 500, 'Lỗi hệ thống');
+//     }
+// };
 const cancelledSubscription = async (req, res) => {
     try {
         const landlordId = req.user._id;
-
+        const subId = req.params.id;
+        if (!subId) return sendError(res, 400, 'Thiếu subId');
+        if (!mongoose.Types.ObjectId.isValid(subId)) {
+            return sendError(res, 400, 'subId không hợp lệ');
+        }
         const sub = await Subscription.findOne({
+            _id: subId,
             landlordId,
-            status: { $in: ['active', 'upcoming'] },
-            endDate: { $gt: new Date() }
-        }).populate('packageId');
+        });
 
         if (!sub) {
-            return sendError(res, 400, 'Không có gói nào đang active để hủy.');
+            return sendError(res, 404, 'Không tìm thấy gói dịch vụ.');
+        }
+
+        if (!['active', 'upcoming'].includes(sub.status)) {
+            return sendError(res, 400, 'Chỉ có thể hủy gói đang active hoặc upcoming.');
         }
 
         if (sub.isTrial) {
             return sendError(res, 400, 'Không thể hủy gói dùng thử.');
         }
 
+        if (sub.status === 'upcoming' && sub.renewedFrom) {
+            await Subscription.findByIdAndUpdate(sub.renewedFrom, {
+                $unset: { renewedTo: "" }
+            });
+        }
         sub.status = 'cancelled';
         await sub.save();
 
         return sendSuccess(res, {
             status: sub.status,
-            message: 'Đã hủy gói thành công. Bạn có thể mua gói mới ngay!'
+            message: 'Đã hủy gói thành công.'
         });
 
     } catch (err) {
-        console.error('Lỗi cancel:', err);
-        return sendError(res, 500, 'Lỗi hệ thống');
+        console.error('Lỗi cancel:', err.message);
+        return sendError(res, 500, 'Lỗi hệ thống.');
     }
 };
 

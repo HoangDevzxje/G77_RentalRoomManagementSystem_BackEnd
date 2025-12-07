@@ -8,7 +8,7 @@ const RevenueExpenditure = require("../../models/RevenueExpenditures");
 const Notification = require("../../models/Notification");
 const sendEmail = require("../../utils/sendMail");
 const { buildItemsDiff, isItemsDiffEmpty } = require("../../utils/invoiceDiff");
-
+const mongoose = require("mongoose");
 function getPeriodRange(periodMonth, periodYear) {
   const start = new Date(periodYear, periodMonth - 1, 1, 0, 0, 0, 0);
   const end = new Date(periodYear, periodMonth, 0, 23, 59, 59, 999);
@@ -76,9 +76,8 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
     : "N/A";
 
-  let html = `<p>Chào ${
-    tenant.userInfo?.fullName || "Anh/Chị"
-  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  let html = `<p>Chào ${tenant.userInfo?.fullName || "Anh/Chị"
+    },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
   html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
   html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
   html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
@@ -160,9 +159,8 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
     const amount = Number(invoice.totalAmount) || 0;
     if (amount <= 0) return;
 
-    const title = `Thu tiền hóa đơn ${
-      invoice.invoiceNumber || String(invoice._id)
-    }`;
+    const title = `Thu tiền hóa đơn ${invoice.invoiceNumber || String(invoice._id)
+      }`;
 
     const descParts = [];
     if (invoice.roomSnapshot?.roomNumber) {
@@ -209,10 +207,16 @@ exports.generateMonthlyInvoice = async (req, res) => {
       includeRent = true,
       extraItems = [],
     } = req.body || {};
-    console.log(req.body);
-    if (!roomId || !periodMonth || !periodYear) {
+    // console.log(req.body);
+    if (!roomId) {
+      return res.status(400).json({ message: 'Thiếu roomId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(400).json({ message: 'roomId không hợp lệ' });
+    }
+    if (!periodMonth || !periodYear) {
       return res.status(400).json({
-        message: "Thiếu roomId hoặc periodMonth/periodYear",
+        message: "Thiếu periodMonth/periodYear",
       });
     }
 
@@ -395,12 +399,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -514,7 +518,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       data: invoice,
     });
   } catch (e) {
-    console.error("generateMonthlyInvoice error:", e);
+    console.error("generateMonthlyInvoice error:", e.message);
     return res.status(500).json({
       message: "Lỗi tạo hoá đơn tháng",
       error: e.message,
@@ -624,8 +628,8 @@ exports.getInvoices = async (req, res) => {
       limit: limitNum,
     });
   } catch (e) {
-    console.error("getInvoices error:", e);
-    return res.status(500).json({ message: "Server error", error: e.message });
+    console.error("getInvoices error:", e.message);
+    return res.status(500).json({ message: "Lỗi hệ thống", error: e.message });
   }
 };
 
@@ -636,7 +640,12 @@ exports.getInvoiceDetail = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       landlordId,
@@ -680,8 +689,8 @@ exports.getInvoiceDetail = async (req, res) => {
     }
     return res.json({ data: invoice });
   } catch (e) {
-    console.error("getInvoiceDetail error:", e);
-    return res.status(500).json({ message: "Server error", error: e.message });
+    console.error("getInvoiceDetail error:", e.message);
+    return res.status(500).json({ message: "Lỗi hệ thống", error: e.message });
   }
 };
 
@@ -691,7 +700,12 @@ exports.updateInvoice = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       landlordId,
@@ -841,9 +855,9 @@ exports.updateInvoice = async (req, res) => {
               reading.eConsumption != null
                 ? reading.eConsumption
                 : Math.max(
-                    0,
-                    (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
-                  );
+                  0,
+                  (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.eUnitPrice != null
@@ -865,9 +879,9 @@ exports.updateInvoice = async (req, res) => {
               reading.wConsumption != null
                 ? reading.wConsumption
                 : Math.max(
-                    0,
-                    (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
-                  );
+                  0,
+                  (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.wUnitPrice != null
@@ -1123,9 +1137,8 @@ exports.updateInvoice = async (req, res) => {
 
       // Những dòng electric/water cũ mà body KHÔNG gửi gì → giữ nguyên
       for (const oldItem of oldElectricWater) {
-        const key = `${oldItem.type || ""}:${
-          oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
-        }`;
+        const key = `${oldItem.type || ""}:${oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
+          }`;
         const touched = bodyElectricWater.some(
           (b) => `${b.type || ""}:${String(b.utilityReadingId || "")}` === key
         );
@@ -1233,8 +1246,8 @@ exports.updateInvoice = async (req, res) => {
       message: `Trạng thái hiện tại '${currentStatus}' chưa hỗ trợ cập nhật bằng API này`,
     });
   } catch (e) {
-    console.error("updateInvoice error:", e);
-    return res.status(400).json({ message: e.message });
+    console.error("updateInvoice error:", e.message);
+    return res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -1243,7 +1256,12 @@ exports.deleteInvoice = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       landlordId,
@@ -1313,8 +1331,8 @@ exports.deleteInvoice = async (req, res) => {
       message: "Xóa hóa đơn thành công (soft delete)",
     });
   } catch (e) {
-    console.error("deleteInvoice error:", e);
-    return res.status(400).json({ message: e.message });
+    console.error("deleteInvoice error:", e.message);
+    return res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -1326,7 +1344,12 @@ exports.markInvoicePaid = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { paymentMethod, paidAt, note, paidAmount } = req.body || {};
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       landlordId,
@@ -1480,8 +1503,8 @@ exports.markInvoicePaid = async (req, res) => {
       data: invoice,
     });
   } catch (e) {
-    console.error("markInvoicePaid error:", e);
-    return res.status(500).json({ message: e.message });
+    console.error("markInvoicePaid error:", e.message);
+    return res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -1491,6 +1514,12 @@ exports.sendInvoiceEmail = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       landlordId,
@@ -1617,8 +1646,8 @@ exports.sendInvoiceEmail = async (req, res) => {
       });
     }
   } catch (e) {
-    console.error("sendInvoiceEmail error:", e);
-    return res.status(400).json({ message: e.message });
+    console.error("sendInvoiceEmail error:", e.message);
+    return res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -1636,10 +1665,15 @@ exports.generateInvoice = async (req, res) => {
       includeRent = true,
       extraItems = [],
     } = req.body || {};
-
-    if (!roomId || !periodMonth || !periodYear) {
+    if (!roomId) {
+      return res.status(400).json({ message: 'Thiếu roomId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(400).json({ message: 'roomId không hợp lệ' });
+    }
+    if (!periodMonth || !periodYear) {
       return res.status(400).json({
-        message: "Thiếu roomId, periodMonth hoặc periodYear",
+        message: "Thiếu periodMonth hoặc periodYear",
       });
     }
 
@@ -1828,12 +1862,12 @@ exports.generateInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -1951,7 +1985,7 @@ exports.generateInvoice = async (req, res) => {
       data: invoice,
     });
   } catch (e) {
-    console.error("generateInvoice error:", e);
+    console.error("generateInvoice error:", e.message);
     return res.status(500).json({
       message: "Lỗi tạo hoá đơn",
       error: e.message,
@@ -1972,10 +2006,15 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       includeRent = true,
       extraItems = [],
     } = req.body || {};
-
-    if (!buildingId || !periodMonth || !periodYear) {
+    if (!buildingId) {
+      return res.status(400).json({ message: 'Thiếu buildingId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ message: 'buildingId không hợp lệ' });
+    }
+    if (!periodMonth || !periodYear) {
       return res.status(400).json({
-        message: "Thiếu buildingId hoặc periodMonth/periodYear",
+        message: "Thiếu periodMonth/periodYear",
       });
     }
 
@@ -2106,7 +2145,7 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       ...summary,
     });
   } catch (e) {
-    console.error("generateMonthlyInvoicesBulk error:", e);
+    console.error("generateMonthlyInvoicesBulk error:", e.message);
     return res.status(500).json({
       message: "Lỗi tạo hoá đơn hàng loạt",
       error: e.message,
@@ -2305,7 +2344,12 @@ exports.sendAllDraftInvoices = async (req, res) => {
     if (!landlordId) {
       return res.status(401).json({ message: "Không xác định landlord" });
     }
-
+    if (!buildingId) {
+      return res.status(400).json({ message: 'Thiếu buildingId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ message: 'buildingId không hợp lệ' });
+    }
     const filter = {
       landlordId,
       isDeleted: false,
@@ -2473,9 +2517,9 @@ exports.sendAllDraftInvoices = async (req, res) => {
       data: results,
     });
   } catch (e) {
-    console.error("sendAllDraftInvoices error:", e);
+    console.error("sendAllDraftInvoices error:", e.message);
     return res.status(500).json({
-      message: e.message || "Server error",
+      message: e.message || "Lỗi hệ thống",
     });
   }
 };
@@ -2485,7 +2529,12 @@ exports.getInvoiceHistory = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const invoice = await Invoice.findOne({
       _id: id,
       landlordId,

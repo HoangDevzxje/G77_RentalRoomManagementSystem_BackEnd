@@ -2,7 +2,7 @@ const UtilityReading = require("../../models/UtilityReading");
 const Room = require("../../models/Room");
 const Building = require("../../models/Building");
 const Contract = require("../../models/Contract");
-
+const mongoose = require("mongoose");
 const toInt = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
 // Nếu chưa có, bạn có thể dùng lại từ InvoiceController hoặc define riêng:
@@ -101,8 +101,8 @@ exports.listReadings = async (req, res) => {
       totalPages: Math.ceil(total / pageSize),
     });
   } catch (e) {
-    console.error("listReadings error:", e);
-    res.status(500).json({ message: e.message || "Server error" });
+    console.error("listReadings error:", e.message);
+    res.status(500).json({ message: e.message || "Lỗi hệ thống" });
   }
 };
 
@@ -124,12 +124,12 @@ async function getPreviousIndexes(roomId, landlordId) {
     return {
       ePreviousIndex:
         typeof last.eCurrentIndex === "number" &&
-        Number.isFinite(last.eCurrentIndex)
+          Number.isFinite(last.eCurrentIndex)
           ? last.eCurrentIndex
           : 0,
       wPreviousIndex:
         typeof last.wCurrentIndex === "number" &&
-        Number.isFinite(last.wCurrentIndex)
+          Number.isFinite(last.wCurrentIndex)
           ? last.wCurrentIndex
           : 0,
     };
@@ -160,9 +160,14 @@ exports.createReading = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { roomId, periodMonth, periodYear, eCurrentIndex, wCurrentIndex } =
       req.body || {};
-
-    if (!roomId || periodMonth == null || periodYear == null) {
-      return res.status(400).json({ message: "Thiếu roomId / kỳ" });
+    if (!roomId) {
+      return res.status(400).json({ message: 'Thiếu roomId' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(400).json({ message: 'roomId không hợp lệ' });
+    }
+    if (periodMonth == null || periodYear == null) {
+      return res.status(400).json({ message: "Thiếu periodMonth hoặc periodYear" });
     }
 
     const month = Number(periodMonth);
@@ -316,8 +321,8 @@ exports.createReading = async (req, res) => {
       data: doc,
     });
   } catch (e) {
-    console.error("createReading error:", e);
-    res.status(400).json({ message: e.message });
+    console.error("createReading error:", e.messagee);
+    res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -327,10 +332,14 @@ exports.createReading = async (req, res) => {
 exports.getReading = async (req, res) => {
   try {
     const isStaff = req.user.role === "staff";
-    console.log("isStaff", req.staff);
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const doc = await UtilityReading.findOne({
       _id: id,
       landlordId,
@@ -362,8 +371,8 @@ exports.getReading = async (req, res) => {
     }
     res.json({ data: doc });
   } catch (e) {
-    console.error("getReading error:", e);
-    res.status(400).json({ message: e.message });
+    console.error("getReading error:", e.message);
+    res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -392,7 +401,12 @@ exports.updateReading = async (req, res) => {
       status,
       note,
     } = req.body || {};
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const reading = await UtilityReading.findOne({
       _id: id,
       landlordId,
@@ -631,8 +645,8 @@ exports.updateReading = async (req, res) => {
       data: reading.toJSON(),
     });
   } catch (e) {
-    console.error("updateReading error:", e);
-    return res.status(500).json({ message: e.message || "Lỗi server" });
+    console.error("updateReading error:", e.message);
+    return res.status(500).json({ message: e.message || "Lỗi hệ thống" });
   }
 };
 /**
@@ -644,7 +658,12 @@ exports.confirmReading = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const doc = await UtilityReading.findOne({
       _id: id,
       landlordId,
@@ -784,8 +803,8 @@ exports.confirmReading = async (req, res) => {
       data: doc.toJSON(),
     });
   } catch (e) {
-    console.error("confirmReading error:", e);
-    res.status(400).json({ message: e.message });
+    console.error("confirmReading error:", e.message);
+    res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -1009,12 +1028,12 @@ exports.bulkCreateReadings = async (req, res) => {
 
         const eUnitPrice =
           typeof building.ePrice === "number" &&
-          Number.isFinite(building.ePrice)
+            Number.isFinite(building.ePrice)
             ? building.ePrice
             : 0;
         const wUnitPrice =
           typeof building.wPrice === "number" &&
-          Number.isFinite(building.wPrice)
+            Number.isFinite(building.wPrice)
             ? building.wPrice
             : 0;
 
@@ -1054,7 +1073,7 @@ exports.bulkCreateReadings = async (req, res) => {
         itemResult.readingId = doc._id;
         results.push(itemResult);
       } catch (err) {
-        console.error("bulkCreateReadings item error:", err);
+        console.error("bulkCreateReadings item error:", err.message);
         itemResult.error = err.message || "Lỗi không xác định";
         results.push(itemResult);
       }
@@ -1071,9 +1090,9 @@ exports.bulkCreateReadings = async (req, res) => {
       failCount,
     });
   } catch (e) {
-    console.error("bulkCreateReadings error:", e);
+    console.error("bulkCreateReadings error:", e.message);
     res.status(500).json({
-      message: e.message || "Server error",
+      message: e.message || "Lỗi hệ thống",
       data: [],
       total: 0,
     });
@@ -1262,9 +1281,9 @@ exports.listRoomsForUtility = async (req, res) => {
       periodYear: year,
     });
   } catch (e) {
-    console.error("listRoomsForUtility error:", e);
+    console.error("listRoomsForUtility error:", e.message);
     return res.status(500).json({
-      message: e.message || "Server error",
+      message: e.message || "Lỗi hệ thống",
       data: [],
       total: 0,
     });

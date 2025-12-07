@@ -325,15 +325,23 @@ router.get('/current', checkAuthorize(['landlord']), subscriptionController.getC
 
 /**
  * @swagger
- * /subscriptions/cancel:
+ * /subscriptions/cancel/{id}:
  *   patch:
- *     summary: Hủy gói hiện tại (để nâng cấp, không hoàn tiền)
+ *     summary: Hủy một gói dịch vụ cụ thể (active hoặc upcoming)
+ *     description: Người dùng có thể hủy bất kỳ gói nào có trạng thái active hoặc upcoming. Không áp dụng cho gói trial. Hủy nhằm đổi sang gói khác hoặc dừng gia hạn.
  *     tags: [Subscription]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID của subscription cần hủy
  *     responses:
  *       200:
- *         description: Hủy thành công
+ *         description: Hủy gói thành công
  *         content:
  *           application/json:
  *             schema:
@@ -343,9 +351,28 @@ router.get('/current', checkAuthorize(['landlord']), subscriptionController.getC
  *                   $ref: '#/components/schemas/Subscription'
  *                 message:
  *                   type: string
- *                   example: Đã hủy gói thành công. Bạn có thể mua gói mới ngay!
+ *                   example: Đã hủy gói thành công.
+ *       400:
+ *         description: Không thể hủy gói
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Không tìm thấy subscription
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/cancel', checkAuthorize(['landlord']), subscriptionController.cancelledSubscription);
+router.patch('/cancel/:id', checkAuthorize(['landlord']), subscriptionController.cancelledSubscription);
+
 // === SCHEMAS ===
 /**
  * @swagger
