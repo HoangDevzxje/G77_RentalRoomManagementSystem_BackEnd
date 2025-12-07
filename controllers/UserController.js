@@ -1,5 +1,6 @@
 const Account = require("../models/Account");
 const UserInformation = require("../models/UserInformation");
+const validateUtils = require("../utils/validateInput")
 
 const getMyProfile = async (req, res) => {
     try {
@@ -26,6 +27,15 @@ const editMyProfile = async (req, res) => {
     try {
         const accountId = req.user._id;
         const { fullName, phoneNumber, dob, gender, address } = req.body;
+        if (!fullName)
+            return res.status(400).json({ message: "Vui lòng nhập đầy đủ tên!" });
+        if (!phoneNumber)
+            return res.status(400).json({ message: "Vui lòng nhập đày đủ sđt!" });
+
+        const checkPhone = validateUtils.validatePhone(phoneNumber);
+        if (checkPhone !== null) {
+            return res.status(400).json({ message: checkPhone });
+        }
 
         const account = await Account.findById(accountId).populate("userInfo");
         if (!account) {
@@ -57,7 +67,7 @@ const editMyProfile = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({
-            message: "Lỗi server!",
+            message: "Lỗi hệ thống!",
             error: error.message,
         });
     }
