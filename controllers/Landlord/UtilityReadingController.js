@@ -817,7 +817,12 @@ exports.deleteReading = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const doc = await UtilityReading.findOne({
       _id: id,
       isDeleted: false,
@@ -864,8 +869,8 @@ exports.deleteReading = async (req, res) => {
 
     res.json({ message: "Đã xóa chỉ số tiện ích (soft delete)" });
   } catch (e) {
-    console.error("deleteReading error:", e);
-    res.status(400).json({ message: e.message });
+    console.error("deleteReading error:", e.message);
+    res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
