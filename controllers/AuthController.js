@@ -69,9 +69,8 @@ const sendOtp = async (req, res) => {
 
     return res.status(200).json({
       status: true,
-      message: `OTP đã được gửi để ${
-        type === "register" ? "đăng ký" : "đặt lại mật khẩu"
-      }!`,
+      message: `OTP đã được gửi để ${type === "register" ? "đăng ký" : "đặt lại mật khẩu"
+        }!`,
     });
   } catch (error) {
     console.error("Lỗi sendOtp:", error);
@@ -162,8 +161,8 @@ const verifyOtp = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("Lỗi khi tạo tài khoản sau verify:", error);
-    return res.status(500).json({ message: "Lỗi hệ thống khi tạo tài khoản!" });
+    console.error("Lỗi sau khi verify:", error);
+    return res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
 const refreshToken = async (req, res) => {
@@ -213,6 +212,8 @@ const refreshToken = async (req, res) => {
 const register = async (req, res) => {
   const { fullName, email, password, confirmPassword, role } = req.body;
   try {
+    if (!fullName) return res.status(400).json({ message: "Vui lòng nhập họ và tên!" });
+    if (!email) return res.status(400).json({ message: "Vui lòng nhập email!" });
     const checkEmail = validateUtils.validateEmail(email);
     if (checkEmail !== null) {
       return res.status(400).json({ message: checkEmail });
