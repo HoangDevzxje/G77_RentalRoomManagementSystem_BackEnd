@@ -15,7 +15,7 @@ const contentDisposition = require("content-disposition");
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
-
+const mongoose = require("mongoose");
 const ROOM_CONFLICT_STATUSES = [
   "sent_to_tenant",
   "signed_by_tenant",
@@ -824,7 +824,12 @@ exports.voidContract = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { reason } = req.body || {};
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const contract = await Contract.findOne({ _id: id, landlordId });
 
     if (!contract) {
@@ -851,7 +856,7 @@ exports.voidContract = async (req, res) => {
         contract.createBy.toString() !== req.user._id.toString()
       ) {
         return res.status(403).json({
-          message: "Bạn chỉ được xác nhận vào ở cho hợp đồng do chính mình tạo",
+          message: "Bạn chỉ được vô hiệu hóa cho hợp đồng do chính mình tạo",
           createdBy: contract.createBy?.toString(),
           yourId: req.user._id.toString(),
         });
@@ -877,7 +882,7 @@ exports.voidContract = async (req, res) => {
       status: contract.status,
     });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    res.status(400).json({ message: "Lôi hệ thống" });
   }
 };
 
@@ -888,7 +893,12 @@ exports.cloneContract = async (req, res) => {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const old = await Contract.findOne({ _id: id, landlordId }).lean();
     if (!old) {
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
@@ -965,7 +975,7 @@ exports.cloneContract = async (req, res) => {
       contract: newContract,
     });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -1181,7 +1191,12 @@ exports.approveExtension = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { note } = req.body || {};
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const contract = await Contract.findOne({ _id: id, landlordId })
       .populate("buildingId", "name")
       .populate("roomId", "roomNumber");
@@ -1293,7 +1308,12 @@ exports.rejectExtension = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     const { reason } = req.body || {};
-
+    if (!id) {
+      return res.status(400).json({ message: 'Thiếu id' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id không hợp lệ' });
+    }
     const contract = await Contract.findOne({ _id: id, landlordId })
       .populate("buildingId", "name")
       .populate("roomId", "roomNumber");
@@ -1358,7 +1378,7 @@ exports.rejectExtension = async (req, res) => {
       renewalRequest: contract.renewalRequest,
     });
   } catch (e) {
-    return res.status(400).json({ message: e.message });
+    return res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 

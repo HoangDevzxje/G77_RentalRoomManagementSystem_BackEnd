@@ -365,7 +365,7 @@ const quickSetup = async (req, res) => {
         error: e.message,
       });
     }
-    return res.status(400).json({ message: e.message });
+    return res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
 
