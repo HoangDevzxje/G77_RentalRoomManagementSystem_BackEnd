@@ -150,7 +150,7 @@ const updateContractStatus = async (req, res) => {
       data: request,
     });
   } catch (err) {
-    console.error("Error updateContractStatus:", err);
+    console.error("Error updateContractStatus:", err.message);
     res.status(500).json({ message: "Lỗi hệ thống khi cập nhật trạng thái!" });
   }
 };

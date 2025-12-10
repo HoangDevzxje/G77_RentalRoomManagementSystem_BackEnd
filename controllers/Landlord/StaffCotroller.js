@@ -62,6 +62,31 @@ const createStaff = async (req, res) => {
         await account.save();
 
         if (assignedBuildings?.length > 0) {
+
+            const invalidIds = assignedBuildings.filter(
+                id => !mongoose.Types.ObjectId.isValid(id)
+            );
+            if (invalidIds.length > 0) {
+                return res.status(400).json({
+                    message: "Một số buildingId không hợp lệ!",
+                    invalidIds
+                });
+            }
+
+            const existingBuildings = await Building.find({
+                _id: { $in: assignedBuildings }
+            }).select('_id');
+
+            if (existingBuildings.length !== assignedBuildings.length) {
+                const notFoundIds = assignedBuildings.filter(
+                    id => !existingBuildings.some(b => b._id.toString() === id)
+                );
+                return res.status(400).json({
+                    message: "Một số buildingId không tồn tại trong hệ thống!",
+                    notFoundIds
+                });
+            }
+
             const count = await Building.countDocuments({
                 _id: { $in: assignedBuildings },
                 landlordId
@@ -69,7 +94,9 @@ const createStaff = async (req, res) => {
             if (count !== assignedBuildings.length) {
                 await UserInformation.deleteOne({ _id: userInfo._id });
                 await Account.deleteOne({ _id: account._id });
-                return res.status(403).json({ message: "Một số tòa nhà không thuộc quyền quản lý của bạn!" });
+                return res.status(403).json({
+                    message: "Một số tòa nhà không thuộc quyền quản lý của bạn!"
+                });
             }
         }
 
@@ -119,7 +146,7 @@ const createStaff = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('Lỗi tạo nhân viên:', err);
+        console.error('Lỗi tạo nhân viên:', err.message);
         return res.status(500).json({ message: 'Lỗi hệ thống' });
     }
 };
@@ -259,7 +286,7 @@ const updateStaffPermissions = async (req, res) => {
     const landlordId = req.user._id;
     const { permissions, assignedBuildings } = req.body;
     if (!staffId) {
-        return res.status(400).json({ message: 'Thieu staffId' });
+        return res.status(400).json({ message: 'Thiếu staffId' });
     }
     if (!mongoose.Types.ObjectId.isValid(staffId)) {
         return res.status(400).json({ message: 'staffId không hợp lệ' });
@@ -271,12 +298,40 @@ const updateStaffPermissions = async (req, res) => {
         }
 
         if (assignedBuildings && assignedBuildings.length > 0) {
+
+            const invalidIds = assignedBuildings.filter(
+                id => !mongoose.Types.ObjectId.isValid(id)
+            );
+
+            if (invalidIds.length > 0) {
+                return res.status(400).json({
+                    message: "Một số buildingId không hợp lệ",
+                    invalidIds
+                });
+            }
+
+            const existingBuildings = await Building.find({
+                _id: { $in: assignedBuildings }
+            }).select('_id');
+
+            if (existingBuildings.length !== assignedBuildings.length) {
+                const notFound = assignedBuildings.filter(
+                    id => !existingBuildings.some(b => b._id.toString() === id)
+                );
+                return res.status(404).json({
+                    message: "Một số buildingId không tồn tại trong hệ thống",
+                    notFound
+                });
+            }
+
             const count = await Building.countDocuments({
                 _id: { $in: assignedBuildings },
                 landlordId
             });
             if (count !== assignedBuildings.length) {
-                return res.status(403).json({ message: 'Một số tòa nhà không thuộc quyền quản lý của bạn' });
+                return res.status(403).json({
+                    message: 'Một số tòa nhà không thuộc quyền quản lý của bạn'
+                });
             }
         }
 
@@ -300,7 +355,7 @@ const updateStaffPermissions = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('Lỗi cập nhật quyền nhân viên:', err);
+        console.error('Lỗi cập nhật quyền nhân viên:', err.message);
         return res.status(500).json({ message: 'Lỗi server' });
     }
 };

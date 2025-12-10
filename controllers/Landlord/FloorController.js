@@ -249,6 +249,8 @@ const create = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id) return res.status(400).json({ message: "Thiệu id" });
+
     const f = await Floor.findById(id);
     if (!f || f.isDeleted)
       return res.status(404).json({ message: "Không tìm thấy tầng" });

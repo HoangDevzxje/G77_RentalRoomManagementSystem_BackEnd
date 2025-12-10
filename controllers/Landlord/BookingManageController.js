@@ -1,6 +1,6 @@
 const Booking = require("../../models/Booking");
 const Notification = require("../../models/Notification");
-
+const mongoose = require("mongoose");
 const getAllBookings = async (req, res) => {
     try {
         const { status, buildingId, postId, page = 1, limit = 10 } = req.query;
@@ -48,7 +48,7 @@ const getAllBookings = async (req, res) => {
             data: bookings,
         });
     } catch (err) {
-        console.error("Error getAllBookings:", err);
+        console.error("Error getAllBookings:", err.message);
         res.status(500).json({ message: "Lỗi hệ thống khi lấy danh sách đặt lịch!" });
     }
 };
@@ -56,7 +56,12 @@ const getAllBookings = async (req, res) => {
 const getBookingDetail = async (req, res) => {
     try {
         const { id } = req.params;
-
+        if (!id) {
+            return res.status(400).json({ message: 'Thiếu id' });
+        }
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'id không hợp lệ' });
+        }
         const booking = await Booking.findOne({ _id: id, isDeleted: false })
             .populate("buildingId", "name address")
             .populate("postId", "title")

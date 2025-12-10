@@ -47,7 +47,9 @@ exports.update = async (req, res) => {
 // Xóa
 exports.remove = async (req, res) => {
   try {
-    await Furniture.findByIdAndDelete(req.params.id);
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ message: "Thiếu id" });
+    await Furniture.findByIdAndDelete(id);
     res.json({ message: "Đã xóa thành công" });
   } catch (err) {
     res.status(400).json({ message: err.message });
