@@ -2,6 +2,7 @@ const UtilityReading = require("../../models/UtilityReading");
 const Room = require("../../models/Room");
 const Building = require("../../models/Building");
 const Contract = require("../../models/Contract");
+const Invoice = require("../../models/Invoice");
 const mongoose = require("mongoose");
 const toInt = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
@@ -60,11 +61,9 @@ exports.listReadings = async (req, res) => {
 
         const roomBuildingId = room.buildingId.toString();
         if (!allowedBuildingIds.includes(roomBuildingId)) {
-          return res
-            .status(403)
-            .json({
-              message: "Phòng này không thuộc tòa nhà bạn được quản lý",
-            });
+          return res.status(403).json({
+            message: "Phòng này không thuộc tòa nhà bạn được quản lý",
+          });
         }
 
         filter.roomId = roomId;
@@ -124,12 +123,12 @@ async function getPreviousIndexes(roomId, landlordId) {
     return {
       ePreviousIndex:
         typeof last.eCurrentIndex === "number" &&
-          Number.isFinite(last.eCurrentIndex)
+        Number.isFinite(last.eCurrentIndex)
           ? last.eCurrentIndex
           : 0,
       wPreviousIndex:
         typeof last.wCurrentIndex === "number" &&
-          Number.isFinite(last.wCurrentIndex)
+        Number.isFinite(last.wCurrentIndex)
           ? last.wCurrentIndex
           : 0,
     };
@@ -161,13 +160,15 @@ exports.createReading = async (req, res) => {
     const { roomId, periodMonth, periodYear, eCurrentIndex, wCurrentIndex } =
       req.body || {};
     if (!roomId) {
-      return res.status(400).json({ message: 'Thiếu roomId' });
+      return res.status(400).json({ message: "Thiếu roomId" });
     }
     if (!mongoose.Types.ObjectId.isValid(roomId)) {
-      return res.status(400).json({ message: 'roomId không hợp lệ' });
+      return res.status(400).json({ message: "roomId không hợp lệ" });
     }
     if (periodMonth == null || periodYear == null) {
-      return res.status(400).json({ message: "Thiếu periodMonth hoặc periodYear" });
+      return res
+        .status(400)
+        .json({ message: "Thiếu periodMonth hoặc periodYear" });
     }
 
     const month = Number(periodMonth);
@@ -335,10 +336,10 @@ exports.getReading = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const doc = await UtilityReading.findOne({
       _id: id,
@@ -402,10 +403,10 @@ exports.updateReading = async (req, res) => {
       note,
     } = req.body || {};
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const reading = await UtilityReading.findOne({
       _id: id,
@@ -659,10 +660,10 @@ exports.confirmReading = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const doc = await UtilityReading.findOne({
       _id: id,
@@ -797,6 +798,100 @@ exports.confirmReading = async (req, res) => {
       );
       // intentionally not throwing so we don't fail the confirm endpoint
     }
+    //Tự động ghi chỉ số vào hóa đơn kỳ tương ứng (nếu đã có hóa đơn draft/sent)
+    try {
+      // Chỉ xử lý nếu reading chưa gắn hóa đơn nào
+      if (!doc.invoiceId && doc.roomId && doc.periodMonth && doc.periodYear) {
+        const invoice = await Invoice.findOne({
+          landlordId,
+          buildingId: doc.buildingId,
+          roomId: doc.roomId,
+          periodMonth: doc.periodMonth,
+          periodYear: doc.periodYear,
+          isDeleted: false,
+          status: { $in: ["draft", "sent"] }, // chỉ ăn vào draft hoặc sent
+        });
+
+        if (invoice) {
+          const oldItems = Array.isArray(invoice.items) ? invoice.items : [];
+
+          // (Phòng tương lai) Xóa các dòng điện/nước đã trỏ vào reading này (nếu có)
+          const filteredItems = oldItems.filter((it) => {
+            if (!it) return false;
+            if (
+              (it.type === "electric" || it.type === "water") &&
+              it.utilityReadingId &&
+              String(it.utilityReadingId) === String(doc._id)
+            ) {
+              return false;
+            }
+            return true;
+          });
+
+          const itemsToAdd = [];
+
+          // Dòng tiền điện
+          if (doc.eConsumption > 0) {
+            const unitPrice =
+              typeof doc.eUnitPrice === "number" ? doc.eUnitPrice : 0;
+            const amount = Math.max(0, doc.eConsumption * unitPrice);
+
+            itemsToAdd.push({
+              type: "electric",
+              label: "Tiền điện",
+              description: `Tiền điện tháng ${doc.periodMonth}/${doc.periodYear}`,
+              quantity: doc.eConsumption,
+              unitPrice,
+              amount,
+              utilityReadingId: doc._id,
+              meta: {
+                previousIndex: doc.ePreviousIndex,
+                currentIndex: doc.eCurrentIndex,
+              },
+            });
+          }
+
+          // Dòng tiền nước
+          if (doc.wConsumption > 0) {
+            const unitPrice =
+              typeof doc.wUnitPrice === "number" ? doc.wUnitPrice : 0;
+            const amount = Math.max(0, doc.wConsumption * unitPrice);
+
+            itemsToAdd.push({
+              type: "water",
+              label: "Tiền nước",
+              description: `Tiền nước tháng ${doc.periodMonth}/${doc.periodYear}`,
+              quantity: doc.wConsumption,
+              unitPrice,
+              amount,
+              utilityReadingId: doc._id,
+              meta: {
+                previousIndex: doc.wPreviousIndex,
+                currentIndex: doc.wCurrentIndex,
+              },
+            });
+          }
+
+          if (itemsToAdd.length > 0) {
+            // Gộp lại items (giữ rent + service + other, thêm electric/water mới)
+            invoice.items = [...filteredItems, ...itemsToAdd];
+            invoice.recalculateTotals();
+
+            // Link 2 chiều + đổi trạng thái reading thành billed (giống logic generateMonthlyInvoice)
+            doc.invoiceId = invoice._id;
+            doc.status = "billed";
+
+            await Promise.all([invoice.save(), doc.save()]);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(
+        "confirmReading - failed to sync invoice for reading",
+        doc._id,
+        err
+      );
+    }
 
     res.json({
       message: "Đã xác nhận chỉ số tiện ích",
@@ -818,10 +913,10 @@ exports.deleteReading = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const doc = await UtilityReading.findOne({
       _id: id,
@@ -1033,12 +1128,12 @@ exports.bulkCreateReadings = async (req, res) => {
 
         const eUnitPrice =
           typeof building.ePrice === "number" &&
-            Number.isFinite(building.ePrice)
+          Number.isFinite(building.ePrice)
             ? building.ePrice
             : 0;
         const wUnitPrice =
           typeof building.wPrice === "number" &&
-            Number.isFinite(building.wPrice)
+          Number.isFinite(building.wPrice)
             ? building.wPrice
             : 0;
 

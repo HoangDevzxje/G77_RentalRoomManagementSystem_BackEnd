@@ -2,11 +2,7 @@ const cron = require("node-cron");
 const Contract = require("../models/Contract");
 const Room = require("../models/Room");
 
-// Số ngày gia hạn "âm thầm" sau endDate trước khi auto-kết thúc
-// Có thể chỉnh qua env: CONTRACT_GRACE_DAYS, mặc định = 3
-const GRACE_DAYS =
-  Number.parseInt(process.env.CONTRACT_GRACE_DAYS || "3", 10) || 3;
-
+// Hàm thực thi nội bộ (giữ nguyên logic kiểm tra và update DB)
 async function endContractOnTimeInternal(contractId, options = {}) {
   const { note, forceEvenIfBeforeEndDate = false } = options;
 
@@ -52,40 +48,32 @@ async function endContractOnTimeInternal(contractId, options = {}) {
   return { contract, room };
 }
 
-// Hàm thực thi chính – giờ là "auto end after GRACE_DAYS"
+// Hàm thực thi chính – Auto kết thúc ngay khi qua ngày endDate
 async function autoEndContractsOnTime() {
   const now = new Date();
 
-  // Cắt về 00:00 hôm nay cho an toàn so sánh theo ngày
+  // Lấy mốc 00:00 sáng hôm nay để so sánh
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
-
-  // thresholdDate = hôm nay - GRACE_DAYS
-  const thresholdDate = new Date(today);
-  thresholdDate.setDate(thresholdDate.getDate() - GRACE_DAYS);
 
   console.log(
     "[CRON] autoEndContractsOnTime start at",
     now.toISOString(),
-    "with GRACE_DAYS =",
-    GRACE_DAYS,
-    "→ thresholdDate =",
-    thresholdDate.toISOString()
+    "→ Checking for contracts with endDate <",
+    today.toISOString()
   );
 
-  // Tìm tất cả hợp đồng completed mà endDate <= thresholdDate
-  // → đã hết hạn ít nhất GRACE_DAYS ngày
+  // Logic: Tìm tất cả hợp đồng completed mà endDate < today
+  // Tức là endDate đã là ngày hôm qua (hoặc xa hơn trong quá khứ)
   const contracts = await Contract.find({
     status: "completed",
-    "contract.endDate": { $lte: thresholdDate },
+    "contract.endDate": { $lt: today }, // Sử dụng $lt (nhỏ hơn hẳn hôm nay)
   })
     .select("_id contract.endDate roomId")
     .lean();
 
   if (!contracts.length) {
-    console.log(
-      "[CRON] Không có hợp đồng nào cần auto kết thúc sau thời gian gia hạn."
-    );
+    console.log("[CRON] Không có hợp đồng nào hết hạn cần kết thúc hôm nay.");
     return;
   }
 
@@ -94,10 +82,12 @@ async function autoEndContractsOnTime() {
   for (const c of contracts) {
     try {
       await endContractOnTimeInternal(c._id, {
-        note: `Cron auto end-on-time after ${GRACE_DAYS} days`,
+        note: `Cron auto end-on-time (Expired on ${new Date(
+          c.contract.endDate
+        ).toLocaleDateString()})`,
       });
       console.log(
-        `[CRON] Đã kết thúc HĐ ${c._id} (endDate=${c.contract.endDate}) sau thời gian gia hạn ${GRACE_DAYS} ngày`
+        `[CRON] Đã kết thúc HĐ ${c._id} (endDate=${c.contract.endDate})`
       );
     } catch (err) {
       console.error(`[CRON] Lỗi khi kết thúc HĐ ${c._id}:`, err.message || err);
@@ -114,8 +104,7 @@ function registerAutoEndContractsCron() {
   });
 
   console.log(
-    "[CRON] Đã đăng ký job autoEndContractsOnTime (0 1 * * *), GRACE_DAYS =",
-    GRACE_DAYS
+    "[CRON] Đã đăng ký job autoEndContractsOnTime (0 1 * * *) - Chế độ kết thúc đúng hạn (Strict Mode)"
   );
 }
 

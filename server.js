@@ -88,7 +88,7 @@ io.use((socket, next) => {
 
 // ---------- SOCKET.IO CONNECTION ----------
 io.on("connection", (socket) => {
-  console.log(`🔌 Socket connected: ${socket.user.id} (${socket.user.role})`);
+  
 
   // Các room mặc định (nếu bạn có logic riêng)
   try {
