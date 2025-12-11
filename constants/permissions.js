@@ -20,10 +20,10 @@ const PERMISSIONS = {
     BOOKING_DELETE: "booking:delete",
 
     // Building furnitare
-    BUILDING_FURNITURE_VIEW: "building-furniture:view",
-    BUILDING_FURNITURE_CREATE: "building-furniture:create",
-    BUILDING_FURNITURE_EDIT: "building-furniture:edit",
-    BUILDING_FURNITURE_DELETE: "building-furniture:delete",
+    // BUILDING_FURNITURE_VIEW: "building-furniture:view",
+    // BUILDING_FURNITURE_CREATE: "building-furniture:create",
+    // BUILDING_FURNITURE_EDIT: "building-furniture:edit",
+    // BUILDING_FURNITURE_DELETE: "building-furniture:delete",
 
     // contact
     CONTACT_VIEW: "contact:view",
@@ -57,10 +57,10 @@ const PERMISSIONS = {
     REGULATION_DELETE: "regulation:delete",
 
     //room-furniture
-    ROOM_FURNITURE_VIEW: "room-furniture:view",
-    ROOM_FURNITURE_CREATE: "room-furniture:create",
-    ROOM_FURNITURE_EDIT: "room-furniture:edit",
-    ROOM_FURNITURE_DELETE: "room-furniture:delete",
+    // ROOM_FURNITURE_VIEW: "room-furniture:view",
+    // ROOM_FURNITURE_CREATE: "room-furniture:create",
+    // ROOM_FURNITURE_EDIT: "room-furniture:edit",
+    // ROOM_FURNITURE_DELETE: "room-furniture:delete",
     //schedule
     SCHEDULE_VIEW: "schedule:view",
     SCHEDULE_CREATE: "schedule:create",

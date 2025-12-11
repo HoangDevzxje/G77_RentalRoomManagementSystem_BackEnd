@@ -27,10 +27,10 @@ const permissions = [
     { code: 'booking:delete', name: 'Xóa', group: 'Lịch xem phòng', action: 'delete' },
 
     //building furniture
-    { code: 'building-furniture:view', name: 'Xem', group: 'Nội thất tòa nhà', action: 'view' },
-    { code: 'building-furniture:create', name: 'Thêm', group: 'Nội thất tòa nhà', action: 'create' },
-    { code: 'building-furniture:edit', name: 'Sửa', group: 'Nội thất tòa nhà', action: 'edit' },
-    { code: 'building-furniture:delete', name: 'Xóa', group: 'Nội thất tòa nhà', action: 'delete' },
+    // { code: 'building-furniture:view', name: 'Xem', group: 'Nội thất tòa nhà', action: 'view' },
+    // { code: 'building-furniture:create', name: 'Thêm', group: 'Nội thất tòa nhà', action: 'create' },
+    // { code: 'building-furniture:edit', name: 'Sửa', group: 'Nội thất tòa nhà', action: 'edit' },
+    // { code: 'building-furniture:delete', name: 'Xóa', group: 'Nội thất tòa nhà', action: 'delete' },
     //contact
     { code: 'contact:view', name: 'Xem', group: 'Yêu cầu tạo hợp đồng', action: 'view' },
     { code: 'contact:create', name: 'Thêm', group: 'Yêu cầu tạo hợp đồng', action: 'create' },
@@ -62,10 +62,10 @@ const permissions = [
     { code: 'regulation:edit', name: 'Sửa', group: 'Nội quy', action: 'edit' },
     { code: 'regulation:delete', name: 'Xóa', group: 'Nội quy', action: 'delete' },
     //room-furniture
-    { code: 'room-furniture:view', name: 'Xem', group: 'Nội thất phòng', action: 'view' },
-    { code: 'room-furniture:create', name: 'Thêm', group: 'Nội thất phòng', action: 'create' },
-    { code: 'room-furniture:edit', name: 'Sửa', group: 'Nội thất phòng', action: 'edit' },
-    { code: 'room-furniture:delete', name: 'Xóa', group: 'Nội thất phòng', action: 'delete' },
+    // { code: 'room-furniture:view', name: 'Xem', group: 'Nội thất phòng', action: 'view' },
+    // { code: 'room-furniture:create', name: 'Thêm', group: 'Nội thất phòng', action: 'create' },
+    // { code: 'room-furniture:edit', name: 'Sửa', group: 'Nội thất phòng', action: 'edit' },
+    // { code: 'room-furniture:delete', name: 'Xóa', group: 'Nội thất phòng', action: 'delete' },
     //SCHEDULE
     { code: 'schedule:view', name: 'Xem', group: 'Quản lý lịch rảnh', action: 'view' },
     { code: 'schedule:create', name: 'Thêm', group: 'Quản lý lịch rảnh', action: 'create' },
@@ -96,6 +96,11 @@ const permissions = [
     { code: 'resident:create', name: 'Thêm', group: 'Cư dân', action: 'create' },
     { code: 'resident:edit', name: 'Sửa', group: 'Cư dân', action: 'edit' },
     { code: 'resident:delete', name: 'Xóa', group: 'Cư dân', action: 'delete' },
+
+    { code: 'utility:view', name: 'Xem', group: 'Điện nước', action: 'view' },
+    { code: 'utility:create', name: 'Thêm', group: 'Điện nước', action: 'create' },
+    { code: 'utility:edit', name: 'Sửa', group: 'Điện nước', action: 'edit' },
+    { code: 'utility:delete', name: 'Xóa', group: 'Điện nước', action: 'delete' },
 
     // === HÓA ĐƠN ===
     { code: 'invoice:view', name: 'Xem', group: 'Hóa đơn', action: 'view' },

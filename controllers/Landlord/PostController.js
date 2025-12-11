@@ -5,6 +5,9 @@ const BuildingService = require('../../models/BuildingService');
 const Regulation = require('../../models/Regulation');
 const mongoose = require("mongoose");
 const Contract = require('../../models/Contract');
+function formatDateVN(date) {
+    return new Date(date).toLocaleDateString("vi-VN");
+}
 
 const getBuildingInfo = async (req, res) => {
     try {
@@ -148,7 +151,6 @@ const createPost = async (req, res) => {
             return res.status(403).json({ message: "Không có quyền" });
         }
 
-        // XỬ LÝ roomIds
         let roomArray = Array.isArray(roomIds) ? roomIds : [roomIds];
         const validRoomIds = roomArray
             .flatMap(id => id.split(','))
@@ -162,7 +164,6 @@ const createPost = async (req, res) => {
         const roomObjectIds = validRoomIds.map(id => new mongoose.Types.ObjectId(id));
         isDraft = isDraft === "true" || isDraft === true || isDraft === "1";
 
-        // TÌM PHÒNG
         const rooms = await Room.find({
             _id: { $in: roomObjectIds },
             buildingId,
@@ -189,22 +190,27 @@ const createPost = async (req, res) => {
                 continue;
             }
 
-            // Nếu là rented → kiểm tra hợp đồng
             const activeContract = await Contract.findOne({
                 roomId: room._id,
                 status: "completed",
-                moveInConfirmedAt: { $exists: true },
-                endDate: { $lte: threshold }
+                moveInConfirmedAt: { $exists: true }
             });
 
-            if (activeContract) {
-                validRooms.push(room);
-                warnings.push({
-                    roomNumber: room.roomNumber,
-                    expectedAvailableDate: new Date(activeContract.endDate.getTime() + 24 * 60 * 60 * 1000), // +1 ngày
-                    message: `Phòng sẽ trống từ ${formatDateVN(activeContract.endDate)}`
-                });
+            if (!activeContract) {
+                continue;
             }
+
+            if (activeContract.endDate > threshold) {
+                continue;
+            }
+
+            validRooms.push(room);
+
+            warnings.push({
+                roomNumber: room.roomNumber,
+                expectedAvailableDate: new Date(activeContract.endDate.getTime() + 24 * 60 * 60 * 1000),
+                message: `Phòng sẽ trống từ ${formatDateVN(activeContract.endDate)}`
+            });
         }
 
         if (validRooms.length === 0) {
@@ -517,10 +523,10 @@ const getPostDetail = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id) {
-            return res.status(400).json({ message: 'Thiếu id' });
+            return res.status(400).json({ message: 'Thiếu postId' });
         }
         if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ message: 'id không hợp lệ' });
+            return res.status(400).json({ message: 'postId không hợp lệ' });
         }
         const post = await Post.findById(id)
             .populate('buildingId', 'name address eIndexType ePrice wIndexType wPrice description status landlordId')
