@@ -27,19 +27,36 @@ const ROOM_SIGN_CONFLICT_STATUSES = [
   "signed_by_landlord",
   "completed",
 ];
-async function findRoomContractConflict({ roomId, landlordId, excludeId }) {
+async function findRoomContractConflict({
+  roomId,
+  landlordId,
+  excludeId,
+  startDate,
+  endDate,
+}) {
   if (!roomId) return null;
 
-  return await Contract.findOne({
+  const query = {
     roomId,
     landlordId,
     isDeleted: { $ne: true },
     _id: excludeId ? { $ne: excludeId } : { $exists: true },
     status: { $in: ROOM_CONFLICT_STATUSES },
-  })
-    .select("_id status contract.no tenantId")
+  };
+
+  // Nếu có startDate + endDate -> chỉ check các HĐ có khoảng thời gian giao nhau
+  if (startDate && endDate) {
+    query["contract.startDate"] = { $lte: endDate };
+    query["contract.endDate"] = { $gte: startDate };
+  }
+
+  return await Contract.findOne(query)
+    .select(
+      "_id status contract.no tenantId contract.startDate contract.endDate"
+    )
     .lean();
 }
+
 const FONT_REGULAR =
   process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
 const FONT_BOLD =
@@ -158,8 +175,9 @@ async function createMoveInNotifications(contract, { io, mode }) {
     mode === "auto"
       ? "Hệ thống đã xác nhận người thuê vào ở"
       : "Đã xác nhận người thuê vào ở";
-  const contentForLandlord = `Hợp đồng ${contract.contract?.no || ""
-    } cho phòng ${contract?.roomId?.roomNumber} đã được xác nhận vào ở.`;
+  const contentForLandlord = `Hợp đồng ${
+    contract.contract?.no || ""
+  } cho phòng ${contract?.roomId?.roomNumber} đã được xác nhận vào ở.`;
 
   const titleForTenant =
     mode === "auto"
@@ -307,12 +325,19 @@ exports.createFromContact = async (req, res) => {
       });
     }
 
-    //Lấy template (nếu không có template cũng cho tạo, chỉ là không có terms/regulations default)
+    // BẮT BUỘC phải có template mới cho tạo hợp đồng
     const template = await ContractTemplate.findOne({
       buildingId: contact.buildingId,
       ownerId: landlordId,
       status: "active",
     }).lean();
+
+    if (!template) {
+      return res.status(400).json({
+        message:
+          "Tòa nhà này chưa có Mẫu Hợp Đồng. Vui lòng tạo Mẫu Hợp Đồng trước khi tạo hợp đồng thuê.",
+      });
+    }
 
     const termSnapshots = [];
     const regulationSnapshots = [];
@@ -555,10 +580,10 @@ exports.sendToTenant = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const contract = await Contract.findOne({ _id: id, landlordId })
       .populate("buildingId", "name")
@@ -587,17 +612,23 @@ exports.sendToTenant = async (req, res) => {
       }
     }
 
-    // Check trùng hợp đồng theo phòng trước khi gửi
+    // Lấy khoảng thời gian hiệu lực của HĐ mới
+    const startDate = contract.contract?.startDate;
+    const endDate = contract.contract?.endDate;
+
+    // Check trùng hợp đồng theo phòng trước khi gửi (có xét thời gian)
     const conflict = await findRoomContractConflict({
       roomId: contract.roomId,
       landlordId,
       excludeId: contract._id,
+      startDate,
+      endDate,
     });
 
     if (conflict) {
       return res.status(400).json({
         message:
-          "Phòng này hiện đã có một hợp đồng khác đang hiệu lực/xử lý. Vui lòng hoàn tất hoặc chấm dứt hợp đồng đó trước khi gửi hợp đồng mới.",
+          "Phòng này hiện đã có một hợp đồng khác có thời gian hiệu lực giao nhau với hợp đồng này. Vui lòng chỉnh lại ngày hiệu lực hoặc chấm dứt/vô hiệu hợp đồng cũ trước khi gửi.",
         conflictContractId: conflict._id,
         conflictStatus: conflict.status,
         conflictContractNo: conflict?.contract?.no || null,
@@ -681,26 +712,37 @@ exports.signByLandlord = async (req, res) => {
       }
     }
     if (contract.roomId) {
-      const conflict = await Contract.findOne({
-        _id: { $ne: contract._id }, // bỏ qua chính nó
+      const startDate = contract.contract?.startDate;
+      const endDate = contract.contract?.endDate;
+
+      const query = {
+        _id: { $ne: contract._id },
         landlordId,
         roomId: contract.roomId,
         isDeleted: { $ne: true },
         status: { $in: ROOM_SIGN_CONFLICT_STATUSES },
-      })
-        .select("_id status contract.no")
+      };
+
+      if (startDate && endDate) {
+        query["contract.startDate"] = { $lte: endDate };
+        query["contract.endDate"] = { $gte: startDate };
+      }
+
+      const conflict = await Contract.findOne(query)
+        .select("_id status contract.no contract.startDate contract.endDate")
         .lean();
 
       if (conflict) {
         return res.status(400).json({
           message:
-            "Phòng này đã có một hợp đồng khác đang ở trạng thái đã ký/hoàn tất. Vui lòng chấm dứt hoặc vô hiệu hoá hợp đồng đó trước khi ký hợp đồng mới.",
+            "Phòng này đã có một hợp đồng khác có thời gian hiệu lực giao nhau (đã ký/hoàn tất). Vui lòng chấm dứt hoặc điều chỉnh ngày hợp đồng trước khi ký hợp đồng mới.",
           conflictContractId: conflict._id,
           conflictStatus: conflict.status,
           conflictContractNo: conflict?.contract?.no || null,
         });
       }
     }
+
     contract.landlordSignatureUrl = signatureUrl;
     if (contract.tenantSignatureUrl) {
       // Tenant đã ký trước đó → đây là chữ ký thứ 2 → completed
@@ -830,10 +872,10 @@ exports.voidContract = async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body || {};
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const contract = await Contract.findOne({ _id: id, landlordId });
 
@@ -899,10 +941,10 @@ exports.cloneContract = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const old = await Contract.findOne({ _id: id, landlordId }).lean();
     if (!old) {
@@ -993,10 +1035,10 @@ exports.terminateContract = async (req, res) => {
     const { id } = req.params;
     const { reason, terminatedAt } = req.body || {};
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const contract = await Contract.findOne({ _id: id, landlordId });
     if (!contract) {
@@ -1202,10 +1244,10 @@ exports.approveExtension = async (req, res) => {
     const { id } = req.params;
     const { note } = req.body || {};
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const contract = await Contract.findOne({ _id: id, landlordId })
       .populate("buildingId", "name")
@@ -1243,6 +1285,29 @@ exports.approveExtension = async (req, res) => {
           "Ngày kết thúc mới không hợp lệ (phải lớn hơn ngày kết thúc hiện tại)",
       });
     }
+
+    //Check trùng với hợp đồng khác của cùng phòng
+    const conflict = await Contract.findOne({
+      _id: { $ne: contract._id }, // không tính chính hợp đồng hiện tại
+      landlordId: contract.landlordId,
+      roomId: contract.roomId,
+      isDeleted: false,
+      status: { $nin: ["voided", "terminated"] }, // chỉ xét hợp đồng còn hiệu lực / đã chốt
+      "contract.startDate": { $lte: newEnd }, // start <= newEnd
+      "contract.endDate": { $gte: oldEndDate }, // end >= oldEndDate
+    }).select("_id contract.startDate contract.endDate status");
+
+    if (conflict) {
+      return res.status(400).json({
+        message:
+          "Khoảng thời gian gia hạn bị trùng với một hợp đồng khác đã được chốt cho phòng này. Vui lòng chọn thời gian gia hạn khác.",
+        conflictContractId: conflict._id,
+        conflictStartDate: conflict.contract.startDate,
+        conflictEndDate: conflict.contract.endDate,
+        conflictStatus: conflict.status,
+      });
+    }
+
     if (isStaff) {
       if (
         !contract.createBy ||
@@ -1255,6 +1320,7 @@ exports.approveExtension = async (req, res) => {
         });
       }
     }
+
     const now = new Date();
 
     // Lưu vào lịch sử gia hạn
@@ -1319,10 +1385,10 @@ exports.rejectExtension = async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body || {};
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const contract = await Contract.findOne({ _id: id, landlordId })
       .populate("buildingId", "name")
@@ -1582,7 +1648,7 @@ exports.downloadContractPdf = async (req, res) => {
       } else {
         try {
           res.end();
-        } catch { }
+        } catch {}
       }
     });
 
@@ -1605,14 +1671,14 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.8);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(16)
       .text("HỢP ĐỒNG THUÊ PHÒNG", { align: "center", underline: true });
 
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf.moveDown(0.5);
     pdf
       .fontSize(10)
@@ -1628,7 +1694,8 @@ exports.downloadContractPdf = async (req, res) => {
         `Hôm nay, ngày ${formatDate(meta.signDate) || "....../....../......"},`
       );
     pdf.text(
-      `Tại: ${meta.signPlace || (building && building.address) || "................"
+      `Tại: ${
+        meta.signPlace || (building && building.address) || "................"
       }`
     );
 
@@ -1638,17 +1705,18 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.3);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("BÊN CHO THUÊ (BÊN A):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     pdf
       .fontSize(11)
       .text(`Họ tên: ${A?.name || ""}`)
       .text(
-        `CCCD: ${A?.cccd || ""}   Cấp ngày: ${formatDate(A?.cccdIssuedDate) || ""
+        `CCCD: ${A?.cccd || ""}   Cấp ngày: ${
+          formatDate(A?.cccdIssuedDate) || ""
         }   Nơi cấp: ${A?.cccdIssuedPlace || ""}`
       )
       .text(`Hộ khẩu thường trú: ${A?.permanentAddress || ""}`)
@@ -1659,17 +1727,18 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.6);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("BÊN THUÊ (BÊN B):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     pdf
       .fontSize(11)
       .text(`Họ tên: ${B?.name || ""}`)
       .text(
-        `CCCD: ${B?.cccd || ""}   Cấp ngày: ${formatDate(B?.cccdIssuedDate) || ""
+        `CCCD: ${B?.cccd || ""}   Cấp ngày: ${
+          formatDate(B?.cccdIssuedDate) || ""
         }   Nơi cấp: ${B?.cccdIssuedPlace || ""}`
       )
       .text(`Hộ khẩu thường trú: ${B?.permanentAddress || ""}`)
@@ -1681,17 +1750,18 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(0.6);
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.text("Người ở cùng (roommates):");
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       roommates.forEach((r, idx) => {
         pdf
           .fontSize(11)
           .text(
-            `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""
+            `${idx + 1}. ${r.name || ""} – CCCD: ${
+              r.cccd || ""
             } – Điện thoại: ${r.phone || ""}`
           );
       });
@@ -1701,11 +1771,11 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.8);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("THÔNG TIN PHÒNG VÀ GIÁ THUÊ:");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     const buildingName = building?.name || "";
     const roomNumber = room?.roomNumber || "";
@@ -1713,15 +1783,13 @@ exports.downloadContractPdf = async (req, res) => {
     pdf
       .fontSize(11)
       .text(
-        `Tòa nhà: ${buildingName} – Địa chỉ: ${building?.address || "................................"
+        `Tòa nhà: ${buildingName} – Địa chỉ: ${
+          building?.address || "................................"
         }`
       )
       .text(`Phòng: ${roomNumber}    Diện tích: ${area || ""} m²`)
       .text(`Giá thuê: ${meta.price?.toLocaleString("vi-VN") || ""} VND/tháng`)
-      .text(
-        `Tiền cọc: ${meta.deposit?.toLocaleString("vi-VN") || ""
-        } VND (bằng chữ: ................................)`
-      )
+      .text(`Tiền cọc: ${meta.deposit?.toLocaleString("vi-VN") || ""} VND`)
       .text(
         `Thời hạn thuê: từ ngày ${formatDate(
           meta.startDate
@@ -1734,17 +1802,18 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(0.5);
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.text("Phương tiện gửi kèm:");
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       bikes.forEach((b, idx) => {
         pdf
           .fontSize(11)
           .text(
-            `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${b.color || ""
+            `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${
+              b.color || ""
             } – Hãng: ${b.brand || ""}`
           );
       });
@@ -1755,11 +1824,11 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(1); // cho rõ ràng, để terms sang trang mới
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(13).text("I. ĐIỀU KHOẢN HỢP ĐỒNG", { underline: true });
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
       pdf.moveDown(0.5);
 
       // sort theo order nếu có
@@ -1770,11 +1839,11 @@ exports.downloadContractPdf = async (req, res) => {
       sortedTerms.forEach((t, idx) => {
         try {
           pdf.font(FONT_BOLD);
-        } catch { }
+        } catch {}
         pdf.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
         try {
           pdf.font(FONT_REGULAR);
-        } catch { }
+        } catch {}
 
         const desc = t.description || "";
         if (!desc) {
@@ -1790,11 +1859,11 @@ exports.downloadContractPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 pdf.font(FONT_BOLD);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(prefix, { continued: true });
               try {
                 pdf.font(FONT_REGULAR);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -1822,11 +1891,11 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(1);
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(13).text("II. NỘI QUY / QUY ĐỊNH", { underline: true });
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
       pdf.moveDown(0.5);
 
       const sortedRegs = [...regulations].sort(
@@ -1836,11 +1905,11 @@ exports.downloadContractPdf = async (req, res) => {
       sortedRegs.forEach((r, idx) => {
         try {
           pdf.font(FONT_BOLD);
-        } catch { }
+        } catch {}
         pdf.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
         try {
           pdf.font(FONT_REGULAR);
-        } catch { }
+        } catch {}
 
         const desc = r.description || "";
         if (!desc) {
@@ -1856,11 +1925,11 @@ exports.downloadContractPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 pdf.font(FONT_BOLD);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(prefix, { continued: true });
               try {
                 pdf.font(FONT_REGULAR);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -1903,7 +1972,7 @@ exports.downloadContractPdf = async (req, res) => {
     // ===== Tiêu đề =====
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(12)
       .text("ĐẠI DIỆN BÊN A", leftX, pdf.y, {
@@ -1920,7 +1989,7 @@ exports.downloadContractPdf = async (req, res) => {
     // ===== Hướng dẫn ký =====
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(11)
       .text("(Ký, ghi rõ họ tên)", leftX, pdf.y, {
@@ -1957,7 +2026,7 @@ exports.downloadContractPdf = async (req, res) => {
 
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(12)
       .text(AName, leftX, pdf.y, {
@@ -1978,7 +2047,7 @@ exports.downloadContractPdf = async (req, res) => {
     }
     try {
       res.end();
-    } catch { }
+    } catch {}
   }
 };
 exports.approveTerminate = async (req, res) => {
