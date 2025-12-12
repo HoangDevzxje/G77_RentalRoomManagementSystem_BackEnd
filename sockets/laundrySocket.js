@@ -8,12 +8,9 @@ const {
 } = require("../controllers/Landlord/BuildingController");
 
 // --- CONFIG ---
-// Đặt false để tắt log rác, đặt true khi cần debug tính năng này
 const IS_DEBUG = false;
 
-// floorId -> intervalId
 const floorIntervals = new Map();
-// buildingId -> intervalId
 const buildingIntervals = new Map();
 
 function getRoomSize(io, room) {
@@ -44,7 +41,6 @@ function startFloorInterval(io, floorId, intervalMs = 5000) {
       const data = await getLaundryStatusForFloor(floorId);
       io.to(room).emit("laundry_status", data);
     } catch (err) {
-      // Chỉ log error, nhưng log ngắn gọn
       console.error(`[Laundry][Floor][Err] Floor ${floorId}:`, err.message);
     }
   }, intervalMs);
@@ -120,7 +116,6 @@ function setupLaundrySocket(io, socket) {
         const data = await getLaundryStatusForFloor(floorId);
         socket.emit("laundry_status", data);
       } catch (err) {
-        // Lỗi lần đầu thì log, vì nó không lặp lại liên tục
         console.error("[Laundry][Floor] First load error:", err.message);
         socket.emit("laundry_error", {
           message: err.message || "Lỗi đọc trạng thái",

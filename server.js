@@ -48,7 +48,6 @@ const io = new Server(server, {
   pingTimeout: 60000,
 });
 
-// cho toàn hệ thống dùng
 global._io = io;
 
 // ---------- JWT AUTH CHO SOCKET ----------
@@ -63,7 +62,6 @@ io.use((socket, next) => {
     return next(err);
   }
 
-  // Fake req/res để tái sử dụng middleware checkAuthorize()
   const req = {
     header: () => `Bearer ${token}`,
   };
@@ -78,19 +76,16 @@ io.use((socket, next) => {
     }),
   };
 
-  // Gọi middleware thật
   checkAuthorize()(req, res, (err) => {
     if (err) return next(err);
-    socket.user = req.user; // Gắn user vào socket
+    socket.user = req.user;
     next();
   });
 });
 
 // ---------- SOCKET.IO CONNECTION ----------
 io.on("connection", (socket) => {
-  
 
-  // Các room mặc định (nếu bạn có logic riêng)
   try {
     require("./sockets/joinRooms")(socket, io);
   } catch (e) {

@@ -1,13 +1,11 @@
 const Room = require("../models/Room");
 const Employee = require("../models/Staff");
 
-// Đặt false để tắt log thông báo user join phòng nào
 const IS_DEBUG_JOIN = false;
 
 module.exports = async (socket, io) => {
   const user = socket.user;
 
-  // Chỉ log lỗi này vì nó quan trọng
   if (!user?._id) {
     console.error("[Socket] JoinRooms: Socket user không hợp lệ (Missing _id)");
     return;
@@ -74,12 +72,9 @@ module.exports = async (socket, io) => {
 
     // ==================== LANDLORD ====================
     if (user.role === "landlord") {
-      // Landlord thường không cần auto-join room cụ thể nào lúc đầu
-      // trừ khi có logic riêng.
       return;
     }
   } catch (error) {
-    // Log lỗi gọn gàng
     console.error(
       `[Socket] JoinRooms Error for user ${userId}:`,
       error.message
