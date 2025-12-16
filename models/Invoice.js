@@ -7,6 +7,7 @@ const INVOICE_STATUS = [
   "transfer_pending",
   "overdue", // quá hạn
   "cancelled", // hủy hóa đơn
+  "replaced",
 ];
 
 const PAYMENT_METHODS = ["cash", "online_gateway", null];
@@ -247,6 +248,17 @@ const invoiceSchema = new mongoose.Schema(
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account",
+    },
+    replacedAt: { type: Date, default: null },
+    replacedByInvoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Invoice",
+      default: null,
+    },
+    replacementOfInvoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Invoice",
+      default: null,
     },
 
     // Soft delete

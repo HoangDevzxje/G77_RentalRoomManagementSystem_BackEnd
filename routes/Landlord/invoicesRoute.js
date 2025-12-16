@@ -373,30 +373,10 @@ router.get(
  * @swagger
  * /landlords/invoices/{id}:
  *   patch:
- *     summary: Cập nhật một số thông tin hóa đơn (theo trạng thái)
+ *     summary: Cập nhật hóa đơn (chỉ khi trạng thái draft)
  *     description: >
- *       Quy tắc theo trạng thái hiện tại của hóa đơn:
- *
- *       - **draft**:
- *         - Được chỉnh full các field: `items`, `note`, `discountAmount`, `lateFee`, `status`.
- *         - Cho phép chỉnh sửa / thêm / xoá mọi loại dòng: `rent`, `electric`, `water`, `service`, `other`.
- *
- *       - **sent**:
- *         - Chỉ được chỉnh: `items`, `note`, `discountAmount`, `lateFee`.
- *         - Trong `items`:
- *           * **KHÔNG** được sửa / xoá / thêm các dòng có `type` ∈ [`rent`, `service`].
- *           * **KHÔNG** được thêm mới dòng `electric` hoặc `water`.
- *           * Được phép **cập nhật chỉ số cuối** (`meta.currentIndex`) của các dòng `electric` / `water` đã tồn tại
- *             (dựa trên `utilityReadingId`). Hệ thống sẽ tự tính lại `quantity`, `amount` từ bảng UtilityReading
- *             và đồng bộ ngược lại UtilityReading.
- *           * Được phép thêm mới / chỉnh sửa các dòng `type = "other"` (các khoản thu phát sinh).
- *
- *       - **overdue**:
- *         - Chỉ được chỉnh: `note`, `discountAmount`, `lateFee`.
- *         - Mọi thay đổi `items` đều bị từ chối (API sẽ trả lỗi 400).
- *
- *       - **transfer_pending / paid / cancelled**:
- *         - Không được phép cập nhật. API sẽ trả lỗi 400.
+ *       Chỉ cho phép cập nhật hóa đơn khi **trạng thái hiện tại = draft**.
+ *       Nếu hóa đơn đang là `sent/paid/transfer_pending/overdue/cancelled/replaced` thì API sẽ trả lỗi 400.
  *     tags: [Invoices]
  *     security:
  *       - bearerAuth: []
@@ -415,24 +395,40 @@ router.get(
  *             properties:
  *               items:
  *                 type: array
- *                 description: >
- *                   Danh sách các dòng khoản thu, cấu trúc theo `Invoice.items`.
- *                   - Ở trạng thái **draft**: được phép chỉnh full rent/electric/water/service/other.
- *                   - Ở trạng thái **sent**:
- *                     * Giữ nguyên các dòng `rent` và `service` (không được sửa/xóa/thêm).
- *                     * Cho phép thêm mới/cập nhật các dòng `electric`/`water` thông qua `utilityReadingId`
- *                       và `meta.currentIndex`.
- *                     * Cho phép thêm mới/chỉnh sửa các dòng `other`.
- *                   - Ở trạng thái **overdue**: không được phép chỉnh `items`.
+ *                 description: Danh sách các dòng khoản thu (chỉ được chỉnh khi hóa đơn đang draft).
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     type:
+ *                       type: string
+ *                       enum: [rent, electric, water, service, other]
+ *                     label:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     quantity:
+ *                       type: number
+ *                     unitPrice:
+ *                       type: number
+ *                     amount:
+ *                       type: number
+ *                     utilityReadingId:
+ *                       type: string
+ *                     meta:
+ *                       type: object
  *               note:
  *                 type: string
- *                 description: Ghi chú gửi kèm cho người thuê.
+ *                 description: Ghi chú gửi kèm cho người thuê (chỉ draft).
  *               discountAmount:
  *                 type: number
- *                 description: Số tiền giảm giá áp dụng cho hóa đơn (cho phép chỉnh ở draft/sent/overdue).
+ *                 description: Số tiền giảm giá áp dụng cho hóa đơn (chỉ draft).
  *               lateFee:
  *                 type: number
- *                 description: Phí trễ hạn (cho phép chỉnh ở draft/sent/overdue).
+ *                 description: Phí trễ hạn (chỉ draft).
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Hạn thanh toán (chỉ draft).
  *               status:
  *                 type: string
  *                 description: >
@@ -442,7 +438,12 @@ router.get(
  *     responses:
  *       200:
  *         description: Cập nhật hóa đơn thành công
+ *       400:
+ *         description: Không hợp lệ theo trạng thái / dữ liệu
+ *       404:
+ *         description: Không tìm thấy hóa đơn
  */
+
 router.patch(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
@@ -591,6 +592,84 @@ router.get(
   checkStaffPermission(PERMISSIONS.INVOICE_VIEW),
   checkSubscription,
   invoiceController.getInvoiceHistory
+);
+/**
+ * @swagger
+ * /landlords/invoices/{id}/replace:
+ *   post:
+ *     summary: Thay thế hóa đơn (chỉ khi trạng thái sent)
+ *     description: >
+ *       Chỉ cho phép thay thế khi hóa đơn **trạng thái hiện tại = sent**.
+ *       Hệ thống sẽ:
+ *       1) Tạo một hóa đơn mới (sent) dựa trên hóa đơn cũ + dữ liệu truyền lên (nếu có)
+ *       2) Chuyển hóa đơn cũ sang trạng thái **replaced** (bị thay thế)
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               items:
+ *                 type: array
+ *                 description: >
+ *                   (Optional) Danh sách items của hóa đơn mới. Nếu không truyền sẽ copy từ hóa đơn cũ.
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     type:
+ *                       type: string
+ *                       enum: [rent, electric, water, service, other]
+ *                     label:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     quantity:
+ *                       type: number
+ *                     unitPrice:
+ *                       type: number
+ *                     amount:
+ *                       type: number
+ *                     utilityReadingId:
+ *                       type: string
+ *                     meta:
+ *                       type: object
+ *               note:
+ *                 type: string
+ *                 description: (Optional) Ghi chú hóa đơn mới
+ *               discountAmount:
+ *                 type: number
+ *                 description: (Optional) Số tiền giảm giá hóa đơn mới
+ *               lateFee:
+ *                 type: number
+ *                 description: (Optional) Phí trễ hạn hóa đơn mới
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: (Optional) Hạn thanh toán hóa đơn mới
+ *     responses:
+ *       200:
+ *         description: Thay thế hóa đơn thành công (trả về hóa đơn cũ + mới)
+ *       400:
+ *         description: Không hợp lệ theo trạng thái / đã bị thay thế
+ *       404:
+ *         description: Không tìm thấy hóa đơn
+ */
+router.post(
+  "/:id/replace",
+  checkAuthorize(["landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.INVOICE_EDIT),
+  checkSubscription,
+  invoiceController.replaceInvoice
 );
 
 module.exports = router;

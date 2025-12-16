@@ -76,8 +76,9 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
     : "N/A";
 
-  let html = `<p>Chào ${tenant.userInfo?.fullName || "Anh/Chị"
-    },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  let html = `<p>Chào ${
+    tenant.userInfo?.fullName || "Anh/Chị"
+  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
   html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
   html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
   html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
@@ -159,8 +160,9 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
     const amount = Number(invoice.totalAmount) || 0;
     if (amount <= 0) return;
 
-    const title = `Thu tiền hóa đơn ${invoice.invoiceNumber || String(invoice._id)
-      }`;
+    const title = `Thu tiền hóa đơn ${
+      invoice.invoiceNumber || String(invoice._id)
+    }`;
 
     const descParts = [];
     if (invoice.roomSnapshot?.roomNumber) {
@@ -209,10 +211,10 @@ exports.generateMonthlyInvoice = async (req, res) => {
     } = req.body || {};
     // console.log(req.body);
     if (!roomId) {
-      return res.status(400).json({ message: 'Thiếu roomId' });
+      return res.status(400).json({ message: "Thiếu roomId" });
     }
     if (!mongoose.Types.ObjectId.isValid(roomId)) {
-      return res.status(400).json({ message: 'roomId không hợp lệ' });
+      return res.status(400).json({ message: "roomId không hợp lệ" });
     }
     if (!periodMonth || !periodYear) {
       return res.status(400).json({
@@ -399,12 +401,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-            ? "Gửi xe"
-            : sv.name === "cleaning"
-              ? "Phí vệ sinh"
-              : sv.name === "security"
-                ? "Bảo vệ"
-                : "Dịch vụ khác");
+          ? "Gửi xe"
+          : sv.name === "cleaning"
+          ? "Phí vệ sinh"
+          : sv.name === "security"
+          ? "Bảo vệ"
+          : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -641,10 +643,10 @@ exports.getInvoiceDetail = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const invoice = await Invoice.findOne({
       _id: id,
@@ -701,10 +703,10 @@ exports.updateInvoice = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const invoice = await Invoice.findOne({
       _id: id,
@@ -728,6 +730,12 @@ exports.updateInvoice = async (req, res) => {
     }
 
     const currentStatus = invoice.status;
+    if (currentStatus !== "draft") {
+      return res.status(400).json({
+        message: "Chỉ được cập nhật hóa đơn khi trạng thái là 'draft'.",
+        currentStatus,
+      });
+    }
 
     // Các trạng thái bị khoá hoàn toàn
     if (["transfer_pending", "paid", "cancelled"].includes(currentStatus)) {
@@ -855,9 +863,9 @@ exports.updateInvoice = async (req, res) => {
               reading.eConsumption != null
                 ? reading.eConsumption
                 : Math.max(
-                  0,
-                  (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
-                );
+                    0,
+                    (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
+                  );
 
             const unitPrice =
               reading.eUnitPrice != null
@@ -879,9 +887,9 @@ exports.updateInvoice = async (req, res) => {
               reading.wConsumption != null
                 ? reading.wConsumption
                 : Math.max(
-                  0,
-                  (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
-                );
+                    0,
+                    (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
+                  );
 
             const unitPrice =
               reading.wUnitPrice != null
@@ -1137,8 +1145,9 @@ exports.updateInvoice = async (req, res) => {
 
       // Những dòng electric/water cũ mà body KHÔNG gửi gì → giữ nguyên
       for (const oldItem of oldElectricWater) {
-        const key = `${oldItem.type || ""}:${oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
-          }`;
+        const key = `${oldItem.type || ""}:${
+          oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
+        }`;
         const touched = bodyElectricWater.some(
           (b) => `${b.type || ""}:${String(b.utilityReadingId || "")}` === key
         );
@@ -1251,16 +1260,122 @@ exports.updateInvoice = async (req, res) => {
   }
 };
 
+exports.replaceInvoice = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff.landlordId : req.user._id;
+    const { id } = req.params;
+
+    const oldInvoice = await Invoice.findOne({
+      _id: id,
+      landlordId,
+      isDeleted: false,
+    }).session(session);
+
+    if (!oldInvoice) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: "Không tìm thấy hoá đơn" });
+    }
+
+    if (isStaff) {
+      const buildingId = oldInvoice.buildingId?.toString();
+      const allowed = (req.staff.assignedBuildingIds || []).map(String);
+      if (!allowed.includes(buildingId)) {
+        await session.abortTransaction();
+        return res.status(403).json({
+          message: "Bạn không được phép thay thế hoá đơn của toà nhà này",
+        });
+      }
+    }
+
+    if (oldInvoice.status !== "sent") {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: "Chỉ được thay thế hóa đơn khi trạng thái là 'sent'.",
+        currentStatus: oldInvoice.status,
+      });
+    }
+
+    if (oldInvoice.replacedByInvoiceId) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: "Hóa đơn này đã được thay thế trước đó.",
+        replacedByInvoiceId: oldInvoice.replacedByInvoiceId,
+      });
+    }
+
+    const body = req.body || {};
+
+    // tạo invoice mới: copy phần cốt lõi + cho phép truyền items/note/discount/lateFee/dueDate
+    const newInvoiceNumber = await Invoice.generateInvoiceNumber({
+      landlordId: oldInvoice.landlordId,
+      periodMonth: oldInvoice.periodMonth,
+      periodYear: oldInvoice.periodYear,
+    });
+
+    const newInvoice = new Invoice({
+      landlordId: oldInvoice.landlordId,
+      tenantId: oldInvoice.tenantId,
+      buildingId: oldInvoice.buildingId,
+      roomId: oldInvoice.roomId,
+      contractId: oldInvoice.contractId,
+      periodMonth: oldInvoice.periodMonth,
+      periodYear: oldInvoice.periodYear,
+
+      invoiceNumber: newInvoiceNumber,
+
+      items: Array.isArray(body.items) ? body.items : oldInvoice.items,
+      note: body.note ?? oldInvoice.note,
+      discountAmount: body.discountAmount ?? oldInvoice.discountAmount,
+      lateFee: body.lateFee ?? oldInvoice.lateFee,
+      dueDate: body.dueDate ?? oldInvoice.dueDate,
+
+      status: "sent",
+      issuedAt: new Date(),
+      sentAt: new Date(),
+
+      replacementOfInvoiceId: oldInvoice._id,
+      createdBy: req.user._id,
+      updatedBy: req.user._id,
+    });
+
+    newInvoice.recalculateTotals();
+    await newInvoice.save({ session });
+
+    // cập nhật invoice cũ -> replaced
+    oldInvoice.status = "replaced";
+    oldInvoice.replacedAt = new Date();
+    oldInvoice.replacedByInvoiceId = newInvoice._id;
+    oldInvoice.updatedBy = req.user._id;
+    await oldInvoice.save({ session });
+
+    await session.commitTransaction();
+    return res.json({
+      message: "Thay thế hóa đơn thành công.",
+      oldInvoice,
+      newInvoice,
+    });
+  } catch (e) {
+    await session.abortTransaction();
+    return res.status(500).json({ message: "Lỗi hệ thống", error: e.message });
+  } finally {
+    session.endSession();
+  }
+};
+
 exports.deleteInvoice = async (req, res) => {
   try {
     const isStaff = req.user.role === "staff";
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const invoice = await Invoice.findOne({
       _id: id,
@@ -1345,10 +1460,10 @@ exports.markInvoicePaid = async (req, res) => {
     const { id } = req.params;
     const { paymentMethod, paidAt, note, paidAmount } = req.body || {};
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const invoice = await Invoice.findOne({
       _id: id,
@@ -1515,10 +1630,10 @@ exports.sendInvoiceEmail = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const invoice = await Invoice.findOne({
       _id: id,
@@ -1666,10 +1781,10 @@ exports.generateInvoice = async (req, res) => {
       extraItems = [],
     } = req.body || {};
     if (!roomId) {
-      return res.status(400).json({ message: 'Thiếu roomId' });
+      return res.status(400).json({ message: "Thiếu roomId" });
     }
     if (!mongoose.Types.ObjectId.isValid(roomId)) {
-      return res.status(400).json({ message: 'roomId không hợp lệ' });
+      return res.status(400).json({ message: "roomId không hợp lệ" });
     }
     if (!periodMonth || !periodYear) {
       return res.status(400).json({
@@ -1862,12 +1977,12 @@ exports.generateInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-            ? "Gửi xe"
-            : sv.name === "cleaning"
-              ? "Phí vệ sinh"
-              : sv.name === "security"
-                ? "Bảo vệ"
-                : "Dịch vụ khác");
+          ? "Gửi xe"
+          : sv.name === "cleaning"
+          ? "Phí vệ sinh"
+          : sv.name === "security"
+          ? "Bảo vệ"
+          : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -2007,10 +2122,10 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       extraItems = [],
     } = req.body || {};
     if (!buildingId) {
-      return res.status(400).json({ message: 'Thiếu buildingId' });
+      return res.status(400).json({ message: "Thiếu buildingId" });
     }
     if (!mongoose.Types.ObjectId.isValid(buildingId)) {
-      return res.status(400).json({ message: 'buildingId không hợp lệ' });
+      return res.status(400).json({ message: "buildingId không hợp lệ" });
     }
     if (!periodMonth || !periodYear) {
       return res.status(400).json({
@@ -2345,10 +2460,10 @@ exports.sendAllDraftInvoices = async (req, res) => {
       return res.status(401).json({ message: "Không xác định landlord" });
     }
     if (!buildingId) {
-      return res.status(400).json({ message: 'Thiếu buildingId' });
+      return res.status(400).json({ message: "Thiếu buildingId" });
     }
     if (!mongoose.Types.ObjectId.isValid(buildingId)) {
-      return res.status(400).json({ message: 'buildingId không hợp lệ' });
+      return res.status(400).json({ message: "buildingId không hợp lệ" });
     }
     const filter = {
       landlordId,
@@ -2530,10 +2645,10 @@ exports.getInvoiceHistory = async (req, res) => {
     const landlordId = isStaff ? req.staff.landlordId : req.user._id;
     const { id } = req.params;
     if (!id) {
-      return res.status(400).json({ message: 'Thiếu id' });
+      return res.status(400).json({ message: "Thiếu id" });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'id không hợp lệ' });
+      return res.status(400).json({ message: "id không hợp lệ" });
     }
     const invoice = await Invoice.findOne({
       _id: id,
