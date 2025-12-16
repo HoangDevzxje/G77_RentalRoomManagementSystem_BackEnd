@@ -13,6 +13,38 @@ const personSchema = new mongoose.Schema(
   },
   { _id: false }
 );
+const identityVerificationSchema = new mongoose.Schema(
+  {
+    cccdFrontUrl: String,
+    cccdBackUrl: String,
+    selfieUrl: String,
+
+    ocrData: {
+      name: String,
+      dob: String,
+      cccd: String,
+      permanentAddress: String,
+    },
+
+    faceMatchScore: Number,
+
+    status: {
+      type: String,
+      enum: ["pending", "verified", "failed"],
+      default: "pending",
+      index: true,
+    },
+
+    verifiedAt: Date,
+    rejectedReason: String,
+    provider: {
+      type: String,
+      enum: ["manual", "vnpt", "fpt"],
+      default: "manual",
+    },
+  },
+  { _id: false }
+);
 
 const bikeSchema = new mongoose.Schema(
   {
@@ -261,6 +293,7 @@ const contractSchema = new mongoose.Schema(
       default: null,
     },
     terminationRequest: terminationRequestSchema,
+    identityVerification: identityVerificationSchema,
   },
   { timestamps: true }
 );

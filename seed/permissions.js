@@ -27,7 +27,7 @@ const permissions = [
     { code: 'booking:delete', name: 'Xóa', group: 'Lịch xem phòng', action: 'delete' },
 
     //building furniture
-    // { code: 'building-furniture:view', name: 'Xem', group: 'Nội thất tòa nhà', action: 'view' },
+    { code: 'building:view', name: 'Xem', group: 'Tòa nhà', action: 'view' },
     // { code: 'building-furniture:create', name: 'Thêm', group: 'Nội thất tòa nhà', action: 'create' },
     // { code: 'building-furniture:edit', name: 'Sửa', group: 'Nội thất tòa nhà', action: 'edit' },
     // { code: 'building-furniture:delete', name: 'Xóa', group: 'Nội thất tòa nhà', action: 'delete' },

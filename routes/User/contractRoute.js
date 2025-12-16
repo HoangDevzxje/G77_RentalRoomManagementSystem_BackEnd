@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const { checkAuthorize } = require("../../middleware/authMiddleware");
-const checkSubscription = require("../../middleware/checkSubscription");
 const contractController = require("../../controllers/User/ContractController");
+const { uploadIdentityLocal } = require("../../configs/identityUpload");
 
 /**
  * @swagger
@@ -170,6 +170,101 @@ const contractController = require("../../controllers/User/ContractController");
  *                       category: { type: string }
  *                       quantity: { type: integer }
  *                       condition: { type: string }
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ */
+/**
+ * @swagger
+ * /contracts/{id}/verify-identity:
+ *   post:
+ *     summary: Xác thực danh tính người thuê (eKYC CCCD)
+ *     description: |
+ *       Người thuê upload ảnh CCCD để xác thực danh tính trước khi ký hợp đồng.
+ *
+ *       **Các file upload (multipart/form-data):**
+ *       - cccdFront: Ảnh CCCD mặt trước (BẮT BUỘC)
+ *       - cccdBack: Ảnh CCCD mặt sau (BẮT BUỘC)
+ *       - selfie: Ảnh selfie khuôn mặt (BẮT BUỘC – dùng để face match)
+ *
+ *       Backend sẽ:
+ *       - OCR CCCD bằng FPT eKYC
+ *       - So khớp với thông tin người thuê
+ *       - Face matching với selfie
+ *
+ *     tags: [Resident Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - cccdFront
+ *               - cccdBack
+ *               - selfie
+ *             properties:
+ *               cccdFront:
+ *                 type: string
+ *                 format: binary
+ *               cccdBack:
+ *                 type: string
+ *                 format: binary
+ *               selfie:
+ *                 type: string
+ *                 format: binary
+ *
+ *     responses:
+ *       200:
+ *         description: Xác thực danh tính hoàn tất
+ *       400:
+ *         description: Thiếu ảnh hoặc xác thực thất bại
+ *       401:
+ *         description: Chưa đăng nhập
+ *       403:
+ *         description: Không có quyền
+ *       404:
+ *         description: Không tìm thấy hợp đồng
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
+ * /contracts/{id}/identity-status:
+ *   get:
+ *     summary: Lấy trạng thái xác thực danh tính
+ *     description: |
+ *       API cho người thuê kiểm tra trạng thái xác thực danh tính
+ *       (pending / verified / failed).
+ *     tags: [Resident Contracts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: ID hợp đồng
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Trạng thái xác thực danh tính
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/IdentityVerification'
+ *       401:
+ *         description: Chưa đăng nhập hoặc token không hợp lệ
  *       404:
  *         description: Không tìm thấy hợp đồng
  */
@@ -564,7 +659,20 @@ router.get(
 );
 // GET /contracts
 router.get("/", checkAuthorize("resident"), contractController.listMyContracts);
+// Upload CCCD + selfie
+router.post(
+  "/:id/verify-identity",
+  checkAuthorize("resident"),
+  uploadIdentityLocal,
+  contractController.uploadIdentityVerification
+);
 
+// Xem trạng thái xác thực
+router.get(
+  "/:id/identity-status",
+  checkAuthorize("resident"),
+  contractController.getIdentityStatus
+);
 // GET /contracts/:id
 router.get(
   "/:id",
