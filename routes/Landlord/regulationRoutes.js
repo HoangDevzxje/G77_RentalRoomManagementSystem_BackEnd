@@ -267,6 +267,7 @@ router.get(
 router.post("/",
   checkAuthorize(["admin", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.REGULATION_CREATE, { checkBuilding: true }),
+  checkSubscription,
   RegulationCtrl.create);
 
 /**
@@ -419,6 +420,7 @@ router.put(
       model: "Regulation"
     }
   ),
+  checkSubscription,
   RegulationCtrl.update
 );
 
@@ -501,6 +503,7 @@ router.delete(
       model: "Regulation"
     }
   ),
+  checkSubscription,
   RegulationCtrl.remove
 );
 

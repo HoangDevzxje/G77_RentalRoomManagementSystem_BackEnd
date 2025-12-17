@@ -3,6 +3,7 @@ const ResidentController = require("../../controllers/Landlord/ResidentControlle
 const { checkAuthorize } = require("../../middleware/authMiddleware");
 const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
+const checkSubscription = require("../../middleware/checkSubscription");
 
 /**
  * @swagger
@@ -321,6 +322,7 @@ router.post(
     "/add",
     checkAuthorize(["landlord", "staff"]),
     checkStaffPermission(PERMISSIONS.RESIDENT_CREATE),
+    checkSubscription,
     ResidentController.addTenantToRoom
 );
 
@@ -328,6 +330,7 @@ router.post(
     "/remove",
     checkAuthorize(["landlord", "staff"]),
     checkStaffPermission(PERMISSIONS.RESIDENT_DELETE),
+    checkSubscription,
     ResidentController.removeTenantFromRoom
 );
 
