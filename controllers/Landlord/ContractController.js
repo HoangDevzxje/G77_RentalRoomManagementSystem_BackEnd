@@ -235,6 +235,30 @@ async function createMoveInNotifications(contract, { io, mode }) {
     io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
   }
 }
+function computeShouldShowMoveInActions(contract, { isStaff, userId } = {}) {
+  if (!contract) return false;
+
+  if (contract.status !== "completed") return false;
+  if (contract.moveInConfirmedAt) return false;
+
+  // staff chỉ được thao tác trên hợp đồng do mình tạo
+  if (
+    isStaff &&
+    contract.createBy &&
+    String(contract.createBy) !== String(userId)
+  ) {
+    return false;
+  }
+
+  const startDate = contract.contract?.startDate;
+  const endDate = contract.contract?.endDate;
+  if (!startDate || !endDate) return false;
+
+  const now = new Date();
+  if (now < new Date(startDate) || now > new Date(endDate)) return false;
+
+  return true;
+}
 
 // POST /landlords/contracts/from-contact
 // body: { contactId }
@@ -859,6 +883,14 @@ exports.getDetail = async (req, res) => {
       notes: rf.notes,
     }));
 
+    contract.shouldShowMoveInActions = computeShouldShowMoveInActions(
+      contract,
+      {
+        isStaff: req.user.role === "staff",
+        userId: req.user._id,
+      }
+    );
+
     res.json(contract);
   } catch (e) {
     res.status(400).json({ message: e.message });
@@ -1224,8 +1256,18 @@ exports.listMine = async (req, res) => {
       Contract.countDocuments(filter),
     ]);
 
-    res.json({
-      items,
+    const userId = req.user._id;
+
+    const itemsWithFlags = items.map((c) => ({
+      ...c,
+      shouldShowMoveInActions: computeShouldShowMoveInActions(c, {
+        isStaff,
+        userId,
+      }),
+    }));
+
+    return res.json({
+      items: itemsWithFlags,
       total,
       page: pageNumber,
       limit: pageSize,
