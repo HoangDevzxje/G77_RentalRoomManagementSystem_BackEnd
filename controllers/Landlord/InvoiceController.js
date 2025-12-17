@@ -9,10 +9,125 @@ const Notification = require("../../models/Notification");
 const sendEmail = require("../../utils/sendMail");
 const { buildItemsDiff, isItemsDiffEmpty } = require("../../utils/invoiceDiff");
 const mongoose = require("mongoose");
+
+// Dùng cho auto-confirm move-in khi hóa đơn tiền cọc đã thanh toán (nếu có)
+let confirmMoveInCore = null;
+try {
+  // InvoiceController và ContractController thường cùng nằm trong controllers/Landlord
+  // eslint-disable-next-line global-require
+  ({ confirmMoveInCore } = require("./ContractController"));
+} catch (e) {
+  // Không throw để tránh làm crash nếu file path khác trong một số môi trường
+  confirmMoveInCore = null;
+}
 function getPeriodRange(periodMonth, periodYear) {
   const start = new Date(periodYear, periodMonth - 1, 1, 0, 0, 0, 0);
   const end = new Date(periodYear, periodMonth, 0, 23, 59, 59, 999);
   return { start, end };
+}
+
+function addMonthsToYearMonth({ month, year }, addMonths) {
+  const idx = year * 12 + (month - 1) + addMonths;
+  const newYear = Math.floor(idx / 12);
+  const newMonth = (idx % 12) + 1;
+  return { month: newMonth, year: newYear };
+}
+
+function monthDiff({ fromMonth, fromYear, toMonth, toYear }) {
+  return (toYear - fromYear) * 12 + (toMonth - fromMonth);
+}
+
+/**
+ * Build rent line item following contract payment cycle.
+ * - price is per month.
+ * - paymentCycleMonths determines how many months are billed at once.
+ * - rent is billed only at cycle-start months (anchored by contract.startDate month).
+ */
+function buildRentItemByPaymentCycle({ contract, periodMonth, periodYear }) {
+  const monthlyPrice = Number(contract?.contract?.price) || 0;
+  if (monthlyPrice <= 0) return null;
+
+  const cycleMonths = Math.max(
+    1,
+    Number(contract?.contract?.paymentCycleMonths || 1)
+  );
+
+  const startDate = contract?.contract?.startDate
+    ? new Date(contract.contract.startDate)
+    : null;
+  if (!startDate || Number.isNaN(startDate.getTime())) {
+    // fallback: behave like 1-month billing
+    return {
+      type: "rent",
+      label: "Tiền phòng",
+      description: `Tiền phòng tháng ${periodMonth}/${periodYear}`,
+      quantity: 1,
+      unitPrice: monthlyPrice,
+      amount: monthlyPrice,
+      meta: { paymentCycleMonths: cycleMonths, billedMonths: 1 },
+    };
+  }
+
+  const startMonth = startDate.getMonth() + 1;
+  const startYear = startDate.getFullYear();
+  const diff = monthDiff({
+    fromMonth: startMonth,
+    fromYear: startYear,
+    toMonth: periodMonth,
+    toYear: periodYear,
+  });
+
+  // Không thu tiền phòng trước tháng bắt đầu hợp đồng
+  if (diff < 0) return null;
+
+  // Chỉ thu tiền phòng ở tháng bắt đầu của chu kỳ thanh toán
+  if (diff % cycleMonths !== 0) return null;
+
+  // Nếu hợp đồng sắp hết hạn, chỉ thu tối đa tới tháng kết thúc
+  let billedMonths = cycleMonths;
+  const endDate = contract?.contract?.endDate
+    ? new Date(contract.contract.endDate)
+    : null;
+  if (endDate && !Number.isNaN(endDate.getTime())) {
+    const endMonth = endDate.getMonth() + 1;
+    const endYear = endDate.getFullYear();
+    const remainingInclusive =
+      monthDiff({
+        fromMonth: periodMonth,
+        fromYear: periodYear,
+        toMonth: endMonth,
+        toYear: endYear,
+      }) + 1;
+
+    billedMonths = Math.min(billedMonths, Math.max(0, remainingInclusive));
+  }
+
+  if (billedMonths <= 0) return null;
+
+  const endPeriod = addMonthsToYearMonth(
+    { month: periodMonth, year: periodYear },
+    billedMonths - 1
+  );
+
+  const desc =
+    billedMonths === 1
+      ? `Tiền phòng tháng ${periodMonth}/${periodYear}`
+      : `Tiền phòng từ ${periodMonth}/${periodYear} đến ${endPeriod.month}/${endPeriod.year} (chu kỳ ${billedMonths} tháng)`;
+
+  return {
+    type: "rent",
+    label: "Tiền phòng",
+    description: desc,
+    quantity: billedMonths,
+    unitPrice: monthlyPrice,
+    amount: Math.max(0, billedMonths * monthlyPrice),
+    meta: {
+      paymentCycleMonths: cycleMonths,
+      billedMonths,
+      from: { month: periodMonth, year: periodYear },
+      to: { month: endPeriod.month, year: endPeriod.year },
+    },
+  };
 }
 
 async function findActiveContractForRoom(roomId, { periodMonth, periodYear }) {
@@ -292,6 +407,8 @@ exports.generateMonthlyInvoice = async (req, res) => {
       contractId: contract._id,
       periodMonth: month,
       periodYear: year,
+      // Chỉ check xung đột với hóa đơn tháng (để hóa đơn tiền cọc không chặn tạo hóa đơn tháng)
+      invoiceKind: { $in: [null, "monthly"] },
       isDeleted: false,
     }).lean();
 
@@ -323,16 +440,14 @@ exports.generateMonthlyInvoice = async (req, res) => {
 
     const items = [];
 
-    // 5.1. Tiền phòng (tuỳ chọn)
-    if (includeRent && contract.contract?.price) {
-      items.push({
-        type: "rent",
-        label: "Tiền phòng",
-        description: `Tiền phòng tháng ${month}/${year}`,
-        quantity: 1,
-        unitPrice: contract.contract.price,
-        amount: Number(contract.contract.price),
+    // 5.1. Tiền phòng (tuỳ chọn) - tính theo chu kỳ thanh toán trong hợp đồng
+    if (includeRent) {
+      const rentItem = buildRentItemByPaymentCycle({
+        contract,
+        periodMonth: month,
+        periodYear: year,
       });
+      if (rentItem) items.push(rentItem);
     }
 
     // 5.2. Tiền điện / nước từ UtilityReading + giá ở tòa
@@ -1560,6 +1675,47 @@ exports.markInvoicePaid = async (req, res) => {
 
     await invoice.save();
 
+    // Nếu là hóa đơn tiền cọc đã thanh toán và đã tới (hoặc qua) ngày bắt đầu hợp đồng
+    // thì tự động confirm vào ở (nếu hệ thống có hàm core)
+    try {
+      if (
+        invoice.invoiceKind === "deposit" &&
+        invoice.contractId &&
+        confirmMoveInCore
+      ) {
+        const c = await Contract.findById(invoice.contractId)
+          .select("status moveInConfirmedAt contract.startDate contract.deposit")
+          .lean();
+
+        const startDate = c?.contract?.startDate
+          ? new Date(c.contract.startDate)
+          : null;
+
+        const depositRequired = Number(c?.contract?.deposit || 0) > 0;
+
+        if (
+          c &&
+          c.status === "completed" &&
+          !c.moveInConfirmedAt &&
+          (!depositRequired || invoice.status === "paid") &&
+          startDate &&
+          startDate <= new Date()
+        ) {
+          await confirmMoveInCore(c._id, {
+            mode: "auto",
+            reason: "deposit_paid",
+            actorId: req.user?._id,
+          });
+        }
+      }
+    } catch (err) {
+      console.error(
+        "[DEPOSIT] auto confirm move-in after deposit paid failed:",
+        err
+      );
+      // Không fail API thanh toán nếu auto-confirm lỗi
+    }
+
     // Sau khi hóa đơn đã "paid" → tự động ghi log thu
     await ensureRevenueLogForInvoicePaid(invoice, { actorId: req.user?._id });
     const room = invoice.roomId;
@@ -1571,13 +1727,20 @@ exports.markInvoicePaid = async (req, res) => {
       const buildingName = room.buildingId?.name;
 
       const paidDateStr = invoice.paidAt.toLocaleDateString("vi-VN");
+      const isDeposit = invoice.invoiceKind === "deposit";
 
       const notification = await Notification.create({
         landlordId,
         createByRole: "system",
-        title: "Thanh toán thành công",
+        title: isDeposit
+          ? "Thanh toán tiền cọc thành công"
+          : "Thanh toán thành công",
         content:
-          `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n` +
+          `${
+            isDeposit
+              ? "Hóa đơn tiền cọc\n"
+              : `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n`
+          }` +
           `Phòng ${roomNumber} – ${buildingName}\n` +
           `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
           `Đã được ghi nhận thanh toán thành công vào ngày ${paidDateStr}.\n` +
@@ -1870,6 +2033,8 @@ exports.generateInvoice = async (req, res) => {
       contractId: contract._id,
       periodMonth: month,
       periodYear: year,
+      // Chỉ check xung đột với hóa đơn tháng (để hóa đơn tiền cọc không chặn tạo hóa đơn tháng)
+      invoiceKind: { $in: [null, "monthly"] },
       isDeleted: false,
     }).lean();
 
@@ -1901,16 +2066,14 @@ exports.generateInvoice = async (req, res) => {
 
     const items = [];
 
-    // 5.1 Tiền phòng
-    if (includeRent && contract.contract?.price) {
-      items.push({
-        type: "rent",
-        label: "Tiền phòng",
-        description: `Tiền phòng tháng ${month}/${year}`,
-        quantity: 1,
-        unitPrice: contract.contract.price,
-        amount: Number(contract.contract.price),
+    // 5.1 Tiền phòng (tuỳ chọn) - tính theo chu kỳ thanh toán trong hợp đồng
+    if (includeRent) {
+      const rentItem = buildRentItemByPaymentCycle({
+        contract,
+        periodMonth: month,
+        periodYear: year,
       });
+      if (rentItem) items.push(rentItem);
     }
 
     // 5.2 Tiền điện / nước nếu có đọc số

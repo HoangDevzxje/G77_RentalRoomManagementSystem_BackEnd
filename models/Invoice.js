@@ -104,6 +104,16 @@ const invoiceSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Phân loại hóa đơn để tránh xung đột kỳ (ví dụ: hóa đơn tiền cọc vs hóa đơn tháng)
+    // - monthly: hóa đơn tiền nhà/điện/nước/dịch vụ theo kỳ
+    // - deposit: hóa đơn tiền cọc hợp đồng
+    invoiceKind: {
+      type: String,
+      enum: ["monthly", "deposit"],
+      default: "monthly",
+      index: true,
+    },
+
     // Kỳ tính tiền
     periodMonth: {
       type: Number,

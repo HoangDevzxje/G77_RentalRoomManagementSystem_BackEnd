@@ -298,4 +298,115 @@ const contractSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// === AUTO CREATE DEPOSIT INVOICE ON CONTRACT COMPLETED (BUT NOT MOVE-IN YET) ===
+// Yêu cầu: Ngay khi hợp đồng chuyển sang "completed" (chưa vào ở) -> tự tạo hóa đơn tiền cọc.
+// Lưu ý: Hóa đơn cọc phải không chặn tạo hóa đơn tháng trong cùng kỳ (đã xử lý bằng Invoice.invoiceKind).
+contractSchema.pre("save", function (next) {
+  try {
+    this.$locals = this.$locals || {};
+    this.$locals._becameCompletedNow =
+      this.isModified("status") && this.status === "completed";
+    return next();
+  } catch (e) {
+    return next();
+  }
+});
+
+contractSchema.post("save", async function (doc) {
+  try {
+    // Chỉ chạy đúng lúc vừa chuyển sang completed
+    if (!doc?.$locals?._becameCompletedNow) return;
+    // Nếu đã confirm vào ở thì thôi
+    if (doc.moveInConfirmedAt) return;
+
+    const depositAmount = Number(doc?.contract?.deposit || 0);
+    if (!depositAmount || depositAmount <= 0) return;
+
+    // Lazy load models để tránh circular deps
+    // eslint-disable-next-line global-require
+    const Invoice = mongoose.models.Invoice || require("./Invoice");
+
+    // Nếu đã có hóa đơn cọc thì không tạo lại
+    const existed = await Invoice.findOne({
+      contractId: doc._id,
+      invoiceKind: "deposit",
+      isDeleted: false,
+    })
+      .select("_id status")
+      .lean();
+    if (existed) return;
+
+    const startDate = doc?.contract?.startDate
+      ? new Date(doc.contract.startDate)
+      : new Date();
+    const periodMonth = startDate.getMonth() + 1;
+    const periodYear = startDate.getFullYear();
+
+    const invoiceNumber = await Invoice.generateInvoiceNumber({
+      landlordId: doc.landlordId,
+      periodMonth,
+      periodYear,
+    });
+
+    const invoice = new Invoice({
+      landlordId: doc.landlordId,
+      tenantId: doc.tenantId,
+      buildingId: doc.buildingId,
+      roomId: doc.roomId,
+      contractId: doc._id,
+      invoiceKind: "deposit",
+      periodMonth,
+      periodYear,
+      invoiceNumber,
+      issuedAt: new Date(),
+      dueDate: startDate,
+      items: [
+        {
+          type: "other",
+          label: "Tiền cọc",
+          description: "Tiền cọc hợp đồng",
+          quantity: 1,
+          unitPrice: depositAmount,
+          amount: depositAmount,
+          meta: { kind: "deposit" },
+        },
+      ],
+      // Tạo xong là "sent" để người thuê thấy và có thể thanh toán.
+      status: "sent",
+      createdBy: doc.createBy || doc.landlordId,
+    });
+
+    invoice.recalculateTotals();
+    await invoice.save();
+
+    // Thông báo cho chủ trọ khi hệ thống tạo hóa đơn cọc
+    try {
+      // eslint-disable-next-line global-require
+      const Notification =
+        mongoose.models.Notification || require("./Notification");
+      const roomNumber = doc?.searchMeta?.roomNumber || "";
+      const buildingName = doc?.searchMeta?.buildingName || "";
+
+      await Notification.create({
+        landlordId: doc.landlordId,
+        createByRole: "system",
+        title: "Hệ thống đã tạo hóa đơn tiền cọc",
+        content:
+          `Đã tạo hóa đơn tiền cọc cho hợp đồng${
+            roomNumber ? ` phòng ${roomNumber}` : ""
+          }${buildingName ? ` – ${buildingName}` : ""}.\n` +
+          `Số tiền: ${depositAmount.toLocaleString("vi-VN")} ₫`,
+        type: "reminder",
+      });
+    } catch (notiErr) {
+      // Không fail hook nếu không tạo được notification
+      // eslint-disable-next-line no-console
+      console.error("[DEPOSIT] create notification failed:", notiErr);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[DEPOSIT] auto create deposit invoice failed:", err);
+  }
+});
+
 module.exports = mongoose.model("Contract", contractSchema);

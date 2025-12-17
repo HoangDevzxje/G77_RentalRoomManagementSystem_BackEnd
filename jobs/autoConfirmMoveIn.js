@@ -1,5 +1,6 @@
 const cron = require("node-cron");
 const Contract = require("../models/Contract");
+const Invoice = require("../models/Invoice");
 const {
   confirmMoveInCore,
 } = require("../controllers/Landlord/ContractController");
@@ -27,7 +28,7 @@ cron.schedule("10 2 * * *", async () => {
       moveInConfirmedAt: null,
       isDeleted: { $ne: true },
       "contract.startDate": { $gte: startOfDay, $lt: endOfDay },
-    }).select("_id");
+    }).select("_id contract.startDate contract.deposit");
 
     console.log(
       `[CRON] Found ${contracts.length} contract(s) to auto-confirm.`
@@ -35,7 +36,28 @@ cron.schedule("10 2 * * *", async () => {
 
     for (const c of contracts) {
       try {
-        await confirmMoveInCore(c._id, { mode: "auto" });
+        // Nếu có tiền cọc thì chỉ auto-confirm khi hóa đơn tiền cọc đã PAID
+        const depositAmount = Number(c?.contract?.deposit || 0);
+        if (depositAmount > 0) {
+          const paidDeposit = await Invoice.findOne({
+            contractId: c._id,
+            invoiceKind: "deposit",
+            status: "paid",
+            isDeleted: false,
+          })
+            .select("_id")
+            .lean();
+
+          if (!paidDeposit) {
+            console.log(
+              "[CRON] Skip auto-confirm (deposit unpaid) contract",
+              c._id && c._id.toString()
+            );
+            continue;
+          }
+        }
+
+        await confirmMoveInCore(c._id, { mode: "auto", reason: "start_date" });
         console.log(
           "[CRON] Auto-confirmed contract",
           c._id && c._id.toString()
