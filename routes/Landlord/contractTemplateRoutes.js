@@ -63,6 +63,7 @@ const { PERMISSIONS } = require("../../constants/permissions");
  */
 router.post("/",
   checkAuthorize(["landlord", "staff"]),
+  checkSubscription,
   checkStaffPermission(PERMISSIONS.CONTRACT_CREATE, { checkBuilding: true }),
   ctrl.create);
 
@@ -164,6 +165,7 @@ router.get(
  */
 router.put("/:id",
   checkAuthorize(["landlord", "staff"]),
+  checkSubscription,
   checkStaffPermission(PERMISSIONS.CONTRACT_EDIT,
     {
       checkBuilding: true,
@@ -196,6 +198,7 @@ router.put("/:id",
  */
 router.delete("/:id",
   checkAuthorize(["landlord", "staff"]),
+  checkSubscription,
   checkStaffPermission(PERMISSIONS.CONTRACT_DELETE,
     {
       checkBuilding: true,

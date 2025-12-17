@@ -5,6 +5,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
 const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
 const { uploadMultiple } = require("../../configs/cloudinary");
+const checkSubscription = require("../../middleware/checkSubscription");
 // === MIDDLEWARE: chỉ validate buildingId nếu có gửi ===
 const checkBuildingIfProvided = (req, res, next) => {
   const buildingId = req.query.buildingId;
@@ -173,6 +174,7 @@ router.patch(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_EDIT),
+  checkSubscription,
   uploadMultiple,
   ctrl.updateRequest
 );
@@ -226,6 +228,7 @@ router.post(
   "/:id/comment",
   checkAuthorize(["landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_CREATE),
+  checkSubscription,
   ctrl.comment
 );
 /**
@@ -282,6 +285,7 @@ router.put(
   "/:id/comment/:commentId",
   checkAuthorize(["landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_EDIT),
+  checkSubscription,
   ctrl.updateComment
 );
 
@@ -325,6 +329,7 @@ router.delete(
   "/:id/comment/:commentId",
   checkAuthorize(["landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.MAINTENANCE_DELETE),
+  checkSubscription,
   ctrl.deleteComment
 );
 module.exports = router;
