@@ -37,6 +37,30 @@ function monthDiff({ fromMonth, fromYear, toMonth, toYear }) {
   return (toYear - fromYear) * 12 + (toMonth - fromMonth);
 }
 
+function getCurrentMonthYearInTZ(timeZone = "Asia/Ho_Chi_Minh") {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = Number(parts.find((p) => p.type === "year")?.value);
+  const month = Number(parts.find((p) => p.type === "month")?.value);
+
+  return { month, year };
+}
+
+function assertCurrentBillingMonth({
+  month,
+  year,
+  timeZone = "Asia/Ho_Chi_Minh",
+}) {
+  const now = getCurrentMonthYearInTZ(timeZone);
+  return month === now.month && year === now.year
+    ? { ok: true, now }
+    : { ok: false, now };
+}
+
 /**
  * Build rent line item following contract payment cycle.
  * - price is per month.
@@ -357,6 +381,15 @@ exports.generateMonthlyInvoice = async (req, res) => {
         .json({ message: "periodMonth/periodYear không hợp lệ" });
     }
 
+    // RULE: chỉ cho tạo hóa đơn của tháng hiện tại (theo giờ VN)
+    const billingCheck = assertCurrentBillingMonth({ month, year });
+    if (!billingCheck.ok) {
+      return res.status(400).json({
+        message: `Chỉ được tạo hóa đơn của tháng hiện tại (${billingCheck.now.month}/${billingCheck.now.year}).`,
+        currentMonth: billingCheck.now.month,
+        currentYear: billingCheck.now.year,
+      });
+    }
     // 1. Kiểm tra phòng + quyền landlord
     const room = await Room.findById(roomId)
       .populate({
@@ -1986,6 +2019,15 @@ exports.generateInvoice = async (req, res) => {
         .json({ message: "periodMonth/periodYear không hợp lệ" });
     }
 
+    // RULE: chỉ cho tạo hóa đơn của tháng hiện tại (theo giờ VN)
+    const billingCheck = assertCurrentBillingMonth({ month, year });
+    if (!billingCheck.ok) {
+      return res.status(400).json({
+        message: `Chỉ được tạo hóa đơn của tháng hiện tại (${billingCheck.now.month}/${billingCheck.now.year}).`,
+        currentMonth: billingCheck.now.month,
+        currentYear: billingCheck.now.year,
+      });
+    }
     // 1. Kiểm tra room + building thuộc landlord
     const room = await Room.findById(roomId)
       .populate("buildingId", "landlordId status isDeleted")
