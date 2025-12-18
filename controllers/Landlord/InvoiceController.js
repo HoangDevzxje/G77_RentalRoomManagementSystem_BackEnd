@@ -339,6 +339,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
 
     const month = Number(periodMonth);
     const year = Number(periodYear);
+
+    // PERIODIC invoice logic:
+    // - utilities/services are billed for previous month
+    // - rent is billed for next month (following contract payment cycle)
+    const prevPeriod = addMonthsToYearMonth({ month, year }, -1);
+    const nextPeriod = addMonthsToYearMonth({ month, year }, 1);
     if (
       Number.isNaN(month) ||
       Number.isNaN(year) ||
@@ -408,7 +414,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       periodMonth: month,
       periodYear: year,
       // Chỉ check xung đột với hóa đơn tháng (để hóa đơn tiền cọc không chặn tạo hóa đơn tháng)
-      invoiceKind: { $in: [null, "monthly"] },
+      invoiceKind: { $in: [null, "monthly", "periodic"] },
       isDeleted: false,
     }).lean();
 
@@ -424,8 +430,8 @@ exports.generateMonthlyInvoice = async (req, res) => {
       landlordId,
       buildingId: room.buildingId,
       roomId,
-      periodMonth: month,
-      periodYear: year,
+      periodMonth: prevPeriod.month,
+      periodYear: prevPeriod.year,
       status: "confirmed",
       isDeleted: false,
       invoiceId: null,
@@ -444,8 +450,8 @@ exports.generateMonthlyInvoice = async (req, res) => {
     if (includeRent) {
       const rentItem = buildRentItemByPaymentCycle({
         contract,
-        periodMonth: month,
-        periodYear: year,
+        periodMonth: nextPeriod.month,
+        periodYear: nextPeriod.year,
       });
       if (rentItem) items.push(rentItem);
     }
@@ -465,7 +471,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         items.push({
           type: "electric",
           label: "Tiền điện",
-          description: `Tiền điện tháng ${month}/${year}`,
+          description: `Tiền điện tháng ${prevPeriod.month}/${prevPeriod.year}`,
           quantity,
           unitPrice,
           amount,
@@ -485,7 +491,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         items.push({
           type: "water",
           label: "Tiền nước",
-          description: `Tiền nước tháng ${month}/${year}`,
+          description: `Tiền nước tháng ${prevPeriod.month}/${prevPeriod.year}`,
           quantity,
           unitPrice,
           amount,
@@ -528,7 +534,9 @@ exports.generateMonthlyInvoice = async (req, res) => {
         label,
         description:
           sv.description ||
-          `Dịch vụ ${label.toLowerCase()} tháng ${month}/${year}`,
+          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${
+            prevPeriod.year
+          }`,
         quantity,
         unitPrice,
         amount,
@@ -610,6 +618,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       contractId: contract._id,
       periodMonth: month,
       periodYear: year,
+      invoiceKind: "periodic",
       invoiceNumber,
       issuedAt: new Date(),
       dueDate,
@@ -631,13 +640,13 @@ exports.generateMonthlyInvoice = async (req, res) => {
 
     return res.status(201).json({
       message:
-        "Đã tạo hoá đơn tháng (tiền phòng, điện/nước, dịch vụ toà + chi phí phát sinh)",
+        "Đã tạo hoá đơn định kỳ (dịch vụ/điện nước tháng trước + tiền phòng tháng sau theo chu kỳ + chi phí phát sinh)",
       data: invoice,
     });
   } catch (e) {
     console.error("generateMonthlyInvoice error:", e.message);
     return res.status(500).json({
-      message: "Lỗi tạo hoá đơn tháng",
+      message: "Lỗi tạo hoá đơn định kỳ",
       error: e.message,
     });
   }
@@ -1684,7 +1693,9 @@ exports.markInvoicePaid = async (req, res) => {
         confirmMoveInCore
       ) {
         const c = await Contract.findById(invoice.contractId)
-          .select("status moveInConfirmedAt contract.startDate contract.deposit")
+          .select(
+            "status moveInConfirmedAt contract.startDate contract.deposit"
+          )
           .lean();
 
         const startDate = c?.contract?.startDate
@@ -1957,6 +1968,12 @@ exports.generateInvoice = async (req, res) => {
 
     const month = Number(periodMonth);
     const year = Number(periodYear);
+
+    // PERIODIC invoice logic:
+    // - utilities/services are billed for previous month
+    // - rent is billed for next month (following contract payment cycle)
+    const prevPeriod = addMonthsToYearMonth({ month, year }, -1);
+    const nextPeriod = addMonthsToYearMonth({ month, year }, 1);
     if (
       Number.isNaN(month) ||
       Number.isNaN(year) ||
@@ -2031,10 +2048,10 @@ exports.generateInvoice = async (req, res) => {
       buildingId: room.buildingId,
       roomId,
       contractId: contract._id,
-      periodMonth: month,
-      periodYear: year,
+      periodMonth: prevPeriod.month,
+      periodYear: prevPeriod.year,
       // Chỉ check xung đột với hóa đơn tháng (để hóa đơn tiền cọc không chặn tạo hóa đơn tháng)
-      invoiceKind: { $in: [null, "monthly"] },
+      invoiceKind: { $in: [null, "monthly", "periodic"] },
       isDeleted: false,
     }).lean();
 
@@ -2050,8 +2067,8 @@ exports.generateInvoice = async (req, res) => {
       landlordId,
       buildingId: room.buildingId,
       roomId,
-      periodMonth: month,
-      periodYear: year,
+      periodMonth: prevPeriod.month,
+      periodYear: prevPeriod.year,
       status: "confirmed",
       isDeleted: false,
       invoiceId: null,
@@ -2070,8 +2087,8 @@ exports.generateInvoice = async (req, res) => {
     if (includeRent) {
       const rentItem = buildRentItemByPaymentCycle({
         contract,
-        periodMonth: month,
-        periodYear: year,
+        periodMonth: nextPeriod.month,
+        periodYear: nextPeriod.year,
       });
       if (rentItem) items.push(rentItem);
     }
@@ -2091,7 +2108,7 @@ exports.generateInvoice = async (req, res) => {
         items.push({
           type: "electric",
           label: "Tiền điện",
-          description: `Tiền điện tháng ${month}/${year}`,
+          description: `Tiền điện tháng ${prevPeriod.month}/${prevPeriod.year}`,
           quantity,
           unitPrice,
           amount,
@@ -2111,7 +2128,7 @@ exports.generateInvoice = async (req, res) => {
         items.push({
           type: "water",
           label: "Tiền nước",
-          description: `Tiền nước tháng ${month}/${year}`,
+          description: `Tiền nước tháng ${prevPeriod.month}/${prevPeriod.year}`,
           quantity,
           unitPrice,
           amount,
@@ -2152,7 +2169,9 @@ exports.generateInvoice = async (req, res) => {
         label,
         description:
           sv.description ||
-          `Dịch vụ ${label.toLowerCase()} tháng ${month}/${year}`,
+          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${
+            prevPeriod.year
+          }`,
         quantity,
         unitPrice,
         amount,
@@ -2239,6 +2258,7 @@ exports.generateInvoice = async (req, res) => {
       contractId: contract._id,
       periodMonth: month,
       periodYear: year,
+      invoiceKind: "periodic",
       invoiceNumber,
       issuedAt: new Date(),
       dueDate: finalDueDate,

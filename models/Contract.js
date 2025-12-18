@@ -225,6 +225,13 @@ const contractSchema = new mongoose.Schema(
         default: 1, // 1 tháng / lần
         min: 1,
       },
+
+      // Mặc định = paymentCycleMonths.
+      depositRentMonths: {
+        type: Number,
+        default: null,
+        min: 1,
+      },
     },
 
     // Term/Regulation snapshot
@@ -348,6 +355,91 @@ contractSchema.post("save", async function (doc) {
       periodYear,
     });
 
+    // Build items for DEPOSIT invoice:
+    // - deposit amount
+    // - rent for the first month OR for the first payment cycle (configurable)
+    const items = [
+      {
+        type: "other",
+        label: "Tiền cọc",
+        description: "Tiền cọc hợp đồng",
+        quantity: 1,
+        unitPrice: depositAmount,
+        amount: depositAmount,
+        meta: { kind: "deposit" },
+      },
+    ];
+
+    const monthlyPrice = Number(doc?.contract?.price || 0);
+    if (monthlyPrice > 0) {
+      const cycleMonths = Math.max(
+        1,
+        Number(
+          doc?.contract?.depositRentMonths ||
+            doc?.contract?.paymentCycleMonths ||
+            1
+        )
+      );
+
+      // Nếu hợp đồng có endDate thì chỉ thu tối đa tới tháng kết thúc
+      let billedMonths = cycleMonths;
+      const endDate = doc?.contract?.endDate
+        ? new Date(doc.contract.endDate)
+        : null;
+
+      const monthDiff = ({ fromMonth, fromYear, toMonth, toYear }) =>
+        (toYear - fromYear) * 12 + (toMonth - fromMonth);
+
+      const addMonthsToYearMonth = ({ month, year }, addMonths) => {
+        const idx = year * 12 + (month - 1) + addMonths;
+        const newYear = Math.floor(idx / 12);
+        const newMonth = (idx % 12) + 1;
+        return { month: newMonth, year: newYear };
+      };
+
+      if (endDate && !Number.isNaN(endDate.getTime())) {
+        const endMonth = endDate.getMonth() + 1;
+        const endYear = endDate.getFullYear();
+        const remainingInclusive =
+          monthDiff({
+            fromMonth: periodMonth,
+            fromYear: periodYear,
+            toMonth: endMonth,
+            toYear: endYear,
+          }) + 1;
+
+        billedMonths = Math.min(billedMonths, Math.max(0, remainingInclusive));
+      }
+
+      if (billedMonths > 0) {
+        const endPeriod = addMonthsToYearMonth(
+          { month: periodMonth, year: periodYear },
+          billedMonths - 1
+        );
+
+        const desc =
+          billedMonths === 1
+            ? `Tiền phòng tháng ${periodMonth}/${periodYear}`
+            : `Tiền phòng từ ${periodMonth}/${periodYear} đến ${endPeriod.month}/${endPeriod.year} (chu kỳ ${billedMonths} tháng)`;
+
+        items.push({
+          type: "rent",
+          label: "Tiền phòng",
+          description: desc,
+          quantity: billedMonths,
+          unitPrice: monthlyPrice,
+          amount: Math.max(0, billedMonths * monthlyPrice),
+          meta: {
+            paymentCycleMonths: cycleMonths,
+            billedMonths,
+            from: { month: periodMonth, year: periodYear },
+            to: { month: endPeriod.month, year: endPeriod.year },
+            source: "deposit_invoice",
+          },
+        });
+      }
+    }
+
     const invoice = new Invoice({
       landlordId: doc.landlordId,
       tenantId: doc.tenantId,
@@ -360,17 +452,7 @@ contractSchema.post("save", async function (doc) {
       invoiceNumber,
       issuedAt: new Date(),
       dueDate: startDate,
-      items: [
-        {
-          type: "other",
-          label: "Tiền cọc",
-          description: "Tiền cọc hợp đồng",
-          quantity: 1,
-          unitPrice: depositAmount,
-          amount: depositAmount,
-          meta: { kind: "deposit" },
-        },
-      ],
+      items,
       // Tạo xong là "sent" để người thuê thấy và có thể thanh toán.
       status: "sent",
       createdBy: doc.createBy || doc.landlordId,
