@@ -336,7 +336,7 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
 }
 
 // POST /landlords/invoices/generate-monthly
-// body: { roomId, periodMonth, periodYear, includeRent?, extraItems? }
+// body: { roomId, periodMonth, periodYear, includeRent?, extraItems?, dueDate? }
 exports.generateMonthlyInvoice = async (req, res) => {
   try {
     const isStaff = req.user.role === "staff";
@@ -348,7 +348,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       includeRent = true,
       extraItems = [],
     } = req.body || {};
-    // console.log(req.body);
+
     if (!roomId) {
       return res.status(400).json({ message: "Thiếu roomId" });
     }
@@ -356,19 +356,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
       return res.status(400).json({ message: "roomId không hợp lệ" });
     }
     if (!periodMonth || !periodYear) {
-      return res.status(400).json({
-        message: "Thiếu periodMonth/periodYear",
-      });
+      return res.status(400).json({ message: "Thiếu periodMonth/periodYear" });
     }
 
     const month = Number(periodMonth);
     const year = Number(periodYear);
 
-    // PERIODIC invoice logic:
-    // - utilities/services are billed for previous month
-    // - rent is billed for next month (following contract payment cycle)
-    const prevPeriod = addMonthsToYearMonth({ month, year }, -1);
-    const nextPeriod = addMonthsToYearMonth({ month, year }, 1);
     if (
       Number.isNaN(month) ||
       Number.isNaN(year) ||
@@ -381,6 +374,11 @@ exports.generateMonthlyInvoice = async (req, res) => {
         .json({ message: "periodMonth/periodYear không hợp lệ" });
     }
 
+    // PERIODIC invoice logic (UPDATED):
+    // - utilities/services are billed for CURRENT month (periodMonth/periodYear)
+    // - rent is billed for NEXT month (following contract payment cycle)
+    const nextPeriod = addMonthsToYearMonth({ month, year }, 1);
+
     // RULE: chỉ cho tạo hóa đơn của tháng hiện tại (theo giờ VN)
     const billingCheck = assertCurrentBillingMonth({ month, year });
     if (!billingCheck.ok) {
@@ -390,6 +388,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         currentYear: billingCheck.now.year,
       });
     }
+
     // 1. Kiểm tra phòng + quyền landlord
     const room = await Room.findById(roomId)
       .populate({
@@ -397,6 +396,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         select: "landlordId status isDeleted",
       })
       .lean();
+
     if (!room) {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
@@ -404,6 +404,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
     const building = await Building.findById(room.buildingId)
       .select("landlordId ePrice wPrice status isDeleted")
       .lean();
+
     if (!building || String(building.landlordId) !== String(landlordId)) {
       return res.status(403).json({ message: "Bạn không quản lý phòng này" });
     }
@@ -458,13 +459,13 @@ exports.generateMonthlyInvoice = async (req, res) => {
       });
     }
 
-    // 4. Lấy bản ghi điện nước đã xác nhận (một bản cho cả điện + nước)
+    // 4. Lấy bản ghi điện nước đã xác nhận (UPDATED: lấy THEO THÁNG HIỆN TẠI)
     const utilityReading = await UtilityReading.findOne({
       landlordId,
       buildingId: room.buildingId,
       roomId,
-      periodMonth: prevPeriod.month,
-      periodYear: prevPeriod.year,
+      periodMonth: month,
+      periodYear: year,
       status: "confirmed",
       isDeleted: false,
       invoiceId: null,
@@ -480,6 +481,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
     const items = [];
 
     // 5.1. Tiền phòng (tuỳ chọn) - tính theo chu kỳ thanh toán trong hợp đồng
+    // (vẫn bill cho NEXT month theo chu kỳ)
     if (includeRent) {
       const rentItem = buildRentItemByPaymentCycle({
         contract,
@@ -489,7 +491,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       if (rentItem) items.push(rentItem);
     }
 
-    // 5.2. Tiền điện / nước từ UtilityReading + giá ở tòa
+    // 5.2. Tiền điện / nước từ UtilityReading + giá ở tòa (UPDATED: description = tháng hiện tại)
     if (utilityReading) {
       const eConsumption = utilityReading.eConsumption || 0;
       const wConsumption = utilityReading.wConsumption || 0;
@@ -504,7 +506,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         items.push({
           type: "electric",
           label: "Tiền điện",
-          description: `Tiền điện tháng ${prevPeriod.month}/${prevPeriod.year}`,
+          description: `Tiền điện tháng ${month}/${year}`,
           quantity,
           unitPrice,
           amount,
@@ -524,7 +526,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         items.push({
           type: "water",
           label: "Tiền nước",
-          description: `Tiền nước tháng ${prevPeriod.month}/${prevPeriod.year}`,
+          description: `Tiền nước tháng ${month}/${year}`,
           quantity,
           unitPrice,
           amount,
@@ -537,15 +539,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
       }
     }
 
-    // 5.3. Dịch vụ tòa nhà (internet, gửi xe, vệ sinh...)
+    // 5.3. Dịch vụ tòa nhà (UPDATED: cũng là tháng hiện tại cho đồng bộ)
     const occupantCount = 1 + (contract.roommates?.length || 0);
 
     for (const sv of buildingServices) {
-      // included: vẫn cho hiện 1 line với amount = 0 để minh bạch
       let quantity = 1;
-      if (sv.chargeType === "perPerson") {
-        quantity = occupantCount;
-      }
+      if (sv.chargeType === "perPerson") quantity = occupantCount;
 
       const unitPrice = sv.fee || 0;
       const amount = Math.max(0, quantity * unitPrice);
@@ -567,9 +566,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         label,
         description:
           sv.description ||
-          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${
-            prevPeriod.year
-          }`,
+          `Dịch vụ ${label.toLowerCase()} tháng ${month}/${year}`,
         quantity,
         unitPrice,
         amount,
@@ -580,7 +577,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       });
     }
 
-    // 5.4. Chi phí phát sinh (extraItems) – cho chủ trọ nhập tay
+    // 5.4. Chi phí phát sinh (extraItems)
     if (Array.isArray(extraItems)) {
       for (const raw of extraItems) {
         if (!raw) continue;
@@ -597,6 +594,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
         const unitPrice = Number.isFinite(Number(raw.unitPrice))
           ? Number(raw.unitPrice)
           : 0;
+
         const amountRaw = Number(raw.amount);
         const amount =
           Number.isFinite(amountRaw) && amountRaw >= 0
@@ -623,7 +621,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       });
     }
 
-    // 6. Tính dueDate mặc định nếu chưa truyền
+    // 6. dueDate
     let dueDate = null;
     if (req.body.dueDate) {
       dueDate = new Date(req.body.dueDate);
@@ -673,7 +671,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
 
     return res.status(201).json({
       message:
-        "Đã tạo hoá đơn định kỳ (dịch vụ/điện nước tháng trước + tiền phòng tháng sau theo chu kỳ + chi phí phát sinh)",
+        "Đã tạo hoá đơn định kỳ (dịch vụ/điện nước tháng này + tiền phòng tháng sau theo chu kỳ + chi phí phát sinh)",
       data: invoice,
     });
   } catch (e) {
