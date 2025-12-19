@@ -7,6 +7,7 @@ const Regulation = require("../../models/Regulation");
 const Account = require("../../models/Account");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Notification = require("../../models/Notification");
+const Invoice = require("../../models/Invoice");
 const Furniture = require("../../models/Furniture");
 const he = require("he");
 const PDFDocument = require("pdfkit");
@@ -1258,13 +1259,48 @@ exports.listMine = async (req, res) => {
 
     const userId = req.user._id;
 
-    const itemsWithFlags = items.map((c) => ({
-      ...c,
-      shouldShowMoveInActions: computeShouldShowMoveInActions(c, {
-        isStaff,
-        userId,
-      }),
-    }));
+    const contractIds = (items || []).map((c) => c._id).filter(Boolean);
+
+    let depositInvoices = [];
+    if (contractIds.length > 0) {
+      depositInvoices = await Invoice.find({
+        landlordId,
+        contractId: { $in: contractIds },
+        invoiceKind: "deposit",
+        isDeleted: false,
+      })
+        .select("_id contractId invoiceKind status totalAmount paidAt")
+        .lean();
+    }
+
+    const depositByContractId = new Map(
+      (depositInvoices || []).map((inv) => [
+        String(inv.contractId),
+        {
+          _id: inv._id,
+          invoiceKind: inv.invoiceKind,
+          status: inv.status,
+          totalAmount: inv.totalAmount,
+          paidAt: inv.paidAt,
+        },
+      ])
+    );
+
+    // 2) Trả về đúng format bạn muốn
+    const itemsWithFlags = (items || []).map((c) => {
+      const contract = {
+        ...c, // <-- sửa ".c" thành spread đúng
+        shouldShowMoveInActions: computeShouldShowMoveInActions(c, {
+          isStaff,
+          userId,
+        }),
+      };
+
+      return {
+        contract,
+        depositInvoice: depositByContractId.get(String(c._id)) || null,
+      };
+    });
 
     return res.json({
       items: itemsWithFlags,
