@@ -165,7 +165,7 @@ const buyPackage = async (req, res) => {
                 return sendError(
                     res,
                     400,
-                    `Không thể mua gói ${pkg.roomLimit} phòng vì bạn đang có ${currentRoomCount} phòng đang hoạt động.`
+                    `Không thể mua gói ${pkg.roomLimit} phòng vì bạn đang có ${currentRoomCount} phòng đang hoạt động. Vui lòng mua gói khác hoặc ngừng hoạt động bớt phòng`
                 );
             }
         }
