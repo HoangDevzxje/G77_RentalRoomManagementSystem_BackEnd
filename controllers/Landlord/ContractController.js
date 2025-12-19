@@ -1261,46 +1261,40 @@ exports.listMine = async (req, res) => {
 
     const contractIds = (items || []).map((c) => c._id).filter(Boolean);
 
-    let depositInvoices = [];
-    if (contractIds.length > 0) {
-      depositInvoices = await Invoice.find({
-        landlordId,
-        contractId: { $in: contractIds },
-        invoiceKind: "deposit",
-        isDeleted: false,
-      })
-        .select("_id contractId invoiceKind status totalAmount paidAt")
-        .lean();
-    }
+    const depositInvoices = contractIds.length
+      ? await Invoice.find({
+          landlordId,
+          contractId: { $in: contractIds },
+          invoiceKind: "deposit",
+          isDeleted: false,
+        })
+          .select("_id contractId invoiceKind status totalAmount paidAt")
+          .sort({ issuedAt: -1 }) // nếu lỡ có nhiều cái, ưu tiên cái mới hơn
+          .lean()
+      : [];
 
-    const depositByContractId = new Map(
-      (depositInvoices || []).map((inv) => [
-        String(inv.contractId),
-        {
+    const depositByContractId = new Map();
+    for (const inv of depositInvoices) {
+      const key = String(inv.contractId);
+      if (!depositByContractId.has(key)) {
+        depositByContractId.set(key, {
           _id: inv._id,
           invoiceKind: inv.invoiceKind,
           status: inv.status,
           totalAmount: inv.totalAmount,
           paidAt: inv.paidAt,
-        },
-      ])
-    );
+        });
+      }
+    }
 
-    // 2) Trả về đúng format bạn muốn
-    const itemsWithFlags = (items || []).map((c) => {
-      const contract = {
-        ...c, // <-- sửa ".c" thành spread đúng
-        shouldShowMoveInActions: computeShouldShowMoveInActions(c, {
-          isStaff,
-          userId,
-        }),
-      };
-
-      return {
-        contract,
-        depositInvoice: depositByContractId.get(String(c._id)) || null,
-      };
-    });
+    const itemsWithFlags = (items || []).map((c) => ({
+      ...c,
+      shouldShowMoveInActions: computeShouldShowMoveInActions(c, {
+        isStaff,
+        userId,
+      }),
+      depositInvoice: depositByContractId.get(String(c._id)) || null,
+    }));
 
     return res.json({
       items: itemsWithFlags,
