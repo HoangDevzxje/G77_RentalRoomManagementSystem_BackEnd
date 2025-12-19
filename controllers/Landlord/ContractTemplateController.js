@@ -35,7 +35,6 @@ exports.create = async (req, res) => {
         .json({ message: "Template already exists for this building" });
     }
 
-    // Validate Term/Reg (tuỳ chọn: chỉ check isActive; chi tiết building check có thể dời sang Contracts lúc tạo HĐ)
     await validateTermsRegsBasic(defaultTermIds, defaultRegulationIds);
 
     const doc = await ContractTemplate.create({
@@ -97,7 +96,7 @@ exports.update = async (req, res) => {
     }
 
     const doc = await ContractTemplate.findOneAndUpdate(
-      { _id: id }, // đảm bảo chỉ chủ sở hữu tòa được sửa
+      { _id: id },
       { $set: updatable },
       { new: true }
     );
@@ -134,8 +133,6 @@ exports.remove = async (req, res) => {
  */
 exports.listMine = async (req, res) => {
   try {
-    // Staff không dùng listMine → nhưng nếu gọi thì vẫn check qua building
-    // Để an toàn: lấy tất cả building được giao → chỉ trả template của chúng
     let filter = {};
     if (req.user.role === "staff") {
       const buildings = await Building.find({
@@ -178,7 +175,6 @@ async function validateTermsRegsBasic(termIds = [], regulationIds = []) {
       throw new Error("Some regulations are invalid or inactive");
   }
 }
-// Ép kiểu query mảng: nhận termIds, termIds[], hoặc CSV "a,b,c"
 function pickArr(q, baseKey) {
   const direct = q[baseKey];
   const bracket = q[`${baseKey}[]`];

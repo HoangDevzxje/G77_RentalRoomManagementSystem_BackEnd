@@ -147,7 +147,6 @@ exports.payMyInvoice = async (req, res) => {
         .json({ message: "Hóa đơn này đã được thanh toán trước đó" });
     }
 
-    // Chỉ cho phép thanh toán khi hóa đơn đã gửi cho khách
     if (!["sent", "overdue"].includes(invoice.status)) {
       return res.status(400).json({
         message:
@@ -162,7 +161,6 @@ exports.payMyInvoice = async (req, res) => {
       });
     }
 
-    // Lấy tài khoản chủ trọ để map sang UserInformation
     const landlordAccount = await Account.findById(invoice.landlordId)
       .select("role userInfo")
       .lean();
@@ -203,7 +201,6 @@ exports.payMyInvoice = async (req, res) => {
       });
     }
 
-    // Gợi ý nội dung chuyển khoản
     const transferNote = invoice.invoiceNumber
       ? invoice.invoiceNumber
       : `INVOICE-${invoice._id.toString().slice(-6)}`;
@@ -249,15 +246,14 @@ exports.requestBankTransferConfirmation = async (req, res) => {
     }
     const file = req.file;
 
-    // Ưu tiên file upload, nếu không có thì dùng URL
     let imageUrl = null;
 
     if (file && file.path) {
-      imageUrl = file.path; // đường dẫn Cloudinary do multer-storage-cloudinary trả về
+      imageUrl = file.path;
     } else if (proofImageUrl && typeof proofImageUrl === "string") {
       const trimmed = proofImageUrl.trim();
       if (trimmed) {
-        imageUrl = trimmed; // dùng URL do frontend gửi lên
+        imageUrl = trimmed;
       }
     }
 
@@ -292,7 +288,6 @@ exports.requestBankTransferConfirmation = async (req, res) => {
         .json({ message: "Trạng thái hóa đơn không hợp lệ" });
     }
 
-    // Lưu lại ảnh chứng từ (file Cloudinary hoặc URL ngoài)
     invoice.transferProofImageUrl = imageUrl;
     invoice.transferRequestedAt = new Date();
     invoice.status = "transfer_pending";

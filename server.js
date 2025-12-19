@@ -96,7 +96,7 @@ io.on("connection", (socket) => {
   setupLaundrySocket(io, socket);
 
   socket.on("disconnect", () => {
-    console.log(`❌ Socket disconnected: ${socket.user.id}`);
+    console.log(`Socket disconnected: ${socket.user.id}`);
   });
 });
 
@@ -172,8 +172,8 @@ routes(app);
 DB.connectDB()
   .then(() => {
     server.listen(port, () => {
-      console.log(`🚀 Server + Socket.IO chạy tại http://localhost:${port}`);
-      console.log(`📘 Swagger: http://localhost:${port}/api-docs`);
+      console.log(`Server + Socket.IO chạy tại http://localhost:${port}`);
+      console.log(`Swagger: http://localhost:${port}/api-docs`);
     });
 
     // Cron jobs
@@ -185,7 +185,7 @@ DB.connectDB()
     process.on("SIGINT", shutDown);
 
     function shutDown() {
-      console.log("⛔ Đang tắt server & Socket...");
+      console.log("Đang tắt server & Socket...");
       server.close(() => {
         console.log("Đã tắt.");
         process.exit(0);
@@ -193,5 +193,5 @@ DB.connectDB()
     }
   })
   .catch((err) => {
-    console.error("❌ Failed to connect DB:", err);
+    console.error("Failed to connect DB:", err);
   });

@@ -325,10 +325,10 @@ const getMyRoommates = async (req, res) => {
         const room = await Room.findById(roomId)
             .populate({
                 path: 'currentTenantIds',
-                select: '-password -passwordResetToken -passwordResetExpires -accessToken -refreshToken', // bảo mật
+                select: '-password -passwordResetToken -passwordResetExpires -accessToken -refreshToken',
                 populate: {
                     path: 'userInfo',
-                    select: 'fullName phoneNumber dob gender address avatar', // lấy từ UserInformation
+                    select: 'fullName phoneNumber dob gender address avatar',
                     model: 'UserInformation'
                 }
             });

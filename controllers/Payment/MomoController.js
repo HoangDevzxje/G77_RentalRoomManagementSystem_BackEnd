@@ -113,7 +113,6 @@ exports.momoIpn = async (req, res) => {
       raw: req.body,
     };
 
-    // Nếu chưa có mảng paymentLogs thì khởi tạo
     if (!Array.isArray(invoice.paymentLogs)) {
       invoice.paymentLogs = [];
     }
@@ -130,7 +129,7 @@ exports.momoIpn = async (req, res) => {
       });
 
       return res.json({
-        resultCode: 0, // vẫn trả 0 để MoMo không retry IPN nữa
+        resultCode: 0,
         message: "Received IPN - payment failed, logged only",
       });
     }
@@ -156,7 +155,6 @@ exports.momoIpn = async (req, res) => {
         invoiceTotal,
       });
 
-      // vẫn save log nhưng không set paid
       await invoice.save();
 
       return res.status(400).json({
@@ -172,7 +170,6 @@ exports.momoIpn = async (req, res) => {
         paidAmountFromMomo,
       });
 
-      // vẫn lưu log, nhưng không set paid
       await invoice.save();
 
       return res.status(400).json({
@@ -185,7 +182,7 @@ exports.momoIpn = async (req, res) => {
     invoice.status = "paid";
     invoice.paidAt = new Date();
     invoice.paidAmount = paidAmountFromMomo;
-    invoice.paymentMethod = "online_gateway"; // map với enum trong Invoice
+    invoice.paymentMethod = "online_gateway";
     invoice.paymentRef = String(transId || orderId || "");
     invoice.paymentNote = `Paid via MoMo (${payType || requestType || ""})`;
 

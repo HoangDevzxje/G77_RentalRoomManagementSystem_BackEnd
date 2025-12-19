@@ -1,12 +1,12 @@
 const cron = require("node-cron");
 const Room = require("../models/Room");
 const Invoice = require("../models/Invoice");
-const Contract = require("../models/Contract"); // Nhớ import Contract
+const Contract = require("../models/Contract");
 const InvoiceController = require("../controllers/Landlord/InvoiceController");
 
 module.exports = () => {
   cron.schedule("5 0 1 * *", async () => {
-    console.log("🔄 [MONTHLY CRON] Running monthly invoice generator...");
+    console.log("[MONTHLY CRON] Running monthly invoice generator...");
 
     try {
       // Xác định tháng cần tạo hóa đơn (là tháng trước)
@@ -25,14 +25,12 @@ module.exports = () => {
         .lean();
 
       let successCount = 0;
-      let skippedCount = 0; // Đếm số lượng bỏ qua do đã có hóa đơn
+      let skippedCount = 0;
 
       for (const room of rooms) {
         const landlordId = room.buildingId?.landlordId;
         if (!landlordId) continue;
 
-        // --- ĐOẠN MỚI THÊM: KIỂM TRA TRÙNG LẶP ---
-        // Kiểm tra xem phòng này đã được Job hàng ngày tạo hóa đơn trước đó chưa
         const existingInvoice = await Invoice.exists({
           roomId: room._id,
           periodMonth,
@@ -41,11 +39,9 @@ module.exports = () => {
         });
 
         if (existingInvoice) {
-          // Nếu đã có hóa đơn (do Job hàng ngày tạo khi sắp hết hạn), thì bỏ qua
           skippedCount++;
           continue;
         }
-        // ------------------------------------------
 
         const fakeReq = {
           user: { _id: landlordId },
@@ -92,11 +88,11 @@ module.exports = () => {
 
       // Tìm trong khoảng 1-2 ngày tới
       const startRange = new Date(today);
-      startRange.setDate(today.getDate() + 1); 
+      startRange.setDate(today.getDate() + 1);
       startRange.setHours(0, 0, 0, 0);
 
       const endRange = new Date(today);
-      endRange.setDate(today.getDate() + 2); 
+      endRange.setDate(today.getDate() + 2);
       endRange.setHours(23, 59, 59, 999);
 
       // Tìm các hợp đồng active/completed sắp hết hạn trong khoảng trên
@@ -150,7 +146,7 @@ module.exports = () => {
 
         const fakeRes = {
           status: () => fakeRes,
-          json: () => {}, // Silent success
+          json: () => { },
         };
 
         await InvoiceController.generateMonthlyInvoice(fakeReq, fakeRes);

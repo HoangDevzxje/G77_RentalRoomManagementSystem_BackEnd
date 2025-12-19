@@ -220,13 +220,11 @@ const update = async (req, res) => {
 
     const currentImages = record.images || [];
 
-    // Nếu có gửi danh sách ảnh muốn xóa (ví dụ: deleteImages=["url1","url2"])
     if (req.body.deleteImages && Array.isArray(req.body.deleteImages)) {
       const deleteSet = new Set(req.body.deleteImages);
       record.images = currentImages.filter((img) => !deleteSet.has(img));
     }
 
-    // Nếu có file mới được upload
     const newImageUrls = Array.isArray(req.files)
       ? req.files.map((f) => f.path)
       : [];
@@ -235,7 +233,6 @@ const update = async (req, res) => {
       record.images = [...record.images, ...newImageUrls];
     }
 
-    // Bắt buộc luôn có ít nhất 1 ảnh
     if (record.images.length === 0) {
       return res.status(400).json({
         message: "Phải có ít nhất một ảnh làm bằng chứng cho giao dịch thu chi",
@@ -442,7 +439,6 @@ const monthlyComparison = async (req, res) => {
       };
     });
 
-    // Thêm so sánh với tháng trước (lên/xuống)
     const comparedData = monthlyData.map((current, index) => {
       if (index === 0) {
         return { ...current, profitChange: 0, profitChangePercent: 0 };

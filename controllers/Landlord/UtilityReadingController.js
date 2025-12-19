@@ -6,7 +6,6 @@ const Invoice = require("../../models/Invoice");
 const mongoose = require("mongoose");
 const toInt = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
-// Nếu chưa có, bạn có thể dùng lại từ InvoiceController hoặc define riêng:
 function getPeriodRange(periodMonth, periodYear) {
   const start = new Date(periodYear, periodMonth - 1, 1, 0, 0, 0, 0);
   const end = new Date(periodYear, periodMonth, 0, 23, 59, 59, 999);
@@ -105,11 +104,7 @@ exports.listReadings = async (req, res) => {
   }
 };
 
-/**
- * Helper: lấy previous index điện + nước cho 1 phòng.
- * - Ưu tiên lấy từ UtilityReading gần nhất.
- * - Nếu chưa có -> lấy từ Room.eStart / Room.wStart.
- */
+
 async function getPreviousIndexes(roomId, landlordId) {
   const last = await UtilityReading.findOne({
     roomId,
@@ -123,12 +118,12 @@ async function getPreviousIndexes(roomId, landlordId) {
     return {
       ePreviousIndex:
         typeof last.eCurrentIndex === "number" &&
-        Number.isFinite(last.eCurrentIndex)
+          Number.isFinite(last.eCurrentIndex)
           ? last.eCurrentIndex
           : 0,
       wPreviousIndex:
         typeof last.wCurrentIndex === "number" &&
-        Number.isFinite(last.wCurrentIndex)
+          Number.isFinite(last.wCurrentIndex)
           ? last.wCurrentIndex
           : 0,
     };
@@ -182,7 +177,6 @@ exports.createReading = async (req, res) => {
       return res.status(400).json({ message: "Năm không hợp lệ" });
     }
 
-    // Phòng + tòa nhà
     const room = await Room.findById(roomId)
       .select("buildingId isDeleted eStart wStart")
       .lean();
@@ -222,7 +216,6 @@ exports.createReading = async (req, res) => {
         });
       }
     }
-    // Check trùng kỳ
     const existed = await UtilityReading.findOne({
       landlordId,
       roomId,
@@ -237,13 +230,11 @@ exports.createReading = async (req, res) => {
       });
     }
 
-    // previous indexes
     const { ePreviousIndex, wPreviousIndex } = await getPreviousIndexes(
       roomId,
       landlordId
     );
 
-    // Validate current indexes
     let eCurr = null;
     if (eCurrentIndex != null) {
       eCurr = Number(eCurrentIndex);
@@ -303,7 +294,7 @@ exports.createReading = async (req, res) => {
       roomId,
       periodMonth: month,
       periodYear: year,
-      readingDate: new Date(), // auto = thời điểm nhập, không cho chọn tay
+      readingDate: new Date(),
       ePreviousIndex,
       eCurrentIndex: eCurr,
       eConsumption,
@@ -356,7 +347,6 @@ exports.getReading = async (req, res) => {
     if (isStaff) {
       const buildingIdFromRoom = doc.roomId?.buildingId?.toString();
       if (!buildingIdFromRoom) {
-        // Trường hợp cực hiếm: roomId bị null hoặc populate lỗi
         return res
           .status(403)
           .json({ message: "Không xác định được tòa nhà của chỉ số này" });
@@ -425,7 +415,6 @@ exports.updateReading = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
     }
 
-    // Kiểm tra quyền staff
     if (isStaff) {
       const buildingIdFromRoom = reading.roomId?.buildingId?._id?.toString();
       if (!buildingIdFromRoom) {
@@ -444,7 +433,6 @@ exports.updateReading = async (req, res) => {
     const locked =
       lockedStatuses.includes(reading.status) || !!reading.invoiceId;
 
-    // Nếu đã lập hóa đơn → chỉ được sửa note hoặc status
     if (locked) {
       if (
         ePreviousIndex != null ||
@@ -469,7 +457,6 @@ exports.updateReading = async (req, res) => {
     let isFirstReadingOfRoom = false;
 
     if (!locked && (ePreviousIndex != null || wPreviousIndex != null)) {
-      // Kiểm tra đây có phải bản ghi đầu tiên của phòng không
       const firstReading = await UtilityReading.findOne({
         landlordId,
         roomId: reading.roomId,
@@ -483,10 +470,8 @@ exports.updateReading = async (req, res) => {
         firstReading && String(firstReading._id) === String(reading._id);
 
       if (isFirstReadingOfRoom) {
-        // Kỳ đầu tiên → cho phép sửa thoải mái (bao gồm cả giảm về 0)
         canEditPrevIndex = true;
       } else {
-        // Các kỳ sau → chỉ được TĂNG hoặc giữ nguyên PreviousIndex, KHÔNG ĐƯỢC GIẢM
         const newEPrev =
           ePreviousIndex !== undefined
             ? Number(ePreviousIndex)
@@ -505,12 +490,11 @@ exports.updateReading = async (req, res) => {
               "Không được giảm chỉ số đầu kỳ. Chỉ được phép tăng hoặc giữ nguyên.",
           });
         }
-        canEditPrevIndex = true; // được tăng → cho phép sửa
+        canEditPrevIndex = true;
       }
     }
 
     if (!locked) {
-      // Không cho đổi room/building/kỳ
       if (
         roomId != null ||
         buildingId != null ||
@@ -599,7 +583,6 @@ exports.updateReading = async (req, res) => {
         reading.wUnitPrice = val;
       }
 
-      // Tính lại tiêu thụ & thành tiền
       if (
         reading.eCurrentIndex != null &&
         Number.isFinite(reading.eCurrentIndex) &&
@@ -633,7 +616,6 @@ exports.updateReading = async (req, res) => {
       }
     }
 
-    // Luôn cho phép cập nhật note và status
     if (typeof note === "string") reading.note = note.trim();
     if (status && ["draft", "confirmed", "billed"].includes(status)) {
       reading.status = status;
@@ -703,7 +685,7 @@ exports.confirmReading = async (req, res) => {
       });
     }
 
-    // Validate điện (nếu có)
+    // Validate điện 
     if (doc.eCurrentIndex != null) {
       if (
         !Number.isFinite(doc.eCurrentIndex) ||
@@ -727,7 +709,7 @@ exports.confirmReading = async (req, res) => {
       }
     }
 
-    // Validate nước (nếu có)
+    // Validate nước 
     if (doc.wCurrentIndex != null) {
       if (
         !Number.isFinite(doc.wCurrentIndex) ||
@@ -757,8 +739,6 @@ exports.confirmReading = async (req, res) => {
 
     await doc.save();
 
-    // Khi xác nhận chỉ số thành công, cập nhật chỉ số bắt đầu của phòng (eStart/wStart)
-    // nếu có giá trị eCurrentIndex/wCurrentIndex. Không block nếu update fail.
     try {
       if (doc.roomId) {
         const room = await Room.findById(doc.roomId)
@@ -770,7 +750,6 @@ exports.confirmReading = async (req, res) => {
             typeof doc.eCurrentIndex === "number" &&
             Number.isFinite(doc.eCurrentIndex)
           ) {
-            // only update if it's greater or equal to the existing eStart to avoid regressions
             if (room.eStart == null || doc.eCurrentIndex >= room.eStart) {
               roomUpdate.eStart = doc.eCurrentIndex;
             }
@@ -779,7 +758,6 @@ exports.confirmReading = async (req, res) => {
             typeof doc.wCurrentIndex === "number" &&
             Number.isFinite(doc.wCurrentIndex)
           ) {
-            // only update if it's greater or equal to the existing wStart to avoid regressions
             if (room.wStart == null || doc.wCurrentIndex >= room.wStart) {
               roomUpdate.wStart = doc.wCurrentIndex;
             }
@@ -796,11 +774,8 @@ exports.confirmReading = async (req, res) => {
         doc.roomId,
         err
       );
-      // intentionally not throwing so we don't fail the confirm endpoint
     }
-    //Tự động ghi chỉ số vào hóa đơn kỳ tương ứng (nếu đã có hóa đơn draft/sent)
     try {
-      // Chỉ xử lý nếu reading chưa gắn hóa đơn nào
       if (!doc.invoiceId && doc.roomId && doc.periodMonth && doc.periodYear) {
         const invoice = await Invoice.findOne({
           landlordId,
@@ -809,13 +784,12 @@ exports.confirmReading = async (req, res) => {
           periodMonth: doc.periodMonth,
           periodYear: doc.periodYear,
           isDeleted: false,
-          status: { $in: ["draft", "sent"] }, // chỉ ăn vào draft hoặc sent
+          status: { $in: ["draft", "sent"] },
         });
 
         if (invoice) {
           const oldItems = Array.isArray(invoice.items) ? invoice.items : [];
 
-          // (Phòng tương lai) Xóa các dòng điện/nước đã trỏ vào reading này (nếu có)
           const filteredItems = oldItems.filter((it) => {
             if (!it) return false;
             if (
@@ -873,11 +847,9 @@ exports.confirmReading = async (req, res) => {
           }
 
           if (itemsToAdd.length > 0) {
-            // Gộp lại items (giữ rent + service + other, thêm electric/water mới)
             invoice.items = [...filteredItems, ...itemsToAdd];
             invoice.recalculateTotals();
 
-            // Link 2 chiều + đổi trạng thái reading thành billed (giống logic generateMonthlyInvoice)
             doc.invoiceId = invoice._id;
             doc.status = "billed";
 
@@ -1057,7 +1029,6 @@ exports.bulkCreateReadings = async (req, res) => {
           continue;
         }
 
-        // === QUAN TRỌNG: KIỂM TRA QUYỀN STAFF ===
         if (isStaff) {
           const buildingIdStr = building._id.toString();
           if (!allowedBuildingIds.includes(buildingIdStr)) {
@@ -1128,12 +1099,12 @@ exports.bulkCreateReadings = async (req, res) => {
 
         const eUnitPrice =
           typeof building.ePrice === "number" &&
-          Number.isFinite(building.ePrice)
+            Number.isFinite(building.ePrice)
             ? building.ePrice
             : 0;
         const wUnitPrice =
           typeof building.wPrice === "number" &&
-          Number.isFinite(building.wPrice)
+            Number.isFinite(building.wPrice)
             ? building.wPrice
             : 0;
 
@@ -1155,7 +1126,7 @@ exports.bulkCreateReadings = async (req, res) => {
           roomId,
           periodMonth: month,
           periodYear: year,
-          readingDate: new Date(), // auto = thời điểm nhập
+          readingDate: new Date(),
           ePreviousIndex,
           eCurrentIndex: eCurr,
           eConsumption,
@@ -1267,7 +1238,6 @@ exports.listRoomsForUtility = async (req, res) => {
     };
     if (isStaff) {
       if (buildingId) {
-        // Nếu có truyền buildingId → kiểm tra quyền trước
         if (!req.staff.assignedBuildingIds.includes(buildingId.toString())) {
           return res.status(403).json({
             message: "Bạn không được quản lý tòa nhà này",
@@ -1275,11 +1245,9 @@ exports.listRoomsForUtility = async (req, res) => {
         }
         roomFilter.buildingId = buildingId;
       } else {
-        // Không truyền buildingId → chỉ lấy các tòa nhà được assign
         roomFilter.buildingId = { $in: req.staff.assignedBuildingIds };
       }
     } else {
-      // Landlord: có thể filter buildingId hoặc không
       if (buildingId) {
         roomFilter.buildingId = buildingId;
       }
@@ -1324,7 +1292,6 @@ exports.listRoomsForUtility = async (req, res) => {
       .select("roomId status")
       .lean();
 
-    // Xây map: roomId -> { hasReading, status }
     const readingMap = {};
     const rank = { billed: 3, confirmed: 2, draft: 1 };
 
@@ -1355,7 +1322,6 @@ exports.listRoomsForUtility = async (req, res) => {
         status: null,
       };
 
-      // Template cho FE nhập nhanh
       const readingTemplate = {
         roomId: room._id,
         periodMonth: month,

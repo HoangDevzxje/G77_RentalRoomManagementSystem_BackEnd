@@ -7,7 +7,7 @@ const getAllUsers = async (req, res) => {
         const search = req.query.search ? req.query.search.trim() : "";
 
         const query = search
-            ? { email: { $regex: search, $options: "i" } } // tìm kiếm không phân biệt hoa thường
+            ? { email: { $regex: search, $options: "i" } }
             : {};
 
         const totalUsers = await Account.countDocuments(query);

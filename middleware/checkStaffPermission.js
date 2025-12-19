@@ -66,7 +66,6 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
                 });
             }
 
-            // gắn req.staff
             req.staff = {
                 employeeId: employeeData._id.toString(),
                 assignedBuildingIds: employeeData.assignedBuildings.map((b) => b._id.toString()),
@@ -98,20 +97,13 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
                         }
                     } catch (err) {
                         console.error("Lỗi allowFromDb:", err);
-                        // return res.status(500).json({ message: "Lỗi kiểm tra tòa nhà từ dữ liệu" });
                     }
                 }
 
             }
 
-            // === CHECK BUILDING BẮT BUỘC ===
             if (options.checkBuilding) {
-                // console.log("🔍 CHECK BUILDING ID:", {
-                //     from_query: req.query[buildingField],
-                //     from_body: req.body?.[buildingField],
-                //     from_db: buildingId && !req.query[buildingField] && !req.body?.[buildingField] ? "DB" : undefined,
-                //     final: buildingId
-                // });
+
                 if (!buildingId) {
                     return res.status(400).json({
                         message: `Thiếu thông tin tòa nhà (${buildingField})`,

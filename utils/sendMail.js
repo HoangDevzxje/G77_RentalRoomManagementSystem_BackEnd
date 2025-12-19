@@ -38,7 +38,7 @@ const sendEmail = async (toEmailOrOptions, payload, type = "register") => {
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // App Password nếu bật 2FA
+        pass: process.env.EMAIL_PASS,
       },
     });
 
@@ -100,7 +100,6 @@ const sendEmail = async (toEmailOrOptions, payload, type = "register") => {
           data.appUrl || process.env.APP_URL || "https://example.com"
         );
     } else {
-      // fallback generic OTP
       title = "Mã xác thực OTP";
       subject = "🔐 Mã OTP của bạn";
       const otp = String(payload || "");

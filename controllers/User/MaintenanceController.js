@@ -143,14 +143,12 @@ exports.createRequest = async (req, res) => {
       }
     }
 
-    // === XỬ LÝ ẢNH ===
     const uploadedImages = req.files || [];
     const photos = uploadedImages.map((file) => ({
       url: file.path || file.location,
       uploadedAt: new Date(),
     }));
 
-    // === TẠO YÊU CẦU ===
     const doc = await MaintenanceRequest.create({
       buildingId,
       roomId,
@@ -194,6 +192,7 @@ exports.createRequest = async (req, res) => {
         title: `Báo hỏng: ${title}`,
         content: `Phòng ${room.roomNumber} tòa nhà ${building.name} - ${itemName} bị hỏng (${qty} cái)`,
         target: { buildings: [buildingId] },
+        type: "reminder",
         link: `/landlord/maintenance`,
       });
 
@@ -539,7 +538,6 @@ exports.deleteComment = async (req, res) => {
       { $pull: { timeline: { _id: commentId } } }
     );
 
-    // === THÔNG BÁO + REALTIME ===
     const notification = await Notification.create({
       landlordId: maintenance.buildingId.landlordId,
       createBy: req.user._id,

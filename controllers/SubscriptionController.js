@@ -9,6 +9,9 @@ const sendTrialWelcomeEmail = require('../utils/sendTrialWelcomeEmail');
 const Account = require('../models/Account');
 const UserInformation = require('../models/UserInformation');
 const sendPaymentSuccessEmail = require('../utils/sendPaymentSuccessEmail');
+const Building = require('../models/Building');
+const Floor = require('../models/Floor');
+const Room = require('../models/Room');
 
 const VNP_TMNCODE = process.env.VNP_TMNCODE;
 const VNP_HASHSECRET = process.env.VNP_HASHSECRET;
@@ -137,8 +140,35 @@ const buyPackage = async (req, res) => {
         if (!pkg || !pkg.isActive || pkg.type === 'trial') {
             return sendError(res, 400, 'Gói không hợp lệ');
         }
-
         const landlordId = req.user._id;
+        if (pkg.roomLimit !== -1) {
+            const buildingIds = await Building.find({
+                landlordId,
+                isDeleted: false,
+                status: "active",
+            }).distinct("_id");
+
+            const floorIds = await Floor.find({
+                buildingId: { $in: buildingIds },
+                isDeleted: false,
+                status: "active",
+            }).distinct("_id");
+
+            const currentRoomCount = await Room.countDocuments({
+                buildingId: { $in: buildingIds },
+                floorId: { $in: floorIds },
+                isDeleted: false,
+                active: true,
+            });
+
+            if (currentRoomCount > pkg.roomLimit) {
+                return sendError(
+                    res,
+                    400,
+                    `Không thể mua gói ${pkg.roomLimit} phòng vì bạn đang có ${currentRoomCount} phòng đang hoạt động.`
+                );
+            }
+        }
         const activeSub = await Subscription.findOne({
             landlordId,
             status: 'active',
@@ -485,7 +515,10 @@ const historyBuyPackage = async (req, res) => {
         if (isNaN(pageNum) || pageNum < 1) return sendError(res, 400, 'Page phải là số nguyên dương');
         if (isNaN(limitNum) || limitNum < 1) return sendError(res, 400, 'Limit phải là số nguyên dương');
 
-        const filter = { landlordId };
+        const filter = {
+            landlordId,
+            status: { $ne: 'pending_payment' }
+        };
 
         if (status) {
             const validStatuses = ['pending_payment', 'active', 'expired', 'cancelled', 'upgraded'];

@@ -38,7 +38,7 @@ const createOrUpdateRating = async (req, res) => {
             });
         }
 
-        imageUrls = req.files.map(file => file.path || file.location); // hỗ trợ cả local + cloud (S3, Cloudinary...)
+        imageUrls = req.files.map(file => file.path || file.location);
     }
 
     try {
@@ -91,6 +91,7 @@ const createOrUpdateRating = async (req, res) => {
                 : "Cư dân vừa cập nhật đánh giá tòa nhà",
             content: `${updatedRating.userId?.userInfo?.fullName || "Một cư dân"} đã đánh giá tòa nhà với ${ratingNum} sao.`,
             target: { buildings: [buildingId] },
+            type: "reminder",
             link: `/landlord/ratings`,
         });
 
@@ -110,10 +111,8 @@ const createOrUpdateRating = async (req, res) => {
                 }
             };
 
-            // Gửi cho landlord
             io.to(`user:${landlordId}`).emit("new_notification", payload);
 
-            // Gửi cho staff
             const staffList = await Staff.find({
                 assignedBuildings: buildingId,
                 isDeleted: false

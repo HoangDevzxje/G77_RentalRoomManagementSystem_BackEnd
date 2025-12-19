@@ -146,7 +146,6 @@ const createNotification = async (req, res) => {
             }
         };
 
-        // REALTIME EMIT – CHUẨN 100%
         if (io) {
             let recipientIds = [];
 
@@ -412,10 +411,8 @@ const updateNotification = async (req, res) => {
             let recipientIds = [];
 
             if (noti.createByRole === "resident") {
-                // Thông báo do resident tạo → landlord + staff nhận update
                 recipientIds = await getRecipientAdminIds(noti.target);
             } else {
-                // Thông báo do landlord/staff tạo → cư dân nhận update
                 recipientIds = await getResidentIdsFromTarget(noti.target);
             }
 
@@ -423,7 +420,6 @@ const updateNotification = async (req, res) => {
                 io.to(`user:${uid}`).emit("notification_updated", payload);
             });
         }
-        // =====================================================================
         res.json({ success: true, message: "Cập nhật thành công", data: noti });
     } catch (error) {
         console.error("updateNotification error:", error.message);

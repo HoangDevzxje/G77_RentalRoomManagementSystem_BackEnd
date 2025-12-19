@@ -124,7 +124,6 @@ const getDetailPostByTenant = async (req, res) => {
         },
         { $unwind: { path: "$contract", preserveNullAndEmptyArrays: true } },
 
-        // Tìm hợp đồng đang active + sắp hết (nếu có)
         {
           $addFields: {
             activeContract: {
@@ -144,7 +143,6 @@ const getDetailPostByTenant = async (req, res) => {
           }
         },
 
-        // Tính ngày hết hợp đồng & ngày trống dự kiến (chỉ nếu còn <= 30 ngày)
         {
           $addFields: {
             currentContractEndDate: {

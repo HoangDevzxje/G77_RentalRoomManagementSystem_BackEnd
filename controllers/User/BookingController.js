@@ -41,12 +41,9 @@ const getAvailableSlots = async (req, res) => {
       if (overrides.length > 0) {
         overrides.forEach(o => {
           if (o.isAvailable) {
-            // mặc định bận, nhưng có giờ rảnh đặc biệt
             slots.push({ startTime: o.startTime, endTime: o.endTime });
           } else {
-            // mặc định rảnh nhưng có giờ bận đặc biệt
             if (o.startTime && o.endTime) {
-              // cắt khung giờ mặc định
               defaultSlots.forEach(d => {
                 if (o.startTime > d.startTime) {
                   slots.push({ startTime: d.startTime, endTime: o.startTime });
@@ -56,13 +53,11 @@ const getAvailableSlots = async (req, res) => {
                 }
               });
             } else {
-              // bận cả ngày
               slots = [];
             }
           }
         });
       } else {
-        // không có override => lấy default
         slots = defaultSlots.map(s => ({
           startTime: s.startTime,
           endTime: s.endTime
@@ -160,24 +155,19 @@ const create = async (req, res) => {
 
     const dayOfWeek = checkDate.day();
 
-    // lấy default slots và overrides giống như getAvailableSlots
     const defaultSlots = schedule.defaultSlots.filter(s => s.dayOfWeek === dayOfWeek && s.isAvailable);
     const overrides = schedule.overrides.filter(o => dayjs(o.date).isSame(checkDate, "day"));
 
     let availableSlots = [];
 
-    // Logic giống hệt getAvailableSlots
     if (overrides.length > 0) {
       overrides.forEach(o => {
         if (o.isAvailable) {
-          // mặc định bận, nhưng có giờ rảnh đặc biệt
           if (o.startTime && o.endTime) {
             availableSlots.push({ startTime: o.startTime, endTime: o.endTime });
           }
         } else {
-          // mặc định rảnh nhưng có giờ bận đặc biệt
           if (o.startTime && o.endTime) {
-            // cắt khung giờ mặc định
             defaultSlots.forEach(d => {
               if (o.startTime > d.startTime) {
                 availableSlots.push({ startTime: d.startTime, endTime: o.startTime });
@@ -187,20 +177,17 @@ const create = async (req, res) => {
               }
             });
           } else {
-            // bận cả ngày
             availableSlots = [];
           }
         }
       });
     } else {
-      // không có override => lấy default
       availableSlots = defaultSlots.map(s => ({
         startTime: s.startTime,
         endTime: s.endTime
       }));
     }
 
-    // Kiểm tra xem timeSlot có nằm trong các slot khả dụng không
     const isTimeSlotAvailable = availableSlots.some(
       slot => timeSlot >= slot.startTime && timeSlot <= slot.endTime
     );
@@ -212,12 +199,11 @@ const create = async (req, res) => {
       });
     }
 
-    // Kiểm tra trùng lịch
     const existingBooking = await Booking.findOne({
       tenantId,
       date,
       timeSlot,
-      status: { $in: ["pending", "confirmed"] }, // chưa bị hủy hoặc hoàn tất
+      status: { $in: ["pending", "confirmed"] },
     });
 
     if (existingBooking) {
@@ -239,7 +225,6 @@ const create = async (req, res) => {
       contactPhone,
       status: "pending",
     });
-    // =============================================
     const io = req.app.get("io");
     if (io) {
       const notification = await Notification.create({
@@ -248,7 +233,7 @@ const create = async (req, res) => {
         createByRole: "resident",
         title: "Có lịch xem phòng mới!",
         content: `${contactName} (${contactPhone}) muốn xem phòng của tòa nhà ${schedule.buildingId.name} vào ngày ${dayjs(date).format("DD/MM/YYYY")} lúc ${timeSlot}`,
-        // type: "booking_request",
+        type: "reminder",
         target: { buildings: [buildingId] },
         link: `/landlord/appointment-management`,
       });
@@ -268,11 +253,9 @@ const create = async (req, res) => {
         }
       };
 
-      // 1. Gửi cho Landlord
       io.to(`user:${landlordId}`).emit("new_notification", payload);
       io.to(`user:${landlordId}`).emit("unread_count_increment", { increment: 1 });
 
-      // 2. Gửi cho tất cả Staff quản lý tòa này (nếu có)
       const staffList = await Staff.find({
         assignedBuildings: buildingId,
         isDeleted: false
@@ -283,7 +266,6 @@ const create = async (req, res) => {
         io.to(`user:${staff.accountId}`).emit("unread_count_increment", { increment: 1 });
       });
     }
-    // =============================================
     return res.status(201).json({
       success: true,
       message: "Đặt lịch xem phòng thành công! Vui lòng chờ chủ trọ xác nhận.",
@@ -351,6 +333,7 @@ const cancel = async (req, res) => {
         title: "Hũy lịch xem phòng!",
         content: `${booking.contactName} (${booking.contactPhone}) đã hủy lịch xem phòng của tòa nhà ${booking.buildingId.name} vào ngày ${dayjs(booking.date).format("DD/MM/YYYY")} lúc ${booking.timeSlot}`,
         target: { buildings: [booking.buildingId] },
+        type: "reminder",
         link: `/landlord/bookings`,
       });
 
@@ -369,11 +352,9 @@ const cancel = async (req, res) => {
         }
       };
 
-      // 1. Gửi cho Landlord
       io.to(`user:${booking.landlordId}`).emit("new_notification", payload);
       io.to(`user:${booking.landlordId}`).emit("unread_count_increment", { increment: 1 });
 
-      // 2. Gửi cho tất cả Staff quản lý tòa này (nếu có)
       const staffList = await Staff.find({
         assignedBuildings: booking.buildingId,
         isDeleted: false

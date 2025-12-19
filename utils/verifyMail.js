@@ -7,13 +7,10 @@ const verifyEmail = async (email) => {
   try {
     const response = await axios.get(url);
 
-    // Cấu trúc response của AbstractAPI
-    // { deliverability: "DELIVERABLE" | "UNDELIVERABLE" | "RISKY" }
     const deliverability = response.data?.deliverability;
 
     if (deliverability === "DELIVERABLE") return true;
 
-    // Cho phép "RISKY" để tránh block những email vẫn dùng được
     if (deliverability === "RISKY") return true;
 
     return false;
@@ -24,9 +21,6 @@ const verifyEmail = async (email) => {
       err.response?.data || err.message
     );
 
-    // QUAN TRỌNG:
-    // Không được throw error ra ngoài vì sẽ làm sendOtp → 500 "Lỗi hệ thống!"
-    // Hãy cho pass để user vẫn nhận được OTP và đăng ký.
     return true;
   }
 };

@@ -3,11 +3,10 @@ const MOMO_ENDPOINT =
   "https://test-payment.momo.vn/v2/gateway/api/create";
 
 const MOMO_PARTNER_CODE = process.env.MOMO_PARTNER_CODE || "MOMO";
-const MOMO_ACCESS_KEY = process.env.MOMO_ACCESS_KEY || "F8BBA842ECF85"; // sandbox default
+const MOMO_ACCESS_KEY = process.env.MOMO_ACCESS_KEY || "F8BBA842ECF85";
 const MOMO_SECRET_KEY =
-  process.env.MOMO_SECRET_KEY || "K951B6PE1waDMi640xX08PD3vg6EkVlz"; // sandbox default
+  process.env.MOMO_SECRET_KEY || "K951B6PE1waDMi640xX08PD3vg6EkVlz";
 
-// URL FE & BE: bạn chỉnh cho đúng môi trường dev/prod
 const MOMO_REDIRECT_URL =
   process.env.MOMO_REDIRECT_URL || "http://localhost:3000/payment/momo-return";
 

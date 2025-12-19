@@ -21,7 +21,6 @@ const accountSchema = new mongoose.Schema({
     accessToken: { type: String, default: null },
     refreshToken: { type: String, default: null }
 }, { timestamps: true });
-// Tạo token đổi mật khẩu lần đầu (dùng khi tạo staff)
 accountSchema.methods.createPasswordResetToken = function () {
     const resetToken = crypto.randomBytes(32).toString('hex');
 

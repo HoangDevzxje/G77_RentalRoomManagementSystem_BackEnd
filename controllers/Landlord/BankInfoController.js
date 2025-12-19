@@ -6,7 +6,6 @@ exports.getMyBankInfo = async (req, res) => {
   try {
     const landlordId = req.user?._id;
 
-    // Lấy account để check role + link sang userInfo
     const account = await Account.findById(landlordId)
       .select("role userInfo")
       .lean();
@@ -68,7 +67,6 @@ exports.updateMyBankInfo = async (req, res) => {
 
     let userInfoDoc;
 
-    // Nếu chưa có userInfo, tạo mới
     if (!account.userInfo) {
       userInfoDoc = new UserInformation({});
       await userInfoDoc.save();

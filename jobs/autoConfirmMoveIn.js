@@ -36,7 +36,6 @@ cron.schedule("10 2 * * *", async () => {
 
     for (const c of contracts) {
       try {
-        // Nếu có tiền cọc thì chỉ auto-confirm khi hóa đơn tiền cọc đã PAID
         const depositAmount = Number(c?.contract?.deposit || 0);
         if (depositAmount > 0) {
           const paidDeposit = await Invoice.findOne({

@@ -65,7 +65,6 @@ const createContact = async (req, res) => {
       tenantNote,
     });
 
-    // === TẠO THÔNG BÁO + EMIT REALTIME ===
     const notification = await Notification.create({
       landlordId,
       createBy: tenantId,
@@ -73,10 +72,10 @@ const createContact = async (req, res) => {
       title: "Yêu cầu hợp đồng mới",
       content: `${contactName} (${contactPhone}) muốn thuê phòng ${room.roomNumber || roomId} của tòa nhà ${building.name}`,
       target: { buildings: [buildingId] },
+      type: "reminder",
       link: `/landlord/contact-management`,
     });
 
-    // === REALTIME EMIT  ===
     const io = req.app.get("io");
     if (io) {
       const payload = {
@@ -190,6 +189,7 @@ const cancelContact = async (req, res) => {
       title: "Hủy yêu cầu hợp đồng",
       content: `${request.contactName} (${request.contactPhone}) đã hủy yêu cầu tạo hợp đồng với phòng ${request?.roomId?.roomNumber} của tòa nhà ${request?.buildingId?.name}`,
       target: { buildings: [request.buildingId] },
+      type: "reminder",
       link: `/landlord/contact-management`,
     });
 

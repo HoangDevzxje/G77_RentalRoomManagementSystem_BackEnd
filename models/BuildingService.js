@@ -22,7 +22,6 @@ const buildingServiceSchema = new mongoose.Schema(
       enum: ["internet", "parking", "cleaning", "security", "other"],
     },
 
-    // Nhãn hiển thị đẹp (ví dụ: "Internet cáp quang 150Mbps")
     label: { type: String, trim: true },
 
     description: { type: String, trim: true },

@@ -16,14 +16,12 @@ module.exports = async function loadFloorAndCheckParent(req, res, next, id) {
       .lean();
     if (!b) return res.status(404).json({ message: "Tòa không tồn tại" });
 
-    // Quy tắc: nếu tòa đã xóa → chặn (trừ admin + includeDeleted=true)
     const includeDeleted = req.query.includeDeleted === "true";
     const isAdmin = req.user?.role === "admin";
     if (b.isDeleted && !(isAdmin && includeDeleted)) {
       return res.status(410).json({ message: "Tòa đã bị xóa" });
     }
 
-    // Landlord chỉ được tòa của mình
     if (
       req.user?.role === "landlord" &&
       String(b.landlordId) !== String(req.user._id)

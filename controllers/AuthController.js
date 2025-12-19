@@ -9,10 +9,8 @@ const generateToken = require("../utils/generalToken");
 const verifyEmail = require("../utils/verifyMail");
 const validateUtils = require("../utils/validateInput");
 const crypto = require("crypto");
-// const { OAuth2Client } = require("google-auth-library");
 dotenv.config();
 let otpStore = {};
-// const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const sendOtp = async (req, res) => {
   const { type, email } = req.body;
@@ -53,12 +51,10 @@ const sendOtp = async (req, res) => {
     if (!otpStore[email]) otpStore[email] = {};
     otpStore[email][type] = { otp, isVerified: false, expiresAt };
 
-    // Gửi email OTP và kiểm tra kết quả
     const emailResult = await sendEmail(email, otp, type);
 
     if (!emailResult || !emailResult.success) {
       console.error("Gửi OTP thất bại:", emailResult && emailResult.error);
-      // Nếu muốn: xóa OTP đã lưu khi mail fail
       delete otpStore[email][type];
       if (Object.keys(otpStore[email]).length === 0) delete otpStore[email];
 
@@ -137,7 +133,6 @@ const verifyOtp = async (req, res) => {
       });
       await account.save();
 
-      // Xóa dữ liệu tạm
       delete otpStore[email];
 
       return res.status(200).json({
@@ -268,7 +263,6 @@ const register = async (req, res) => {
         "Gửi email đăng ký (OTP) thất bại:",
         emailResult && emailResult.error
       );
-      // Xoá OTP tạm nếu mail không gửi được
       delete otpStore[email];
       return res
         .status(500)
@@ -325,7 +319,6 @@ const resetPassword = async (req, res) => {
     return res.status(400).json({ message: "OTP đã hết hạn!" });
   }
 
-  // Xóa OTP sau khi dùng
   delete otpStore[email]["reset-password"];
 
   // Kiểm tra confirm password
@@ -444,133 +437,6 @@ const changePassword = async (req, res) => {
   }
 };
 
-// const googleLogin = async (req, res) => {
-//     try {
-//         const { token } = req.body;
-//         if (!token) {
-//             return res.status(400).json({ message: "Thiếu token từ Google!" });
-//         }
-
-//         const ticket = await client.verifyIdToken({
-//             idToken: token,
-//             audience: process.env.GOOGLE_CLIENT_ID,
-//         });
-
-//         const payload = ticket.getPayload();
-//         const { email, name, sub: googleId } = payload;
-
-//         let user = await Account.findOne({ email });
-
-//         if (!user) {
-//             user = new Account({
-//                 email,
-//                 name,
-//                 googleId,
-//                 isActivated: true,
-//                 role: "user",
-//             });
-//             await user.save();
-//         } else if (!user.googleId) {
-//             user.googleId = googleId;
-//             await user.save();
-//         }
-
-//         if (user.isActivated === false) {
-//             return res.status(400).json({ message: "Tài khoản bị khóa!" });
-//         }
-//         const tokenPayload = { id: user._id, role: user.role };
-
-//         const accessToken = generateToken.genneralAccessToken(tokenPayload);
-//         const refreshToken = generateToken.genneralRefreshToken(tokenPayload);
-
-//         user.accessToken = accessToken;
-//         user.refreshToken = refreshToken;
-//         await user.save();
-
-//         res.cookie("refresh_token", refreshToken, {
-//             httpOnly: true,
-//             secure: true,
-//             sameSite: "none",
-//             maxAge: 7 * 24 * 60 * 60 * 1000,
-//         });
-
-//         res.status(200).json({
-//             message: "Đăng nhập Google thành công",
-//             accessToken,
-//             role: user.role,
-//             email: user.email,
-//         });
-//     } catch (error) {
-//         console.error("Lỗi googleLogin:", error);
-//         res.status(500).json({ message: "Lỗi xác thực với Google." });
-//     }
-// };
-
-// const facebookLogin = async (req, res) => {
-//     try {
-//         const { accessToken } = req.body;
-
-//         const fbRes = await fetch(
-//             `https://graph.facebook.com/me?fields=id,name,email&access_token=${accessToken}`
-//         );
-//         const fbData = await fbRes.json();
-
-//         const { id: facebookId, email, name } = fbData;
-
-//         if (!email) {
-//             return res.status(400).json({
-//                 message: "Không thể lấy email từ Facebook. Vui lòng cấp quyền email.",
-//             });
-//         }
-
-//         let user = await User.findOne({ email });
-
-//         if (user) {
-//             if (!user.facebookId) {
-//                 user.facebookId = facebookId;
-//                 await user.save();
-//             }
-//         } else {
-//             user = new User({
-//                 name,
-//                 email,
-//                 facebookId,
-//                 isActivated: true,
-//                 role: "user",
-//             });
-//             await user.save();
-//         }
-//         if (user.isActivated === false) {
-//             return res.status(400).json({ message: "Tài khoản bị khóa!" });
-//         }
-//         const tokenPayload = { id: user._id, role: user.role };
-
-//         const accessTokenLogin = generateToken.genneralAccessToken(tokenPayload);
-//         const refreshToken = generateToken.genneralRefreshToken(tokenPayload);
-
-//         user.accessToken = accessToken;
-//         user.refreshToken = refreshToken;
-//         await user.save();
-
-//         res.cookie("refresh_token", refreshToken, {
-//             httpOnly: true,
-//             secure: true,
-//             sameSite: "none",
-//             maxAge: 7 * 24 * 60 * 60 * 1000,
-//         });
-
-//         res.status(200).json({
-//             message: "Đăng nhập Facebook thành công",
-//             accessTokenLogin,
-//             role: user.role,
-//             email: user.email,
-//         });
-//     } catch (error) {
-//         console.error("Facebook login error:", error);
-//         res.status(500).json({ message: "Xác thực Facebook thất bại!" });
-//     }
-// };
-
 const logoutUser = async (req, res) => {
   try {
     res.clearCookie("refresh_token");
@@ -620,8 +486,6 @@ module.exports = {
   sendOtp,
   verifyOtp,
   changePassword,
-  // googleLogin,
-  // facebookLogin,
   logoutUser,
   changeFirstPassword,
 };

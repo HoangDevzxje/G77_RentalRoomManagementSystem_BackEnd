@@ -11,7 +11,7 @@ function parseMonthRange(monthStr) {
   // monthStr: "YYYY-MM"
   const [y, m] = monthStr.split("-").map(Number);
   const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
-  const end = new Date(y, m, 1, 0, 0, 0, 0); // next month
+  const end = new Date(y, m, 1, 0, 0, 0, 0);
   return { start, end };
 }
 
@@ -49,7 +49,6 @@ exports.getOverview = async (req, res) => {
       },
     ]);
 
-    // Active contracts stats (completed + moveInConfirmedAt exists + within date range)
     const now = new Date();
     const contractAgg = await Contract.aggregate([
       {
@@ -80,14 +79,14 @@ exports.getOverview = async (req, res) => {
 
     for (const row of roomAgg) {
       const bid = String(row._id.buildingId);
-      const status = row._id.status; // "available" | "rented"
+      const status = row._id.status;
       const cur = map.get(bid);
       if (!cur) continue;
 
       if (status === "available") cur.totalRoomsAvailable += row.rooms;
       if (status === "rented") {
         cur.totalRoomsRented += row.rooms;
-        cur.totalPeople += row.people; // chỉ cộng người ở phòng rented (đúng kỳ vọng)
+        cur.totalPeople += row.people;
       }
     }
 
@@ -139,7 +138,6 @@ exports.getActivity = async (req, res) => {
       ...matchBuilding,
     };
 
-    // group by month (YYYY-MM)
     const [posts, contacts] = await Promise.all([
       Post.aggregate([
         { $match: postMatch },
@@ -161,7 +159,6 @@ exports.getActivity = async (req, res) => {
       ]),
     ]);
 
-    // normalize to labels
     const toKey = (y, m) => `${y}-${String(m).padStart(2, "0")}`;
     const postMap = new Map(
       posts.map((r) => [toKey(r._id.y, r._id.m), r.count])
@@ -170,7 +167,6 @@ exports.getActivity = async (req, res) => {
       contacts.map((r) => [toKey(r._id.y, r._id.m), r.count])
     );
 
-    // build labels
     const labels = [];
     const cursor = new Date(
       range.start.getFullYear(),

@@ -1,4 +1,3 @@
-// cloudinary.config.js
 require("dotenv").config();
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
@@ -10,12 +9,10 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Storage động theo buildingId (nếu có), ép về webp + resize
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
     const folder = `rooms/${req.body?.buildingId || "misc"}`;
-    // public_id an toàn: timestamp + originalname (loại ký tự lạ)
     const safeName = (file.originalname || "image")
       .toLowerCase()
       .replace(/\.[^.]+$/, "")
@@ -26,7 +23,6 @@ const storage = new CloudinaryStorage({
       format: "webp",
       public_id: `${Date.now()}-${safeName}`,
       transformation: [{ width: 1280, crop: "scale" }],
-      // resource_type mặc định 'image'
     };
   },
 });
@@ -38,7 +34,6 @@ const uploadSingle = multer({ storage }).single("image");
 const bankQrStorage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
-    // Lấy landlordId từ req.user (bạn nhớ đặt checkAuthorize("landlord") TRƯỚC middleware upload)
     const landlordId = req.user?._id?.toString() || "unknown-landlord";
 
     const folder = `bank_qr/${landlordId}`;

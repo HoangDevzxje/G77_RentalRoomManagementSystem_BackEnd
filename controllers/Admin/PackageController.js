@@ -175,7 +175,7 @@ const changeType = async (req, res) => {
         if (!pkg) return res.status(404).json({ success: false, message: 'Không tìm thấy gói dịch vụ' });
 
         pkg.type = type;
-        if (type === 'trial') pkg.price = 0; // gói dùng thử luôn miễn phí
+        if (type === 'trial') pkg.price = 0;
 
         await pkg.save();
 

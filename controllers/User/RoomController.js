@@ -66,7 +66,6 @@ exports.getMyRoomDetail = async (req, res) => {
       }
     }
 
-    // Lấy danh sách dịch vụ của tòa nhà
     const buildingServices = await BuildingService.find({
       buildingId: room.buildingId._id || room.buildingId,
       isDeleted: false,
@@ -88,27 +87,26 @@ exports.getMyRoomDetail = async (req, res) => {
     const accountTenants =
       Array.isArray(room.currentTenantIds) && room.currentTenantIds.length > 0
         ? room.currentTenantIds.map((t) => ({
-            id: t._id,
-            username: t.username || null,
-            fullName:
-              t.userInfo?.fullName ||
-              `${t.first_name || ""} ${t.last_name || ""}`.trim() ||
-              null,
-            phoneNumber: t.userInfo?.phoneNumber || null,
-          }))
+          id: t._id,
+          username: t.username || null,
+          fullName:
+            t.userInfo?.fullName ||
+            `${t.first_name || ""} ${t.last_name || ""}`.trim() ||
+            null,
+          phoneNumber: t.userInfo?.phoneNumber || null,
+        }))
         : [];
 
     const contractRoommates =
       room.currentContractId && Array.isArray(room.currentContractId.roommates)
         ? room.currentContractId.roommates.map((p) => ({
-            name: p.name || null,
-            cccd: p.cccd || null,
-            phone: p.phone || null,
-            dob: p.dob || null,
-          }))
+          name: p.name || null,
+          cccd: p.cccd || null,
+          phone: p.phone || null,
+          dob: p.dob || null,
+        }))
         : [];
 
-    // Lấy thông tin điện nước từ building
     const building = room.buildingId;
     const electricityInfo = {
       indexType: building?.eIndexType || "byNumber",
@@ -140,14 +138,14 @@ exports.getMyRoomDetail = async (req, res) => {
       images: Array.isArray(room.images) ? room.images : [],
       building: building
         ? {
-            _id: building._id ?? building,
-            name: building.name,
-            address: building.address,
-            contact: building.contact || null,
-            description: building.description || null,
-            electricity: electricityInfo,
-            water: waterInfo,
-          }
+          _id: building._id ?? building,
+          name: building.name,
+          address: building.address,
+          contact: building.contact || null,
+          description: building.description || null,
+          electricity: electricityInfo,
+          water: waterInfo,
+        }
         : null,
       floor: room.floorId
         ? room.floorId.name || room.floorId.floorNumber
@@ -156,13 +154,13 @@ exports.getMyRoomDetail = async (req, res) => {
       price: room.price ?? null,
       currentContract: room.currentContractId
         ? {
-            id: room.currentContractId._id,
-            no: room.currentContractId.contract?.no || null,
-            price: room.currentContractId.contract?.price ?? null,
-            startDate: room.currentContractId.contract?.startDate ?? null,
-            endDate: room.currentContractId.contract?.endDate ?? null,
-            roommates: room.currentContractId.contract?.roommates ?? null,
-          }
+          id: room.currentContractId._id,
+          no: room.currentContractId.contract?.no || null,
+          price: room.currentContractId.contract?.price ?? null,
+          startDate: room.currentContractId.contract?.startDate ?? null,
+          endDate: room.currentContractId.contract?.endDate ?? null,
+          roommates: room.currentContractId.contract?.roommates ?? null,
+        }
         : null,
       tenants: accountTenants,
       contractRoommates,

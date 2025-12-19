@@ -6,7 +6,6 @@ const ACCESS_ID = process.env.TUYA_ACCESS_ID;
 const ACCESS_SECRET = process.env.TUYA_ACCESS_SECRET;
 const BASE_URL = process.env.TUYA_BASE_URL || "https://openapi-sg.iotbing.com";
 
-// SHA256 của body rỗng (Tuya quy định)
 const EMPTY_BODY_SHA256 =
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
@@ -39,7 +38,6 @@ function buildStringToSign(method, urlPathWithQuery, body) {
   const upperMethod = method.toUpperCase();
   const bodyHash = body ? sha256(body) : EMPTY_BODY_SHA256;
 
-  // Không dùng Signature-Headers → headersStr rỗng
   const headersStr = "";
 
   const stringToSign = [
@@ -122,8 +120,7 @@ async function tuyaGet(path) {
   const t = Date.now().toString();
   const method = "GET";
 
-  // path dạng "/v1.0/devices/xxx/status" hoặc có ?query
-  const urlPathWithQuery = path; // path đã gồm query nếu có
+  const urlPathWithQuery = path;
   const body = "";
 
   const sign = signForBusiness(t, token, method, urlPathWithQuery, body);
@@ -147,7 +144,6 @@ async function tuyaGet(path) {
   return res.data.result;
 }
 
-// Lấy status của 1 device Tuya
 async function getDeviceStatus(deviceId) {
   return tuyaGet(`/v1.0/devices/${deviceId}/status`);
 }

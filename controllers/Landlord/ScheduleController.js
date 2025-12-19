@@ -5,7 +5,6 @@ const upsertSchedule = async (req, res) => {
     try {
         const { buildingId, defaultSlots, overrides } = req.body;
 
-        // === ÉP CHO MIDDLEWARE ===
         req.body.buildingId = buildingId;
         if (!buildingId)
             return res.status(400).json({ message: "Thiếu buildingId" });
@@ -36,7 +35,6 @@ const getSchedule = async (req, res) => {
         const { buildingId } = req.params;
         if (!buildingId)
             return res.status(400).json({ message: "Thiếu buildingId" });
-        // === ÉP CHO MIDDLEWARE ===
         req.query.buildingId = buildingId;
 
         const building = await Building.findOne({ _id: buildingId, isDeleted: false });
@@ -64,7 +62,6 @@ const deleteSchedule = async (req, res) => {
     try {
         const { buildingId } = req.params;
 
-        // === ÉP CHO MIDDLEWARE ===
         req.query.buildingId = buildingId;
         if (!buildingId)
             return res.status(400).json({ message: "Thiếu buildingId" });

@@ -4,7 +4,6 @@ const Notification = require("../models/Notification");
 const Staff = require("../models/Staff");
 const Room = require("../models/Room");
 
-// Đảm bảo global._io luôn tồn tại
 const getIo = () => global._io;
 
 async function sendReminderNotification({ contract, tenant, landlord }) {
@@ -31,9 +30,6 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
     year: "numeric",
   });
 
-  // ==============================
-  // 1. GỬI CHO RESIDENT (nếu có)
-  // ==============================
   if (tenantId) {
     const notiResident = await Notification.create({
       landlordId,
@@ -42,7 +38,6 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
       content: `Hợp đồng thuê phòng của bạn sẽ hết hạn vào ngày ${endDateStr}. Vui lòng liên hệ chủ trọ để gia hạn nếu muốn tiếp tục ở.`,
       type: "reminder",
       target: { residents: [tenantId] },
-      isRead: false, // Quan trọng: cho resident
       createdAt: new Date(),
     });
 
@@ -61,9 +56,6 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
     }
   }
 
-  // ==============================
-  // 2. GỬI CHO LANDLORD + STAFF
-  // ==============================
   const staffList = await Staff.find({
     assignedBuildings: { $in: [buildingId] },
     isDeleted: false,
@@ -84,7 +76,6 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
       content: `Hợp đồng của ${tenantName} (phòng ${room?.roomNumber || "N/A"}) sẽ hết hạn vào ngày <strong>${endDateStr}</strong>.`,
       type: "reminder",
       target: { accounts: receivers },
-      readBy: [],
       link: "/landlord/contracts",
       createdAt: new Date(),
     });
@@ -154,7 +145,7 @@ cron.schedule("0 9 * * *", async () => {
 
   {
     scheduled: true,
-    timezone: "Asia/Ho_Chi_Minh", // Quan trọng: đảm bảo đúng múi giờ Việt Nam
+    timezone: "Asia/Ho_Chi_Minh",
   });
 
 console.log("[CRON] Đã khởi động job nhắc nhở hợp đồng sắp hết hạn (mỗi 9h sáng)");

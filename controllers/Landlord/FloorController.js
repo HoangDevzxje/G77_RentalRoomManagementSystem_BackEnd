@@ -3,6 +3,7 @@ const Building = require("../../models/Building");
 const Floor = require("../../models/Floor");
 const Room = require("../../models/Room");
 const { getDeviceStatus } = require("../../configs/tuyaClient");
+const Contract = require("../../models/Contract");
 
 async function getLaundryStatusForFloor(floorId) {
   const floor = await Floor.findById(floorId).lean();
@@ -444,34 +445,80 @@ const updateStatus = async (req, res) => {
       return res.status(400).json({ message: "Giá trị status không hợp lệ" });
     }
 
-    const f = await Floor.findById(id).select("buildingId isDeleted");
-    if (!f || f.isDeleted)
-      return res.status(404).json({ message: "Không tìm thấy tầng" });
-
-    const b = await Building.findById(f.buildingId).select(
-      "landlordId isDeleted"
+    const floor = await Floor.findById(id).select(
+      "_id buildingId isDeleted status"
     );
-    if (!b || b.isDeleted)
+    if (!floor || floor.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy tầng" });
+    }
+
+    const building = await Building.findById(floor.buildingId).select(
+      "_id landlordId status isDeleted"
+    );
+    if (!building || building.isDeleted) {
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
+    }
+
+    if (status === "active" && building.status !== "active") {
+      return res.status(400).json({
+        message: "Không thể mở tầng khi tòa nhà đang ngưng hoạt động",
+      });
+    }
+
     if (req.user.role === "staff") {
-      if (!req.staff?.assignedBuildingIds.includes(String(f.buildingId))) {
-        return res
-          .status(403)
-          .json({ message: "Bạn không được quản lý tòa nhà này" });
+      if (!req.staff?.assignedBuildingIds.includes(String(floor.buildingId))) {
+        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     } else if (
       req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
+      String(building.landlordId) !== String(req.user._id)
     ) {
-      return res
-        .status(403)
-        .json({ message: "Không có quyền với tòa nhà này" });
+      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+    }
+    if (floor.status === status) {
+      return res.json({ message: "Trạng thái không thay đổi" });
     }
 
-    await Floor.updateOne({ _id: id }, { $set: { status } });
+    if (status === "inactive") {
+      const roomIds = await Room.find({
+        floorId: floor._id,
+        isDeleted: false,
+      }).distinct("_id");
+
+      if (roomIds.length > 0) {
+        const now = new Date();
+
+        const hasActiveContract = await Contract.exists({
+          roomId: { $in: roomIds },
+          status: "completed",
+          isDeleted: false,
+          "contract.startDate": { $lte: now },
+          "contract.endDate": { $gte: now },
+        });
+
+        if (hasActiveContract) {
+          return res.status(400).json({
+            message:
+              "Không thể ngưng tầng vì vẫn còn phòng có hợp đồng thuê còn hiệu lực",
+          });
+        }
+
+        await Room.updateMany(
+          { floorId: floor._id, isDeleted: false },
+          { $set: { active: false } }
+        );
+      }
+    }
+
+    await Floor.updateOne(
+      { _id: floor._id },
+      { $set: { status } }
+    );
+
     res.json({ message: "Cập nhật trạng thái tầng thành công" });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
+  } catch (err) {
+    console.error("[updateFloorStatus]", err);
+    res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
 const remove = async (req, res) => {
@@ -528,7 +575,6 @@ const quickCreate = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy tòa" });
     if (b.status === "inactive")
       return res.status(403).json({ message: "Tòa đang tạm dừng hoạt động" });
-    // Quyền
     const isOwner =
       req.user.role === "admin" ||
       req.user.role === "staff" ||
@@ -542,7 +588,6 @@ const quickCreate = async (req, res) => {
           .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
-    // Tập levels cần tạo
     let levels = [];
     if (fromLevel != null && toLevel != null) {
       if (+fromLevel > +toLevel)
@@ -674,7 +719,7 @@ const getLaundryStatus = async (req, res) => {
 // POST /floors/:id/laundry-devices
 const createLaundryDevice = async (req, res) => {
   try {
-    const { id } = req.params; // floorId
+    const { id } = req.params;
     const { name, type, tuyaDeviceId } = req.body || {};
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -798,7 +843,7 @@ const deleteLaundryDevice = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy thiết bị" });
     }
 
-    dev.deleteOne(); // hoặc floor.laundryDevices.id(deviceId).remove();
+    dev.deleteOne();
     await floor.save();
 
     return res.json({ message: "Xoá thiết bị giặt sấy thành công" });

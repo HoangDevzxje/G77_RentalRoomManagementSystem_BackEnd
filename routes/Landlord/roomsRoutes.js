@@ -476,6 +476,10 @@ router.get(
  */
 router.post(
   "/",
+  (req, res, next) => {
+    req._roomAction = "create";
+    next();
+  },
   checkAuthorize(["admin", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.ROOM_CREATE),
   uploadMultiple,
@@ -1346,6 +1350,10 @@ router.post(
  */
 router.patch(
   "/:id/active",
+  (req, res, next) => {
+    req._roomAction = "toggleActive";
+    next();
+  },
   checkAuthorize(["admin", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.ROOM_EDIT,
     {

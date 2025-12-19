@@ -17,7 +17,6 @@ exports.create = async (req, res) => {
     const room = await Room.findById(roomId).select("buildingId").lean();
     if (!room) return res.status(404).json({ message: "Không tìm thấy phòng" });
 
-    // === CHECK QUYỀN ===
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(room.buildingId))) {
         return res
@@ -114,7 +113,6 @@ exports.getAll = async (req, res) => {
       }
     }
 
-    // --- QUERY ---
     const list = await RoomFurniture.find(filter)
       .populate({
         path: "roomId",
@@ -155,7 +153,6 @@ exports.getOne = async (req, res) => {
     if (!room)
       return res.status(404).json({ message: "Phòng liên kết không tồn tại" });
 
-    // === CHECK QUYỀN STAFF ===
     if (req.user.role === "staff") {
       const bId = room.buildingId?._id || room.buildingId;
       if (!req.staff?.assignedBuildingIds.includes(String(bId))) {
@@ -179,7 +176,6 @@ exports.update = async (req, res) => {
     const room = await Room.findById(doc.roomId).select("buildingId").lean();
     if (!room) return res.status(404).json({ message: "Phòng không tồn tại" });
 
-    // === CHECK QUYỀN ===
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(room.buildingId))) {
         return res
@@ -213,7 +209,6 @@ exports.remove = async (req, res) => {
     const room = await Room.findById(doc.roomId).select("buildingId").lean();
     if (!room) return res.status(404).json({ message: "Phòng không tồn tại" });
 
-    // === CHECK QUYỀN ===
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(room.buildingId))) {
         return res

@@ -4,8 +4,8 @@ const Floor = require("../../models/Floor");
 const Room = require("../../models/Room");
 const { cloudinary } = require("../../configs/cloudinary");
 const renderRoomNumber = require("../../utils/renderRoomNumber");
+const Contract = require("../../models/Contract");
 
-//helper: lấy public_id từ Cloudinary URL
 function getCloudinaryPublicId(url) {
   try {
     const u = new URL(url);
@@ -35,13 +35,11 @@ const list = async (req, res) => {
     const pageNum = Math.max(+page || 1, 1);
     const limitNum = Math.max(+limit || 20, 1);
 
-    // 1) Lấy danh sách tòa hợp lệ (active & not deleted)
     const buildingFilter = {
       isDeleted: false,
       status: "active",
       ...(buildingId ? { _id: buildingId } : {}),
     };
-    // landlord chỉ thấy tòa của mình
     if (req.user.role === "landlord" && !buildingId) {
       buildingFilter.landlordId = req.user._id;
     }
@@ -52,7 +50,6 @@ const list = async (req, res) => {
       return res.json({ data: [], total: 0, page: pageNum, limit: limitNum });
     }
 
-    // 2) Lấy danh sách tầng hợp lệ (active & not deleted) thuộc các tòa hợp lệ
     const floorFilter = {
       buildingId: { $in: validBuildingIds },
       isDeleted: false,
@@ -64,13 +61,11 @@ const list = async (req, res) => {
       return res.json({ data: [], total: 0, page: pageNum, limit: limitNum });
     }
 
-    // 3) Lọc Room — bắt buộc thuộc floor hợp lệ
     const roomFilter = {
       floorId: { $in: validFloorIds },
-      isDeleted: false, // room cũng không bị xoá mềm
+      isDeleted: false,
       ...(status ? { status } : {}),
       ...(q ? { roomNumber: { $regex: q, $options: "i" } } : {}),
-      // Nếu FE gửi buildingId mà không gửi floorId, vẫn đã ràng buộc qua validFloorIds
       ...(onlyActive === "true" ? { active: true } : {}),
     };
 
@@ -105,7 +100,6 @@ const getById = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
 
-    // Quyền landlord
     if (
       req.user.role === "landlord" &&
       String(r.buildingId?.landlordId) !== String(req.user._id)
@@ -113,7 +107,6 @@ const getById = async (req, res) => {
       return res.status(403).json({ message: "Không có quyền" });
     }
 
-    // ✅ Policy: Building & Floor phải active + not deleted
     const b = r.buildingId;
     const f = r.floorId;
     if (!b || b.isDeleted || b.status !== "active") {
@@ -131,13 +124,10 @@ const getById = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    // Parse JSON data from the 'data' field
     let roomData;
     if (req.body.data) {
-      // New format: data is in req.body.data as JSON string
       roomData = JSON.parse(req.body.data);
     } else {
-      // Fallback: old format for backward compatibility
       roomData = req.body;
     }
 
@@ -200,7 +190,6 @@ const create = async (req, res) => {
         return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
-    // validate inputs
     const numPrice = Number(price);
     if (Number.isNaN(numPrice) || numPrice < 0) {
       return res.status(400).json({ message: "price phải là số >= 0" });
@@ -215,7 +204,6 @@ const create = async (req, res) => {
       return res.status(400).json({ message: "status không hợp lệ" });
     }
 
-    // Ảnh
     const imageUrls = Array.isArray(req.files)
       ? req.files.map((f) => f.path)
       : [];
@@ -272,7 +260,7 @@ const addImages = async (req, res) => {
 
 const removeImages = async (req, res) => {
   try {
-    const { urls = [] } = req.body; // danh sách URL muốn xóa
+    const { urls = [] } = req.body;
     if (!Array.isArray(urls) || urls.length === 0) {
       return res.status(400).json({ message: "Cần truyền mảng 'urls' để xóa" });
     }
@@ -287,17 +275,14 @@ const removeImages = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    // Xóa Cloudinary theo public_id
     const publicIds = urls.map((u) => getCloudinaryPublicId(u)).filter(Boolean);
 
     if (publicIds.length) {
-      // Xóa nhiều resource cùng lúc
       await cloudinary.api.delete_resources(publicIds, {
         resource_type: "image",
       });
     }
 
-    // Xóa URL khỏi room.images
     room.images = (room.images || []).filter((u) => !urls.includes(u));
     await room.save();
 
@@ -323,7 +308,6 @@ const remove = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    // Xóa ảnh Cloudinary nếu có
     if (Array.isArray(doc.images) && doc.images.length) {
       const publicIds = doc.images
         .map((u) => getCloudinaryPublicId(u))
@@ -363,13 +347,10 @@ const update = async (req, res) => {
         .status(403)
         .json({ message: "Tòa nhà đang tạm dừng hoạt động" });
 
-    // Parse JSON data from the 'data' field (similar to create function)
     let updateData;
     if (req.body && req.body.data) {
-      // New format: data is in req.body.data as JSON string
       updateData = JSON.parse(req.body.data);
     } else {
-      // Fallback: old format for backward compatibility
       updateData = req.body || {};
     }
 
@@ -385,7 +366,6 @@ const update = async (req, res) => {
       removeUrls,
     } = updateData;
 
-    // Chuẩn hóa primitives
     if (price !== undefined) {
       const num = Number(price);
       if (Number.isNaN(num) || num < 0)
@@ -412,7 +392,6 @@ const update = async (req, res) => {
     }
     if (roomNumber !== undefined) doc.roomNumber = String(roomNumber).trim();
     if (description !== undefined) doc.description = description;
-    // Chuẩn hóa kiểu dữ liệu
     if (typeof replaceAllImages === "string") {
       replaceAllImages = ["true", "1", "yes", "on"].includes(
         replaceAllImages.toLowerCase()
@@ -422,13 +401,11 @@ const update = async (req, res) => {
       try {
         removeUrls = JSON.parse(removeUrls);
       } catch {
-        // fallback: chuỗi đơn -> mảng 1 phần tử
         removeUrls = [removeUrls];
       }
     }
     if (!Array.isArray(removeUrls)) removeUrls = [];
 
-    // -------- Validate floorId nếu đổi tầng --------
     if (floorId) {
       const f = await Floor.findById(floorId).select(
         "buildingId isDeleted status"
@@ -448,7 +425,6 @@ const update = async (req, res) => {
       doc.floorId = floorId;
     }
 
-    // -------- Cập nhật các field primitive --------
     if (roomNumber !== undefined) doc.roomNumber = roomNumber;
     if (area !== undefined) doc.area = area;
     if (price !== undefined) doc.price = price;
@@ -456,8 +432,6 @@ const update = async (req, res) => {
     if (status !== undefined) doc.status = status;
     if (description !== undefined) doc.description = description;
 
-    // -------- Ảnh: remove → replaceAll → add --------
-    // 1) XÓA ẢNH THEO DANH SÁCH removeUrls
     if (removeUrls.length) {
       const publicIds = removeUrls
         .map((u) => getCloudinaryPublicId(u))
@@ -470,9 +444,7 @@ const update = async (req, res) => {
       doc.images = (doc.images || []).filter((u) => !removeUrls.includes(u));
     }
 
-    // 2) THAY TOÀN BỘ ẢNH (optional)
     if (replaceAllImages) {
-      // Xóa toàn bộ ảnh cũ (nếu có)
       if (Array.isArray(doc.images) && doc.images.length) {
         const publicIds = doc.images
           .map((u) => getCloudinaryPublicId(u))
@@ -486,9 +458,8 @@ const update = async (req, res) => {
       doc.images = [];
     }
 
-    // 3) THÊM ẢNH MỚI (nếu upload kèm theo)
     if (Array.isArray(req.files) && req.files.length) {
-      const newUrls = req.files.map((f) => f.path); // secure_url
+      const newUrls = req.files.map((f) => f.path);
       doc.images = [...(doc.images || []), ...newUrls];
     }
 
@@ -585,26 +556,83 @@ const updateActive = async (req, res) => {
         .json({ message: "Giá trị active phải là boolean" });
     }
 
-    const r = await Room.findById(id).select("buildingId isDeleted");
-    if (!r || r.isDeleted)
-      return res.status(404).json({ message: "Không tìm thấy phòng" });
-
-    const b = await Building.findById(r.buildingId).select(
-      "landlordId isDeleted"
+    const room = await Room.findById(id).select(
+      "_id buildingId floorId isDeleted active"
     );
-    if (!b || b.isDeleted)
+    if (!room || room.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy phòng" });
+    }
+
+    const building = await Building.findById(room.buildingId).select(
+      "_id landlordId status isDeleted"
+    );
+    if (!building || building.isDeleted) {
       return res.status(404).json({ message: "Tòa nhà không tồn tại" });
+    }
+    const floor = await Floor.findById(room.floorId).select(
+      "_id status isDeleted"
+    );
+    if (!floor || floor.isDeleted) {
+      return res.status(404).json({ message: "Tầng không tồn tại" });
+    }
+
     if (
       req.user.role === "landlord" &&
-      String(b.landlordId) !== String(req.user._id)
+      String(building.landlordId) !== String(req.user._id)
     ) {
       return res.status(403).json({ message: "Không có quyền" });
     }
 
-    await Room.updateOne({ _id: id }, { $set: { active } });
-    res.json({ message: "Cập nhật trạng thái hoạt động của phòng thành công" });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
+    if (room.active === active) {
+      return res.json({ message: "Trạng thái không thay đổi" });
+    }
+
+    if (active === true) {
+      if (building.status !== "active") {
+        return res.status(400).json({
+          message: "Không thể mở phòng khi tòa nhà đang ngưng hoạt động",
+        });
+      }
+
+      if (floor.status !== "active") {
+        return res.status(400).json({
+          message: "Không thể mở phòng khi tầng đang ngưng hoạt động",
+        });
+      }
+    }
+
+    if (active === false) {
+      const now = new Date();
+
+      const hasActiveContract = await Contract.exists({
+        roomId: room._id,
+        status: "completed",
+        isDeleted: false,
+        "contract.startDate": { $lte: now },
+        "contract.endDate": { $gte: now },
+      });
+
+      if (hasActiveContract) {
+        return res.status(400).json({
+          message:
+            "Không thể ngưng phòng vì đang có hợp đồng thuê còn hiệu lực",
+        });
+      }
+    }
+
+    await Room.updateOne(
+      { _id: room._id },
+      { $set: { active } }
+    );
+
+    res.json({
+      message: active
+        ? "Mở hoạt động phòng thành công"
+        : "Ngưng hoạt động phòng thành công",
+    });
+  } catch (err) {
+    console.error("[updateRoomActive]", err);
+    res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
 
@@ -630,7 +658,6 @@ const quickCreate = async (req, res) => {
     if (!(perFloor > 0))
       return res.status(400).json({ message: "perFloor phải > 0" });
 
-    // 1) Kiểm tra tòa + quyền + trạng thái
     const b = await Building.findById(buildingId)
       .select("landlordId isDeleted status")
       .session(session);
@@ -646,7 +673,6 @@ const quickCreate = async (req, res) => {
         String(b.landlordId) === String(req.user._id));
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
 
-    // 2) Lấy danh sách floor hợp lệ trong tòa (cùng session)
     let floors = [];
     if (floorId) {
       const f = await Floor.findById(floorId)
@@ -683,7 +709,6 @@ const quickCreate = async (req, res) => {
         return res
           .status(403)
           .json({ message: "Có tầng đang tạm dừng hoạt động" });
-      // cần lại _id + level => truy vấn lại đầy đủ
       floors = await Floor.find({ _id: { $in: floorIds }, buildingId }).session(
         session
       );
@@ -691,7 +716,6 @@ const quickCreate = async (req, res) => {
       return res.status(400).json({ message: "Cần floorId hoặc floorIds" });
     }
 
-    // 3) Chuẩn hóa defaults
     const numPrice =
       defaults.price != null ? Number(defaults.price) : undefined;
     if (numPrice != null && (Number.isNaN(numPrice) || numPrice < 0)) {
@@ -716,7 +740,6 @@ const quickCreate = async (req, res) => {
       defaults.eStart != null ? Math.max(0, Number(defaults.eStart)) : 0;
     const numWStart =
       defaults.wStart != null ? Math.max(0, Number(defaults.wStart)) : 0;
-    // 4) Lấy các roomNumber đã có trong tòa (để tránh trùng)
     const existRooms = await Room.find({ buildingId, isDeleted: false })
       .select("roomNumber")
       .session(session)
@@ -753,7 +776,7 @@ const quickCreate = async (req, res) => {
           wStart: numWStart,
         });
 
-        existSet.add(roomNumber); // tránh trùng trong chính batch
+        existSet.add(roomNumber);
       }
     }
 
@@ -769,12 +792,10 @@ const quickCreate = async (req, res) => {
       });
     }
 
-    // 5) Tạo hàng loạt trong transaction; ordered:false để commit phần hợp lệ
     let created = [];
     try {
       created = await Room.insertMany(docs, { session, ordered: false });
     } catch (err) {
-      // Nếu có duplicate do race-condition, vẫn commit phần hợp lệ
       if (!(err?.code === 11000 || err?.writeErrors)) throw err;
     }
 

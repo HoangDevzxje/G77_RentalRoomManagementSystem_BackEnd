@@ -12,14 +12,12 @@ const createTerm = async (req, res) => {
         const landlordId = req.user._id;
         let finalBuildingId;
 
-        // Nếu là staff → dùng buildingId đã validate
         if (req.user.role === "staff") {
             if (!req.staff?.currentBuildingId) {
                 return res.status(403).json({ message: "Không có quyền" });
             }
             finalBuildingId = req.staff.currentBuildingId;
         } else {
-            // Landlord: kiểm tra quyền sở hữu
             const building = await Building.findOne({ _id: inputBuildingId, landlordId });
             if (!building) {
                 return res.status(403).json({ message: "Không có quyền tạo điều khoản cho tòa nhà này!" });

@@ -1,7 +1,6 @@
 const Building = require("../../models/Building");
 const BuildingService = require("../../models/BuildingService");
 
-// === HELPER: Xác thực quyền sở hữu tòa nhà (Landlord) HOẶC staff được giao ===
 async function assertCanAccessBuilding(req, buildingId) {
   const user = req.user;
   const staff = req.staff;

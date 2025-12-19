@@ -16,7 +16,6 @@ const getAllContacts = async (req, res) => {
           data: [],
         });
       }
-      // Staff chỉ thấy contact của tòa nhà được giao
       filter.buildingId = { $in: req.staff.assignedBuildingIds };
     }
 
@@ -129,7 +128,6 @@ const updateContractStatus = async (req, res) => {
       target: { residents: [request.tenantId] },
     });
 
-    // Gửi realtime
     const io = req.app.get("io");
     if (io) {
       io.to(`user:${request.tenantId}`).emit("new_notification", {

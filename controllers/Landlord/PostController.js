@@ -65,7 +65,7 @@ const getBuildingInfo = async (req, res) => {
                     currentContractEndDate: "$contract.contract.endDate",
                     expectedAvailableDate: {
                         $dateAdd: {
-                            startDate: "$contract.contract.endDate",  // ← Sửa ở đây
+                            startDate: "$contract.contract.endDate",
                             unit: "day",
                             amount: 1
                         }
@@ -86,13 +86,11 @@ const getBuildingInfo = async (req, res) => {
             }
         ]);
 
-        // Phòng trống bình thường
         const availableRooms = await Room.find({
             buildingId,
             status: "available",
             isDeleted: false
         }).select('roomNumber floorId price area status _id').lean();
-        // Gộp lại + đánh dấu loại phòng
         const rooms = [...availableRooms, ...soonAvailableRooms];
         const [services, regulations] = await Promise.all([
             BuildingService.find({ buildingId, isDeleted: false })
@@ -470,7 +468,6 @@ const listByLandlord = async (req, res) => {
             }
 
             filter.buildingId = { $in: req.staff.assignedBuildingIds };
-            // filter.createdBy = req.user._id;
         } else if (req.user.role === "landlord") {
             filter.landlordId = req.user._id;
         } else {

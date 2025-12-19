@@ -21,7 +21,6 @@ const FONT_REGULAR =
 const FONT_BOLD =
   process.env.CONTRACT_FONT_BOLD_PATH || "public/fonts/NotoSans-Bold.ttf";
 
-// Helper: map Account + UserInformation -> personSchema
 function mapAccountToPerson(acc) {
   if (!acc) return undefined;
   const ui = acc.userInfo || {};
@@ -33,7 +32,6 @@ function mapAccountToPerson(acc) {
     permanentAddress: normalizeAddress(ui.address),
     email: acc.email || "",
 
-    // Các field này chưa có trong UserInformation – để trống
     cccd: "",
     cccdIssuedDate: null,
     cccdIssuedPlace: "",
@@ -44,24 +42,21 @@ function mapAccountToPerson(acc) {
 function normalizeAddress(raw) {
   if (!raw) return "";
 
-  // Trường hợp là array (lịch sử địa chỉ)
   if (Array.isArray(raw)) {
     if (!raw.length) return "";
-    const last = raw[raw.length - 1]; // lấy địa chỉ gần nhất
+    const last = raw[raw.length - 1];
 
     return [last.address, last.wardName, last.districtName, last.provinceName]
       .filter(Boolean)
       .join(", ");
   }
 
-  // Trường hợp là object đơn lẻ
   if (typeof raw === "object") {
     return [raw.address, raw.wardName, raw.districtName, raw.provinceName]
       .filter(Boolean)
       .join(", ");
   }
 
-  // Trường hợp đã là string
   return String(raw);
 }
 
@@ -131,7 +126,6 @@ exports.getMyContract = async (req, res) => {
     if (!doc)
       return res.status(404).json({ message: "Không tìm thấy hợp đồng" });
 
-    // Lấy danh sách nội thất trong phòng
     const roomFurnitures = await RoomFurniture.find({
       roomId: doc.roomId,
     })
@@ -182,7 +176,6 @@ exports.updateMyData = async (req, res) => {
         ...B,
       };
 
-      // nếu B.permanentAddress FE gửi dạng object/array thì normalize
       if (merged.permanentAddress) {
         merged.permanentAddress = normalizeAddress(merged.permanentAddress);
       }
@@ -220,13 +213,12 @@ exports.updateMyData = async (req, res) => {
       contract.roommates = normalizedRoommates;
     }
 
-    //Check maxTenants: 1 (B) + số roommates
     const room = await Room.findById(contract.roomId)
       .select("maxTenants")
       .lean();
 
     const roommateCount = (contract.roommates || []).length;
-    const totalTenant = 1 + roommateCount; // 1 = B (tenant chính trong hợp đồng)
+    const totalTenant = 1 + roommateCount;
 
     if (room?.maxTenants && totalTenant > room.maxTenants) {
       return res.status(400).json({
@@ -234,7 +226,6 @@ exports.updateMyData = async (req, res) => {
       });
     }
 
-    //Build lại occupants = B + roommates
     const occupants = [];
     if (contract.B && contract.B.name) occupants.push(contract.B);
     if (Array.isArray(contract.roommates) && contract.roommates.length) {
@@ -275,7 +266,6 @@ exports.uploadIdentityVerification = async (req, res) => {
     const selfie = files.selfie?.[0];
 
 
-    // ===== VALIDATE FILES =====
     if (!cccdFront) {
       return res.status(400).json({ message: "Thiếu ảnh CCCD mặt trước" });
     }
@@ -286,7 +276,6 @@ exports.uploadIdentityVerification = async (req, res) => {
       return res.status(400).json({ message: "Thiếu ảnh selfie khuôn mặt" });
     }
 
-    // === CALL FPT ===
     const fptResult = await verifyWithFPT(
       cccdFront.path,
       cccdBack?.path,
@@ -300,7 +289,6 @@ exports.uploadIdentityVerification = async (req, res) => {
     }
 
     const { ocrData, faceMatchScore, rawResponse } = fptResult;
-    // === SO KHỚP DỮ LIỆU ===
     const B = contract.B || {};
 
     const isNameMatch =
@@ -345,7 +333,6 @@ exports.uploadIdentityVerification = async (req, res) => {
       reasons.push("Khuôn mặt không khớp");
     }
 
-    // === SAVE RESULT ===
     contract.identityVerification = {
       ...cloudUrls,
 
@@ -379,7 +366,6 @@ async function verifyWithFPT(frontPath, backPath = null, selfiePath = null) {
   let tempFacePath = null;
 
   try {
-    // ===== OCR CCCD =====
     const formData = new FormData();
     formData.append("image", fs.createReadStream(frontPath));
     if (backPath) {
@@ -400,7 +386,7 @@ async function verifyWithFPT(frontPath, backPath = null, selfiePath = null) {
     const ocrBody = ocrRes.data;
 
     if (ocrBody.errorCode !== 0) {
-      console.error("❌ FPT OCR ERROR:", {
+      console.error("FPT OCR ERROR:", {
         errorCode: ocrBody.errorCode,
         errorMessage: ocrBody.errorMessage,
       });
@@ -423,7 +409,6 @@ async function verifyWithFPT(frontPath, backPath = null, selfiePath = null) {
         "",
     };
 
-    // ===== FACE MATCH =====
     let faceMatchScore = null;
 
     if (selfiePath) {
@@ -457,7 +442,7 @@ async function verifyWithFPT(frontPath, backPath = null, selfiePath = null) {
     };
   } catch (err) {
     if (err.response) {
-      console.error("❌ FPT API ERROR RESPONSE:", {
+      console.error("FPT API ERROR RESPONSE:", {
         status: err.response.status,
         headers: err.response.headers,
         data: err.response.data,
@@ -471,7 +456,7 @@ async function verifyWithFPT(frontPath, backPath = null, selfiePath = null) {
           "FPT từ chối ảnh (không nhận diện được CCCD)",
       };
     }
-    console.error("🔥 FPT CALL ERROR:", err.message);
+    console.error("FPT CALL ERROR:", err.message);
     return {
       success: false,
       error: err.message || "Lỗi gọi FPT API",
@@ -492,7 +477,7 @@ function cleanupLocalFiles(files) {
         try {
           fs.unlinkSync(f.path);
         } catch (e) {
-          console.error("❌ Cleanup file error:", f.path, e.message);
+          console.error("Cleanup file error:", f.path, e.message);
         }
       }
     });
@@ -607,12 +592,11 @@ exports.signByTenant = async (req, res) => {
       createByRole: "resident",
       title,
       content,
-      // type: "contract_signed",
+      type: "reminder",
       target: { buildings: [buildingId] },
       link: `/landlord/contracts`,
     });
 
-    //  REALTIME EMIT
     const io = req.app.get("io");
     if (io) {
       const payload = {
@@ -675,7 +659,7 @@ exports.searchAccountByEmail = async (req, res) => {
     const acc = await Account.findOne({
       email: normalizedEmail,
       isActivated: true,
-      role: "resident", // chỉ cho phép thêm tài khoản người thuê khác
+      role: "resident",
     })
       .populate("userInfo")
       .lean();
@@ -686,7 +670,6 @@ exports.searchAccountByEmail = async (req, res) => {
         .json({ message: "Không tìm thấy tài khoản với email này" });
     }
 
-    // Không cho tự add chính mình làm roommate
     if (String(acc._id) === String(tenantId)) {
       return res.status(400).json({
         message: "Bạn không thể thêm chính mình làm người ở cùng",
@@ -739,7 +722,6 @@ exports.requestExtend = async (req, res) => {
       });
     }
 
-    // Đã có yêu cầu pending rồi thì không cho tạo thêm
     if (
       contract.renewalRequest &&
       contract.renewalRequest.status === "pending"
@@ -752,7 +734,6 @@ exports.requestExtend = async (req, res) => {
     const now = new Date();
     const endDate = new Date(contract.contract.endDate);
 
-    // Ví dụ rule: chỉ cho gửi yêu cầu trong vòng 60 ngày trước khi hết hợp đồng
     const diffMs = endDate - now;
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
     if (diffDays > 60) {
@@ -767,11 +748,10 @@ exports.requestExtend = async (req, res) => {
       });
     }
 
-    // Tính requestedEndDate = endDate + months
     const requestedEndDate = new Date(endDate);
     requestedEndDate.setMonth(requestedEndDate.getMonth() + Number(months));
 
-    const requestedStart = endDate; // ngày kết thúc cũ
+    const requestedStart = endDate;
     const requestedEnd = requestedEndDate;
 
     const roomId = contract.roomId;
@@ -798,7 +778,6 @@ exports.requestExtend = async (req, res) => {
       const s2 = new Date(c.contract.startDate);
       const e2 = new Date(c.contract.endDate);
 
-      // overlap nếu: start1 <= end2 AND start2 <= end1
       if (requestedStart <= e2 && s2 <= requestedEnd) {
         conflictContract = c;
         break;
@@ -806,7 +785,6 @@ exports.requestExtend = async (req, res) => {
     }
 
     if (conflictContract) {
-      // Format tháng/năm theo yêu cầu
       const formatMonth = (d) =>
         `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 
@@ -833,7 +811,6 @@ exports.requestExtend = async (req, res) => {
 
     await contract.save();
 
-    //      TẠO THÔNG BÁO
     const landlordId = contract.landlordId?._id;
     const buildingId = contract.buildingId?._id;
     const tenantInfo = await UserInformation.findById(req.user.userInfo).lean();
@@ -847,6 +824,7 @@ exports.requestExtend = async (req, res) => {
       title: "Yêu cầu gia hạn hợp đồng",
       content,
       target: { buildings: [buildingId] },
+      type: "reminder",
       link: `/landlord/contact-management`,
     });
 
@@ -1000,7 +978,6 @@ async function loadImageBuffer(signatureUrl) {
   if (!signatureUrl) return null;
 
   try {
-    // Nếu là URL http/https (Cloudinary, S3, v.v.)
     if (/^https?:\/\//i.test(signatureUrl)) {
       const resp = await axios.get(signatureUrl, {
         responseType: "arraybuffer",
@@ -1024,7 +1001,6 @@ async function loadImageBuffer(signatureUrl) {
   if (!signatureUrl) return null;
 
   try {
-    // Nếu là URL http/https (Cloudinary, S3, v.v.)
     if (/^https?:\/\//i.test(signatureUrl)) {
       const resp = await axios.get(signatureUrl, {
         responseType: "arraybuffer",
@@ -1033,8 +1009,6 @@ async function loadImageBuffer(signatureUrl) {
       return Buffer.from(resp.data);
     }
 
-    // Nếu là path local, ví dụ: "/uploads/signatures/abc.png"
-    // Tùy dự án của bạn, chỉnh lại root cho đúng
     const filePath = path.isAbsolute(signatureUrl)
       ? signatureUrl
       : path.join(process.cwd(), signatureUrl);
@@ -1541,7 +1515,6 @@ exports.requestTerminate = async (req, res) => {
       });
     }
 
-    // Nếu đã có request pending
     if (
       contract.terminationRequest &&
       contract.terminationRequest.status === "pending"
@@ -1551,7 +1524,6 @@ exports.requestTerminate = async (req, res) => {
       });
     }
 
-    // Tạo yêu cầu mới
     contract.terminationRequest = {
       reason,
       note: note || "",
@@ -1562,7 +1534,6 @@ exports.requestTerminate = async (req, res) => {
 
     await contract.save();
 
-    // Thông báo landlord
     const buildingId = contract.buildingId;
     const landlordId = contract.landlordId?._id || contract.landlordId;
 
@@ -1573,6 +1544,7 @@ exports.requestTerminate = async (req, res) => {
       title: "Yêu cầu chấm dứt hợp đồng",
       content: `Người thuê yêu cầu chấm dứt hợp đồng phòng ${contract?.roomId?.roomNumber} của tòa nhà ${contract?.buildingId?.name}`,
       target: { buildings: [buildingId] },
+      type: "reminder",
       link: `/landlord/contact-management`,
     });
     const io = req.app.get("io");

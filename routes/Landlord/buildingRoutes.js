@@ -658,6 +658,7 @@ router.put(
 router.delete(
   "/:id/soft",
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   BuildingCtrl.softDelete
 );
 /**
@@ -731,6 +732,7 @@ router.delete(
 router.post(
   "/:id/restore",
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   BuildingCtrl.restore
 );
 /**
@@ -827,7 +829,12 @@ router.post(
  */
 router.patch(
   "/:id/status",
+  (req, res, next) => {
+    req._buildingAction = "toggleActive";
+    next();
+  },
   checkAuthorize(["admin", "landlord"]),
+  checkSubscription,
   BuildingCtrl.updateStatus
 );
 router.delete(

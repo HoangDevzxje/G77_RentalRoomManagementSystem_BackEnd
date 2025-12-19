@@ -1169,9 +1169,13 @@ router.post(
  */
 router.patch(
   "/:id/status",
+  (req, res, next) => {
+    req._floorAction = "toggleActive";
+    next();
+  },
   checkAuthorize(["admin", "landlord", "staff"]),
   checkStaffPermission(PERMISSIONS.FLOOR_EDIT),
-
+  checkSubscription,
   FloorCtrl.updateStatus
 );
 /**
@@ -1234,6 +1238,7 @@ router.get(
 router.post(
   "/:id/laundry-devices",
   checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  checkSubscription,
   FloorCtrl.createLaundryDevice
 );
 
@@ -1298,11 +1303,13 @@ router.post(
 router.patch(
   "/:id/laundry-devices/:deviceId",
   checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  checkSubscription,
   FloorCtrl.updateLaundryDevice
 );
 router.delete(
   "/:id/laundry-devices/:deviceId",
   checkAuthorize(["admin", "landlord", "staff", "resident"]),
+  checkSubscription,
   FloorCtrl.deleteLaundryDevice
 );
 

@@ -2,13 +2,13 @@ const mongoose = require("mongoose");
 
 const buildingSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true }, // Tên tòa nhà (Toà A, Toà B)
-    address: { type: String, required: true }, // Địa chỉ
+    name: { type: String, required: true },
+    address: { type: String, required: true },
     landlordId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account",
       required: true,
-    }, // Chủ trọ sở hữu
+    },
     eIndexType: {
       type: String,
       enum: ["byNumber"],

@@ -51,7 +51,6 @@ exports.bulkCreate = async (req, res) => {
         .json({ message: "mode phải là 'create' hoặc 'upsert'" });
     }
 
-    // 1) Validate building + quyền
     const b = await Building.findById(buildingId).lean();
     if (!b) return res.status(404).json({ message: "Không tìm thấy tòa" });
 
@@ -63,7 +62,6 @@ exports.bulkCreate = async (req, res) => {
     else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
       return res.status(403).json({ message: "Không có quyền với tòa này" });
     }
-    // 2) Chuẩn hóa input & phát hiện trùng trong payload
     const normalized = items.map((it, idx) => ({
       idx,
       furnitureId: it.furnitureId,
@@ -84,7 +82,7 @@ exports.bulkCreate = async (req, res) => {
       seen.add(String(it.furnitureId));
     }
 
-    // 3) Kiểm tra furnitureId tồn tại
+    // kiểm tra furnitureId tồn tại
     const furnitureIds = [...new Set(normalized.map((x) => x.furnitureId))];
     const furns = await Furniture.find({ _id: { $in: furnitureIds } })
       .select("_id")
@@ -94,7 +92,7 @@ exports.bulkCreate = async (req, res) => {
       (id) => !existFurnSet.has(String(id))
     );
 
-    // 4) Kiểm tra cái đã tồn tại trong tòa
+    // kiểm tra cái đã tồn tại trong tòa
     const existPairs = await BuildingFurniture.find({
       buildingId,
       furnitureId: {
@@ -105,13 +103,13 @@ exports.bulkCreate = async (req, res) => {
       .lean();
     const existSet = new Set(existPairs.map((x) => String(x.furnitureId)));
 
-    // 5) Phân loại insert / update / skip
+    // phân loại insert / update / skip
     const toInsert = [];
     const toUpdate = [];
-    const skippedExisting = []; // đã có & mode=create thì bỏ qua
+    const skippedExisting = [];
 
     for (const it of normalized) {
-      if (!existFurnSet.has(String(it.furnitureId))) continue; // bỏ qua vì invalid
+      if (!existFurnSet.has(String(it.furnitureId))) continue;
       if (existSet.has(String(it.furnitureId))) {
         if (mode === "upsert") {
           toUpdate.push(it);
@@ -130,7 +128,6 @@ exports.bulkCreate = async (req, res) => {
       }
     }
 
-    // 6) Dry-run preview
     if (dryRun) {
       await session.abortTransaction();
       return res.status(200).json({
@@ -153,7 +150,6 @@ exports.bulkCreate = async (req, res) => {
       });
     }
 
-    // 7) Thực thi
     let created = [];
     if (toInsert.length) {
       // ordered:false để không fail cả batch nếu có race-condition trùng key
@@ -198,7 +194,6 @@ exports.bulkCreate = async (req, res) => {
     });
   } catch (err) {
     await session.abortTransaction();
-    // duplicate key trong trường hợp race-condition
     if (err?.code === 11000) {
       return res.status(409).json({
         message: "Một số nội thất đã tồn tại trong tòa (duplicate key).",
@@ -273,7 +268,6 @@ exports.getAll = async (req, res) => {
       }
     }
 
-    // 2) Có buildingId: kiểm tra quyền
     const building = await Building.findById(buildingId).lean();
     if (!building)
       return res.status(404).json({ message: "Không tìm thấy tòa" });
@@ -291,7 +285,6 @@ exports.getAll = async (req, res) => {
       const data = await BuildingFurniture.aggregate([
         { $match: { buildingId: new mongoose.Types.ObjectId(buildingId) } },
 
-        // Rooms của tòa (không lọc hết nếu không có isDeleted)
         {
           $lookup: {
             from: "rooms",
@@ -313,11 +306,10 @@ exports.getAll = async (req, res) => {
         },
         { $addFields: { totalRooms: { $size: "$rooms" } } },
 
-        // RoomFurniture (overrides) trùng furnitureId trong các room của tòa
         {
           $lookup: {
-            from: "roomfurnitures", // đảm bảo đúng tên collection
-            let: { roomIds: "$rooms._id", fId: "$furnitureId" }, // furnitureId là ObjectId
+            from: "roomfurnitures",
+            let: { roomIds: "$rooms._id", fId: "$furnitureId" },
             pipeline: [
               {
                 $match: {
@@ -372,7 +364,6 @@ exports.getAll = async (req, res) => {
           },
         },
 
-        // Join tên furniture & building để hiển thị
         {
           $lookup: {
             from: "furnitures",
@@ -392,7 +383,6 @@ exports.getAll = async (req, res) => {
         },
         { $unwind: "$building" },
 
-        // Output gọn + (tạm expose sumOverrideQty để bạn kiểm tra)
         {
           $project: {
             _id: 1,
@@ -412,7 +402,7 @@ exports.getAll = async (req, res) => {
             totalRooms: 1,
             roomsOverridden: 1,
             roomsByDefault: 1,
-            sumOverrideQty: 1, // ← giúp debug, OK rồi có thể bỏ
+            sumOverrideQty: 1,
             totalQuantityActual: 1,
           },
         },
@@ -422,7 +412,6 @@ exports.getAll = async (req, res) => {
       return res.json(data);
     }
 
-    // 4) Không withStats: find + populate (nhẹ)
     const list = await BuildingFurniture.find({ buildingId })
       .populate("buildingId", "name address description")
       .populate("furnitureId", "name")
@@ -433,7 +422,6 @@ exports.getAll = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
-// === GET ONE, UPDATE, REMOVE: thêm check buildingId từ document ===
 const assertBuildingAccess = async (req, res, next) => {
   try {
     const doc = await BuildingFurniture.findById(req.params.id).lean();
@@ -450,7 +438,7 @@ const assertBuildingAccess = async (req, res, next) => {
       return res.status(403).json({ message: "Không có quyền" });
     }
 
-    req.__buildingFurnitureDoc = doc; // truyền tiếp nếu cần
+    req.__buildingFurnitureDoc = doc;
     next();
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -504,7 +492,6 @@ exports.applyToRooms = async (req, res) => {
     else if (req.user.role === "landlord" && String(b.landlordId) !== String(req.user._id)) {
       return res.status(403).json({ message: "Không có quyền" });
     }
-    //Lấy cấu hình nội thất ở tòa
     const invFilter = { buildingId, status: "active" };
     if (Array.isArray(furnitureIds) && furnitureIds.length) {
       invFilter.furnitureId = { $in: furnitureIds };
@@ -516,7 +503,6 @@ exports.applyToRooms = async (req, res) => {
         .json({ message: "Không có cấu hình nội thất ACTIVE trong tòa để áp" });
     }
 
-    //Lấy danh sách phòng mục tiêu
     const roomFilter = { buildingId };
     if (Array.isArray(roomIds) && roomIds.length)
       roomFilter._id = { $in: roomIds };
@@ -526,7 +512,6 @@ exports.applyToRooms = async (req, res) => {
     if (!rooms.length)
       return res.status(400).json({ message: "Không có phòng để áp" });
 
-    //Lập bulkWrite ops cho RoomFurniture
     const ops = [];
     for (const r of rooms) {
       for (const inv of buildingInvs) {
@@ -561,7 +546,7 @@ exports.applyToRooms = async (req, res) => {
                   buildingId: r.buildingId,
                   roomId: r._id,
                   furnitureId: inv.furnitureId,
-                  quantity: 0, // để $inc hoạt động khi upsert
+                  quantity: 0,
                   condition: "good",
                 },
               },
@@ -593,7 +578,6 @@ exports.applyToRooms = async (req, res) => {
       });
     }
 
-    //Thực thi
     const result = await RoomFurniture.bulkWrite(ops, {
       session,
       ordered: false,

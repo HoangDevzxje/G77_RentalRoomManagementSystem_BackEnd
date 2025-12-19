@@ -7,7 +7,6 @@ const {
   getLaundryDevicesInBuilding,
 } = require("../controllers/Landlord/BuildingController");
 
-// --- CONFIG ---
 const IS_DEBUG = false;
 
 const floorIntervals = new Map();
@@ -88,7 +87,6 @@ function setupLaundrySocket(io, socket) {
   if (IS_DEBUG)
     console.log("[Laundry] Handlers attached for socket", socket.id);
 
-  // --- JOIN TẦNG ---
   socket.on("join_laundry_floor", async ({ floorId }) => {
     try {
       if (!mongoose.Types.ObjectId.isValid(floorId)) {
@@ -111,7 +109,6 @@ function setupLaundrySocket(io, socket) {
       if (IS_DEBUG)
         console.log(`[Laundry] Socket ${socket.id} join room ${room}`);
 
-      // Gửi trạng thái lần đầu
       try {
         const data = await getLaundryStatusForFloor(floorId);
         socket.emit("laundry_status", data);

@@ -19,7 +19,6 @@ module.exports = async (socket, io) => {
     console.log(`[Socket] User ${userId} joined personal room`);
 
   try {
-    // ==================== RESIDENT ====================
     if (user.role === "resident") {
       const rooms = await Room.find({
         currentTenantIds: user._id,
@@ -47,7 +46,6 @@ module.exports = async (socket, io) => {
       return;
     }
 
-    // ==================== STAFF ====================
     if (user.role === "staff") {
       const staff = await Employee.findOne({
         accountId: user._id,
@@ -70,7 +68,6 @@ module.exports = async (socket, io) => {
       return;
     }
 
-    // ==================== LANDLORD ====================
     if (user.role === "landlord") {
       return;
     }

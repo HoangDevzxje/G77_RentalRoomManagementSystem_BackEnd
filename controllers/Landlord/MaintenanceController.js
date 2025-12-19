@@ -41,7 +41,6 @@ exports.listRequests = async (req, res) => {
       if (!ownedIds.length)
         return res.json({ success: true, data: [], total: 0 });
 
-      // Nếu có truyền buildingId thì chỉ filter theo building đó
       filter.buildingId = buildingId ? buildingId : { $in: ownedIds };
     }
 
@@ -249,7 +248,6 @@ exports.updateRequest = async (req, res) => {
     }
 
     await maintenance.save();
-    // === 6. GỬI THÔNG BÁO + REALTIME CHO RESIDENT (LUÔN GỬI, DÙ CÓ TIỀN HAY KHÔNG) ===
     const io = req.app.get("io");
     const user = await Account.findById(req.user._id).populate("userInfo");
     const senderName = user?.userInfo?.fullName || req.user.email.split("@")[0] || "Chủ nhà";
@@ -457,7 +455,6 @@ exports.updateComment = async (req, res) => {
     const user = await Account.findById(req.user._id).populate("userInfo");
     const senderName = user?.userInfo?.fullName || req.user.email.split("@")[0] || "Chủ nhà";
 
-    // === GỬI THÔNG BÁO REALTIME + DB ===
     const io = req.app.get("io");
     if (io && maintenance.roomId?.currentTenantIds?.length) {
       const notification = await Notification.create({
@@ -500,7 +497,6 @@ exports.updateComment = async (req, res) => {
   }
 };
 
-// ================== XÓA COMMENT ==================
 exports.deleteComment = async (req, res) => {
   try {
     const { id, commentId } = req.params;
@@ -539,7 +535,6 @@ exports.deleteComment = async (req, res) => {
     maintenance.timeline.pull({ _id: commentId });
     await maintenance.save();
 
-    // === GỬI THÔNG BÁO REALTIME + DB ===
     const io = req.app.get("io");
     if (io && maintenance.roomId?.currentTenantIds?.length) {
       const notification = await Notification.create({

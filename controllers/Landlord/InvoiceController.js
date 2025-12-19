@@ -215,9 +215,8 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
     : "N/A";
 
-  let html = `<p>Chào ${
-    tenant.userInfo?.fullName || "Anh/Chị"
-  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  let html = `<p>Chào ${tenant.userInfo?.fullName || "Anh/Chị"
+    },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
   html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
   html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
   html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
@@ -293,15 +292,13 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
       return existed;
     }
 
-    // Nếu không có buildingId/landlordId thì thôi (không tạo log)
     if (!invoice.buildingId || !invoice.landlordId) return;
 
     const amount = Number(invoice.totalAmount) || 0;
     if (amount <= 0) return;
 
-    const title = `Thu tiền hóa đơn ${
-      invoice.invoiceNumber || String(invoice._id)
-    }`;
+    const title = `Thu tiền hóa đơn ${invoice.invoiceNumber || String(invoice._id)
+      }`;
 
     const descParts = [];
     if (invoice.roomSnapshot?.roomNumber) {
@@ -324,13 +321,12 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
       type: "revenue",
       amount,
       recordedAt: invoice.paidAt || new Date(),
-      images: [], // auto log từ hóa đơn -> không cần ảnh
+      images: [],
     });
 
     return record;
   } catch (err) {
     console.error("ensureRevenueLogForInvoicePaid error:", err);
-    // Không throw để tránh làm fail API thanh toán
     return null;
   }
 }
@@ -447,7 +443,6 @@ exports.generateMonthlyInvoice = async (req, res) => {
       contractId: contract._id,
       periodMonth: month,
       periodYear: year,
-      // Chỉ check xung đột với hóa đơn tháng (để hóa đơn tiền cọc không chặn tạo hóa đơn tháng)
       invoiceKind: { $in: [null, "monthly", "periodic"] },
       isDeleted: false,
     }).lean();
@@ -459,7 +454,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       });
     }
 
-    // 4. Lấy bản ghi điện nước đã xác nhận (UPDATED: lấy THEO THÁNG HIỆN TẠI)
+    // 4. Lấy bản ghi điện nước đã xác nhận 
     const utilityReading = await UtilityReading.findOne({
       landlordId,
       buildingId: room.buildingId,
@@ -481,7 +476,6 @@ exports.generateMonthlyInvoice = async (req, res) => {
     const items = [];
 
     // 5.1. Tiền phòng (tuỳ chọn) - tính theo chu kỳ thanh toán trong hợp đồng
-    // (vẫn bill cho NEXT month theo chu kỳ)
     if (includeRent) {
       const rentItem = buildRentItemByPaymentCycle({
         contract,
@@ -491,7 +485,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       if (rentItem) items.push(rentItem);
     }
 
-    // 5.2. Tiền điện / nước từ UtilityReading + giá ở tòa (UPDATED: description = tháng hiện tại)
+    // 5.2. Tiền điện / nước từ UtilityReading + giá ở tòa 
     if (utilityReading) {
       const eConsumption = utilityReading.eConsumption || 0;
       const wConsumption = utilityReading.wConsumption || 0;
@@ -539,7 +533,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       }
     }
 
-    // 5.3. Dịch vụ tòa nhà (UPDATED: cũng là tháng hiện tại cho đồng bộ)
+    // 5.3. Dịch vụ tòa nhà 
     const occupantCount = 1 + (contract.roommates?.length || 0);
 
     for (const sv of buildingServices) {
@@ -554,12 +548,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -577,7 +571,7 @@ exports.generateMonthlyInvoice = async (req, res) => {
       });
     }
 
-    // 5.4. Chi phí phát sinh (extraItems)
+    // 5.4. Chi phí phát sinh 
     if (Array.isArray(extraItems)) {
       for (const raw of extraItems) {
         if (!raw) continue;
@@ -902,14 +896,10 @@ exports.updateInvoice = async (req, res) => {
     const body = req.body || {};
     const rawItems = Array.isArray(body.items) ? body.items : [];
 
-    // Lưu lại giá trị cũ để log metaDiff (sent)
     const oldNote = invoice.note || "";
     const oldDiscountAmount = invoice.discountAmount || 0;
     const oldLateFee = invoice.lateFee || 0;
 
-    // ==========================
-    // 1. Update note / discount / lateFee (dùng chung cho các trạng thái)
-    // ==========================
     if (body.note !== undefined) {
       invoice.note = String(body.note || "");
     }
@@ -932,18 +922,11 @@ exports.updateInvoice = async (req, res) => {
       invoice.lateFee = val;
     }
 
-    // ==========================
-    // 2. Xử lý theo trạng thái
-    // ==========================
 
-    // ---------- DRAFT ----------
     if (currentStatus === "draft") {
-      // Nếu có gửi items lên thì xử lý
       if (Array.isArray(body.items)) {
-        // Gán items mới từ body
         invoice.items = body.items;
 
-        // Đồng bộ các dòng điện/nước với UtilityReading
         for (const item of invoice.items) {
           if (!item || (item.type !== "electric" && item.type !== "water"))
             continue;
@@ -968,7 +951,6 @@ exports.updateInvoice = async (req, res) => {
             });
           }
 
-          // Lấy chỉ số cuối mới từ meta.currentIndex (nếu có)
           let newCurrentIndex = null;
           if (
             item.meta &&
@@ -980,7 +962,6 @@ exports.updateInvoice = async (req, res) => {
             }
           }
 
-          // Nếu có gửi chỉ số cuối mới thì validate + cập nhật vào UtilityReading
           if (newCurrentIndex != null) {
             if (newCurrentIndex < 0) {
               return res
@@ -1008,19 +989,17 @@ exports.updateInvoice = async (req, res) => {
               reading.wCurrentIndex = newCurrentIndex;
             }
 
-            // Lưu lại để hook trong UtilityReading tự tính consumption / amount
             await reading.save();
           }
 
-          // Sau khi save (hoặc không đổi chỉ số), luôn sync ngược lại vào item trong hoá đơn
           if (item.type === "electric") {
             const quantity =
               reading.eConsumption != null
                 ? reading.eConsumption
                 : Math.max(
-                    0,
-                    (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
-                  );
+                  0,
+                  (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.eUnitPrice != null
@@ -1042,9 +1021,9 @@ exports.updateInvoice = async (req, res) => {
               reading.wConsumption != null
                 ? reading.wConsumption
                 : Math.max(
-                    0,
-                    (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
-                  );
+                  0,
+                  (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.wUnitPrice != null
@@ -1065,7 +1044,6 @@ exports.updateInvoice = async (req, res) => {
         }
       }
 
-      // Xử lý đổi status ở draft (giữ như cũ)
       if (body.status !== undefined) {
         const nextStatus = String(body.status);
         const allowedNext = ["draft", "sent", "cancelled", "overdue"];
@@ -1090,7 +1068,6 @@ exports.updateInvoice = async (req, res) => {
         }
       }
 
-      // Recalc tổng nếu có thay đổi tiền
       if (
         Array.isArray(body.items) ||
         body.discountAmount !== undefined ||
@@ -1108,9 +1085,7 @@ exports.updateInvoice = async (req, res) => {
       });
     }
 
-    // ---------- OVERDUE ----------
     if (currentStatus === "overdue") {
-      // Không cho sửa items
       if (body.items !== undefined) {
         return res.status(400).json({
           message:
@@ -1118,7 +1093,6 @@ exports.updateInvoice = async (req, res) => {
         });
       }
 
-      // Chỉ recalc nếu discount/lateFee đổi
       if (body.discountAmount !== undefined || body.lateFee !== undefined) {
         invoice.recalculateTotals();
       }
@@ -1132,7 +1106,6 @@ exports.updateInvoice = async (req, res) => {
       });
     }
 
-    // ---------- SENT ----------
     if (currentStatus === "sent") {
       const originalItems =
         invoice.items && typeof invoice.items.toObject === "function"
@@ -1146,7 +1119,6 @@ exports.updateInvoice = async (req, res) => {
         (it) => it && (it.type === "electric" || it.type === "water")
       );
 
-      // Không cho phép sửa/thêm/xoá rent + service → nếu body gửi các dòng này thì báo lỗi luôn
       const hasRentOrServiceInBody = rawItems.some(
         (it) => it && (it.type === "rent" || it.type === "service")
       );
@@ -1157,14 +1129,12 @@ exports.updateInvoice = async (req, res) => {
         });
       }
 
-      // Tách items body
       const bodyElectricWater = rawItems.filter(
         (it) => it && (it.type === "electric" || it.type === "water")
       );
       const bodyOther = rawItems.filter((it) => it && it.type === "other");
 
-      // Map electric/water cũ theo utilityReadingId để đảm bảo KHÔNG THÊM MỚI
-      const oldEWByReadingId = new Map(); // key: type + readingId
+      const oldEWByReadingId = new Map();
       for (const it of oldElectricWater) {
         const rid = it.utilityReadingId ? String(it.utilityReadingId) : "";
         const key = `${it.type || ""}:${rid}`;
@@ -1173,9 +1143,6 @@ exports.updateInvoice = async (req, res) => {
 
       const newElectricWaterItems = [];
 
-      // Xử lý bodyElectricWater:
-      // - Chỉ cho phép UPDATE chỉ số cuối (meta.currentIndex) của các dòng đã tồn tại
-      // - Nếu gặp utilityReadingId không tồn tại → báo lỗi (không cho thêm mới)
       for (const bodyItem of bodyElectricWater) {
         if (!bodyItem.utilityReadingId) {
           return res.status(400).json({
@@ -1196,7 +1163,6 @@ exports.updateInvoice = async (req, res) => {
           });
         }
 
-        // Tìm UtilityReading tương ứng
         const reading = await UtilityReading.findOne({
           _id: bodyItem.utilityReadingId,
           landlordId,
@@ -1210,7 +1176,6 @@ exports.updateInvoice = async (req, res) => {
           });
         }
 
-        // Đọc currentIndex mới
         let newCurrentIndex = null;
         if (
           bodyItem.meta &&
@@ -1219,7 +1184,6 @@ exports.updateInvoice = async (req, res) => {
           newCurrentIndex = Number(bodyItem.meta.currentIndex);
         }
 
-        // Nếu không gửi currentIndex mới → giữ lại item cũ
         if (newCurrentIndex == null || Number.isNaN(newCurrentIndex)) {
           newElectricWaterItems.push(oldItem);
           continue;
@@ -1231,7 +1195,6 @@ exports.updateInvoice = async (req, res) => {
             .json({ message: "Chỉ số cuối phải là số >= 0" });
         }
 
-        // Cập nhật reading + recalc từ reading
         if (bodyItem.type === "electric") {
           const prev = reading.ePreviousIndex ?? 0;
           if (newCurrentIndex < prev) {
@@ -1254,7 +1217,6 @@ exports.updateInvoice = async (req, res) => {
 
         await reading.save();
 
-        // Build lại item từ reading + giữ label/unitPrice gốc
         if (bodyItem.type === "electric") {
           const quantity = reading.eConsumption || 0;
           const unitPrice =
@@ -1298,11 +1260,9 @@ exports.updateInvoice = async (req, res) => {
         }
       }
 
-      // Những dòng electric/water cũ mà body KHÔNG gửi gì → giữ nguyên
       for (const oldItem of oldElectricWater) {
-        const key = `${oldItem.type || ""}:${
-          oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
-        }`;
+        const key = `${oldItem.type || ""}:${oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
+          }`;
         const touched = bodyElectricWater.some(
           (b) => `${b.type || ""}:${String(b.utilityReadingId || "")}` === key
         );
@@ -1311,7 +1271,6 @@ exports.updateInvoice = async (req, res) => {
         }
       }
 
-      // Xử lý other: thay toàn bộ other bằng list mới trong body
       const newOtherItems = [];
       for (const it of bodyOther) {
         const label = String(it.label || "").trim();
@@ -1336,21 +1295,16 @@ exports.updateInvoice = async (req, res) => {
         });
       }
 
-      // Ghép final items:
-      // - rent + service: giữ nguyên
-      // - electric + water: bản đã update chỉ số
-      // - other: thay bằng list mới
+
       const finalItems = [
         ...oldRentService,
         ...newElectricWaterItems,
         ...newOtherItems,
       ];
 
-      // Gắn items mới + recalc
       invoice.items = finalItems;
       invoice.recalculateTotals();
 
-      // ====== LOG LỊCH SỬ THAY ĐỔI (chỉ cho trạng thái sent) ======
       const itemsDiff = buildItemsDiff(originalItems, finalItems);
 
       const metaDiff = {};
@@ -1393,7 +1347,6 @@ exports.updateInvoice = async (req, res) => {
           updatedAt: new Date(),
         });
       }
-      // =====================
 
       invoice.updatedBy = req.user._id;
       await invoice.save();
@@ -1405,7 +1358,6 @@ exports.updateInvoice = async (req, res) => {
       });
     }
 
-    // Fallback (không rơi vào draft/sent/overdue)
     return res.status(400).json({
       message: `Trạng thái hiện tại '${currentStatus}' chưa hỗ trợ cập nhật bằng API này`,
     });
@@ -1464,7 +1416,6 @@ exports.replaceInvoice = async (req, res) => {
 
     const body = req.body || {};
 
-    // tạo invoice mới: copy phần cốt lõi + cho phép truyền items/note/discount/lateFee/dueDate
     const newInvoiceNumber = await Invoice.generateInvoiceNumber({
       landlordId: oldInvoice.landlordId,
       periodMonth: oldInvoice.periodMonth,
@@ -1569,7 +1520,6 @@ exports.deleteInvoice = async (req, res) => {
       });
     }
 
-    // Gỡ link với UtilityReading (nếu có) để có thể tạo hóa đơn lại
     const utilityReadingIds =
       (invoice.items || [])
         .map((it) => it.utilityReadingId)
@@ -1691,8 +1641,6 @@ exports.markInvoicePaid = async (req, res) => {
     let finalPaidAmount =
       typeof paidAmount === "number" && paidAmount > 0 ? paidAmount : total;
 
-    // Nếu muốn sau này hỗ trợ thanh toán một phần thì ở đây sẽ khác.
-    // Hiện tại: coi như thanh toán đủ 100%.
     invoice.paidAmount = finalPaidAmount;
     invoice.status = "paid";
 
@@ -1703,7 +1651,6 @@ exports.markInvoicePaid = async (req, res) => {
       }
       invoice.paymentMethod = paymentMethod;
     } else if (!invoice.paymentMethod) {
-      // default nếu landlord không truyền: coi như tiền mặt
       invoice.paymentMethod = "cash";
     }
 
@@ -1755,7 +1702,6 @@ exports.markInvoicePaid = async (req, res) => {
         "[DEPOSIT] auto confirm move-in after deposit paid failed:",
         err
       );
-      // Không fail API thanh toán nếu auto-confirm lỗi
     }
 
     // Sau khi hóa đơn đã "paid" → tự động ghi log thu
@@ -1778,10 +1724,9 @@ exports.markInvoicePaid = async (req, res) => {
           ? "Thanh toán tiền cọc thành công"
           : "Thanh toán thành công",
         content:
-          `${
-            isDeposit
-              ? "Hóa đơn tiền cọc\n"
-              : `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n`
+          `${isDeposit
+            ? "Hóa đơn tiền cọc\n"
+            : `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n`
           }` +
           `Phòng ${roomNumber} – ${buildingName}\n` +
           `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
@@ -1791,7 +1736,6 @@ exports.markInvoicePaid = async (req, res) => {
         target: { residents: affectedTenantIds },
       });
 
-      // === REALTIME PUSH ===
       const io = req.app.get("io");
       if (io) {
         const payload = {
@@ -1860,7 +1804,6 @@ exports.sendInvoiceEmail = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
 
-    // === KIỂM TRA QUYỀN STAFF THEO TÒA NHÀ ===
     if (isStaff) {
       const buildingId = invoice.buildingId?.toString();
       if (!buildingId || !req.staff.assignedBuildingIds.includes(buildingId)) {
@@ -1937,7 +1880,6 @@ exports.sendInvoiceEmail = async (req, res) => {
       });
       if (updated && updated.status === "draft") {
         await Invoice.updateOne({ _id: id }, { $set: { status: "sent" } });
-        // Lấy lại invoice để trả về thông tin mới nhất
         const refreshed = await Invoice.findById(id).lean();
         return res.json({
           message: "Đã gửi email hóa đơn cho người thuê",
@@ -1953,7 +1895,6 @@ exports.sendInvoiceEmail = async (req, res) => {
         emailStatus: result.update.emailStatus,
       });
     } catch (err) {
-      // Không block nếu việc cập nhật status fail, vẫn trả về kết quả gửi email
       console.error(
         "sendInvoiceEmail - failed to update invoice status to sent",
         err
@@ -1981,7 +1922,7 @@ exports.generateInvoice = async (req, res) => {
       roomId,
       periodMonth,
       periodYear,
-      dueDate, // optional, ISO string
+      dueDate,
       includeRent = true,
       extraItems = [],
     } = req.body || {};
@@ -2000,9 +1941,7 @@ exports.generateInvoice = async (req, res) => {
     const month = Number(periodMonth);
     const year = Number(periodYear);
 
-    // PERIODIC invoice logic:
-    // - utilities/services are billed for previous month
-    // - rent is billed for next month (following contract payment cycle)
+
     const prevPeriod = addMonthsToYearMonth({ month, year }, -1);
     const nextPeriod = addMonthsToYearMonth({ month, year }, 1);
     if (
@@ -2090,7 +2029,6 @@ exports.generateInvoice = async (req, res) => {
       contractId: contract._id,
       periodMonth: prevPeriod.month,
       periodYear: prevPeriod.year,
-      // Chỉ check xung đột với hóa đơn tháng (để hóa đơn tiền cọc không chặn tạo hóa đơn tháng)
       invoiceKind: { $in: [null, "monthly", "periodic"] },
       isDeleted: false,
     }).lean();
@@ -2102,7 +2040,7 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // 4. Lấy utilityReading confirmed của kỳ này (nếu có)
+    // 4. Lấy utilityReading confirmed của kỳ này 
     const utilityReading = await UtilityReading.findOne({
       landlordId,
       buildingId: room.buildingId,
@@ -2123,7 +2061,7 @@ exports.generateInvoice = async (req, res) => {
 
     const items = [];
 
-    // 5.1 Tiền phòng (tuỳ chọn) - tính theo chu kỳ thanh toán trong hợp đồng
+    // 5.1 Tiền phòng  - tính theo chu kỳ thanh toán trong hợp đồng
     if (includeRent) {
       const rentItem = buildRentItemByPaymentCycle({
         contract,
@@ -2197,20 +2135,19 @@ exports.generateInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
         label,
         description:
           sv.description ||
-          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${
-            prevPeriod.year
+          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${prevPeriod.year
           }`,
         quantity,
         unitPrice,
@@ -2222,7 +2159,7 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // 5.4 Chi phí phát sinh extraItems
+    // 5.4 Chi phí phát sinh 
     if (Array.isArray(extraItems)) {
       for (const raw of extraItems) {
         if (!raw) continue;
@@ -2439,7 +2376,6 @@ exports.generateMonthlyInvoicesBulk = async (req, res) => {
       try {
         await exports.generateMonthlyInvoice(fakeReq, fakeRes);
 
-        // Nếu generateMonthlyInvoice trả 201 + có data._id → success
         if (
           fakeRes.statusCode === 201 &&
           fakeRes.payload &&
@@ -2691,7 +2627,7 @@ exports.sendAllDraftInvoices = async (req, res) => {
     const filter = {
       landlordId,
       isDeleted: false,
-      status: "draft", // chỉ gửi các hóa đơn đang draft
+      status: "draft",
     };
 
     if (periodMonth) {

@@ -2,7 +2,7 @@ const cron = require("node-cron");
 const Contract = require("../models/Contract");
 const Room = require("../models/Room");
 
-// Hàm thực thi nội bộ (giữ nguyên logic kiểm tra và update DB)
+// Hàm thực thi nội bộ 
 async function endContractOnTimeInternal(contractId, options = {}) {
   const { note, forceEvenIfBeforeEndDate = false } = options;
 
@@ -22,7 +22,6 @@ async function endContractOnTimeInternal(contractId, options = {}) {
   const now = new Date();
   const endDate = new Date(contract.contract.endDate);
 
-  // Vẫn giữ tuỳ chọn forceEvenIfBeforeEndDate cho các luồng manual
   if (!forceEvenIfBeforeEndDate && now < endDate) {
     throw new Error("Chưa đến ngày kết thúc hợp đồng (endDate)");
   }
@@ -48,7 +47,7 @@ async function endContractOnTimeInternal(contractId, options = {}) {
   return { contract, room };
 }
 
-// Hàm thực thi chính – Auto kết thúc ngay khi qua ngày endDate
+// Auto kết thúc ngay khi qua ngày endDate
 async function autoEndContractsOnTime() {
   const now = new Date();
 
@@ -64,10 +63,9 @@ async function autoEndContractsOnTime() {
   );
 
   // Logic: Tìm tất cả hợp đồng completed mà endDate < today
-  // Tức là endDate đã là ngày hôm qua (hoặc xa hơn trong quá khứ)
   const contracts = await Contract.find({
     status: "completed",
-    "contract.endDate": { $lt: today }, // Sử dụng $lt (nhỏ hơn hẳn hôm nay)
+    "contract.endDate": { $lt: today },
   })
     .select("_id contract.endDate roomId")
     .lean();

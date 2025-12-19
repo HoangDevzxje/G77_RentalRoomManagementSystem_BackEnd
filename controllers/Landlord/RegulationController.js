@@ -49,7 +49,6 @@ exports.create = async (req, res) => {
     if (!building)
       return res.status(404).json({ message: "Không tìm thấy tòa" });
 
-    // Kiểm tra quyền: landlord phải là chủ của tòa
     if (
       req.user.role !== "admin" &&
       String(building.landlordId) !== String(req.user._id) &&
@@ -82,7 +81,6 @@ exports.update = async (req, res) => {
     if (!reg)
       return res.status(404).json({ message: "Không tìm thấy quy định" });
 
-    // Kiểm tra quyền
     if (
       req.user.role !== "admin" &&
       String(reg.buildingId.landlordId) !== String(req.user._id) &&

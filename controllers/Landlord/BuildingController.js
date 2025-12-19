@@ -6,6 +6,7 @@ const xlsx = require("xlsx");
 const Excel = require("exceljs");
 
 const { getDeviceStatus } = require("../../configs/tuyaClient");
+const Contract = require("../../models/Contract");
 
 const list = async (req, res) => {
   try {
@@ -421,7 +422,6 @@ const update = async (req, res) => {
 
     res.json({ success: true, data: building });
   } catch (err) {
-    // 4. Handle other errors
     res.status(400).json({ message: err.message });
   }
 };
@@ -450,7 +450,6 @@ const softDelete = async (req, res) => {
       return res.json({ message: "Đã xóa vĩnh viễn (force)" });
     }
 
-    // Soft delete + cascade mềm xuống Floor/Room
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
@@ -536,23 +535,71 @@ const updateStatus = async (req, res) => {
       return res.status(400).json({ message: "Giá trị status không hợp lệ" });
     }
 
-    const doc = await Building.findById(id).select("landlordId isDeleted");
-    if (!doc || doc.isDeleted)
+    const building = await Building.findById(id).select(
+      "_id landlordId isDeleted status"
+    );
+
+    if (!building || building.isDeleted) {
       return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
+    }
     if (
       req.user.role === "landlord" &&
-      String(doc.landlordId) !== String(req.user._id)
+      String(building.landlordId) !== String(req.user._id)
     ) {
       return res.status(403).json({ message: "Không có quyền" });
     }
 
-    await Building.updateOne({ _id: id }, { $set: { status } });
-    res.json({ message: "Cập nhật trạng thái thành công" });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
+    if (building.status === status) {
+      return res.json({ message: "Trạng thái không thay đổi" });
+    }
+
+    if (status === "inactive") {
+      const roomIds = await Room.find({
+        buildingId: building._id,
+        isDeleted: false,
+      }).distinct("_id");
+
+      if (roomIds.length > 0) {
+        const now = new Date();
+
+        const hasActiveContract = await Contract.exists({
+          roomId: { $in: roomIds },
+          status: "completed",
+          isDeleted: false,
+          "contract.startDate": { $lte: now },
+          "contract.endDate": { $gte: now },
+        });
+
+        if (hasActiveContract) {
+          return res.status(400).json({
+            message:
+              "Không thể ngưng hoạt động tòa nhà vì vẫn còn phòng có hợp đồng thuê còn hiệu lực.",
+          });
+        }
+      }
+    }
+
+    await Building.updateOne(
+      { _id: building._id },
+      { $set: { status } }
+    );
+    if (status === "inactive") {
+      await Floor.updateMany(
+        { buildingId: building._id, isDeleted: false },
+        { $set: { status: "inactive" } }
+      );
+
+      await Room.updateMany(
+        { buildingId: building._id, isDeleted: false },
+        { $set: { active: false } }
+      );
+    }
+    res.json({ message: "Cập nhật trạng thái tòa nhà thành công" });
+  } catch (err) {
+    console.error("[updateBuildingStatus]", err);
+    res.status(500).json({ message: "Lỗi hệ thống" });
   }
 };
-
 const remove = async (req, res) => {
   try {
     const doc = await Building.findById(req.params.id);
