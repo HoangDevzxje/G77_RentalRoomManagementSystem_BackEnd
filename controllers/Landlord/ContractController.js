@@ -166,7 +166,15 @@ async function createMoveInNotifications(contract, { io, mode }) {
   const tenantId = contract.tenantId;
   const buildingId = contract.buildingId;
   const roomId = contract.roomId;
+  const staffList = await Staff.find({
+    assignedBuildings: { $in: [buildingId] },
+    isDeleted: false,
+  })
+    .select("accountId")
+    .lean();
 
+  const staffIds = staffList.map((s) => s.accountId.toString()).filter(Boolean);
+  const receivers = [...new Set([landlordId, ...staffIds])].filter(Boolean);
   const titleForLandlord =
     mode === "auto"
       ? "Hệ thống đã xác nhận người thuê vào ở"
@@ -187,7 +195,7 @@ async function createMoveInNotifications(contract, { io, mode }) {
     title: titleForLandlord,
     content: contentForLandlord,
     type: "reminder",
-    target: { buildings: [buildingId] },
+    target: { residents: [receivers] },
     link: `/landlord/contracts`,
   });
 
@@ -202,19 +210,18 @@ async function createMoveInNotifications(contract, { io, mode }) {
   });
 
   if (io) {
-    const payloadLandlord = {
-      id: notiLandlord._id.toString(),
-      title: notiLandlord.title,
-      content: notiLandlord.content,
-      type: notiLandlord.type,
-      link: notiLandlord.link,
-      createdAt: notiLandlord.createdAt,
-      createBy: { id: null, name: "System", role: "system" },
-    };
+    receivers.forEach((uid) => {
+      io.to(`user:${uid}`).emit("new_notification", {
+        _id: notiLandlord._id,
+        title: notiLandlord.title,
+        content: notiLandlord.content,
+        type: notiLandlord.type,
+        link: notiLandlord.link,
+        createdAt: notiLandlord.createdAt,
+        createBy: { role: "system" },
+      });
 
-    io.to(`user:${landlordId}`).emit("new_notification", payloadLandlord);
-    io.to(`user:${landlordId}`).emit("unread_count_increment", {
-      increment: 1,
+      io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 });
     });
 
     const payloadTenant = {

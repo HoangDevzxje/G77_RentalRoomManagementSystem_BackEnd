@@ -64,7 +64,7 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
     .lean();
 
   const staffIds = staffList.map((s) => s.accountId.toString()).filter(Boolean);
-  const receivers = [...new Set([landlordId, ...staffIds])].filter(Boolean); // loại trùng + null
+  const receivers = [...new Set([landlordId, ...staffIds])].filter(Boolean);
 
   if (receivers.length > 0) {
     const tenantName = tenant?.userInfo?.fullName || tenant?.B?.name || "khách thuê";
@@ -75,7 +75,7 @@ async function sendReminderNotification({ contract, tenant, landlord }) {
       title: "Hợp đồng sắp hết hạn",
       content: `Hợp đồng của ${tenantName} (phòng ${room?.roomNumber || "N/A"}) sẽ hết hạn vào ngày <strong>${endDateStr}</strong>.`,
       type: "reminder",
-      target: { accounts: receivers },
+      target: { residents: receivers },
       link: "/landlord/contracts",
       createdAt: new Date(),
     });
