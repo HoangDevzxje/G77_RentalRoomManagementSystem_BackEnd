@@ -305,9 +305,6 @@ const contractSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// === AUTO CREATE DEPOSIT INVOICE ON CONTRACT COMPLETED (BUT NOT MOVE-IN YET) ===
-// Yêu cầu: Ngay khi hợp đồng chuyển sang "completed" (chưa vào ở) -> tự tạo hóa đơn tiền cọc.
-// Lưu ý: Hóa đơn cọc phải không chặn tạo hóa đơn tháng trong cùng kỳ (đã xử lý bằng Invoice.invoiceKind).
 contractSchema.pre("save", function (next) {
   try {
     this.$locals = this.$locals || {};
@@ -453,8 +450,7 @@ contractSchema.post("save", async function (doc) {
       issuedAt: new Date(),
       dueDate: startDate,
       items,
-      // Tạo xong là "sent" để người thuê thấy và có thể thanh toán.
-      status: "sent",
+      status: "draft",
       createdBy: doc.createBy || doc.landlordId,
     });
 
@@ -463,7 +459,6 @@ contractSchema.post("save", async function (doc) {
 
     // Thông báo cho chủ trọ khi hệ thống tạo hóa đơn cọc
     try {
-      // eslint-disable-next-line global-require
       const Notification =
         mongoose.models.Notification || require("./Notification");
       const roomNumber = doc?.searchMeta?.roomNumber || "";
