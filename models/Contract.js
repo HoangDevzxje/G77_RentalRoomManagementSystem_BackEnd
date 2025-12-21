@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-
+const getIo = () => global._io;
 const personSchema = new mongoose.Schema(
   {
     name: { type: String, required: true }, // Họ tên
@@ -201,7 +201,7 @@ const contractSchema = new mongoose.Schema(
     B: personSchema, // Bên B – người thuê chính
 
     roommates: {
-      type: [personSchema], // chỉ lưu info, không link account
+      type: [personSchema],
       default: [],
     },
 
@@ -306,8 +306,7 @@ const contractSchema = new mongoose.Schema(
 );
 
 // === AUTO CREATE DEPOSIT INVOICE ON CONTRACT COMPLETED (BUT NOT MOVE-IN YET) ===
-// Yêu cầu: Ngay khi hợp đồng chuyển sang "completed" (chưa vào ở) -> tự tạo hóa đơn tiền cọc.
-// Lưu ý: Hóa đơn cọc phải không chặn tạo hóa đơn tháng trong cùng kỳ (đã xử lý bằng Invoice.invoiceKind).
+// Ngay khi hợp đồng chuyển sang "completed" (chưa vào ở) -> tự tạo hóa đơn tiền cọc.
 contractSchema.pre("save", function (next) {
   try {
     this.$locals = this.$locals || {};
@@ -355,9 +354,6 @@ contractSchema.post("save", async function (doc) {
       periodYear,
     });
 
-    // Build items for DEPOSIT invoice:
-    // - deposit amount
-    // - rent for the first month OR for the first payment cycle (configurable)
     const items = [
       {
         type: "other",
@@ -376,8 +372,8 @@ contractSchema.post("save", async function (doc) {
         1,
         Number(
           doc?.contract?.depositRentMonths ||
-            doc?.contract?.paymentCycleMonths ||
-            1
+          doc?.contract?.paymentCycleMonths ||
+          1
         )
       );
 
@@ -464,22 +460,55 @@ contractSchema.post("save", async function (doc) {
     // Thông báo cho chủ trọ khi hệ thống tạo hóa đơn cọc
     try {
       // eslint-disable-next-line global-require
+      const io = getIo();
       const Notification =
         mongoose.models.Notification || require("./Notification");
-      const roomNumber = doc?.searchMeta?.roomNumber || "";
-      const buildingName = doc?.searchMeta?.buildingName || "";
+      const roomNumber = doc?.roomId?.roomNumber || "";
+      const buildingName = doc?.buildingId?.name || "";
+      const Staff =
+        mongoose.models.Staff || require("./Staff");
+      const staffList = await Staff.find({
+        assignedBuildings: { $in: [doc?.buildingId] },
+        isDeleted: false,
+      })
+        .select("accountId")
+        .lean();
 
-      await Notification.create({
-        landlordId: doc.landlordId,
-        createByRole: "system",
-        title: "Hệ thống đã tạo hóa đơn tiền cọc",
-        content:
-          `Đã tạo hóa đơn tiền cọc cho hợp đồng${
-            roomNumber ? ` phòng ${roomNumber}` : ""
-          }${buildingName ? ` – ${buildingName}` : ""}.\n` +
-          `Số tiền: ${depositAmount.toLocaleString("vi-VN")} ₫`,
-        type: "reminder",
-      });
+      const staffIds = staffList.map((s) => s.accountId.toString()).filter(Boolean);
+      const receivers = [...new Set([doc.landlordId, ...staffIds])].filter(Boolean);
+      console.log(receivers);
+      if (receivers.length > 0) {
+        const notiLandlord = await Notification.create({
+          landlordId: doc.landlordId,
+          createByRole: "system",
+          title: "Hệ thống đã tạo hóa đơn tiền cọc",
+          content:
+            `Đã tạo hóa đơn tiền cọc cho hợp đồng${roomNumber ? ` phòng ${roomNumber}` : ""
+            }${buildingName ? ` – ${buildingName}` : ""}.\n` +
+            `Số tiền: ${depositAmount.toLocaleString("vi-VN")} ₫`,
+          type: "reminder",
+          target: { residents: receivers },
+          link: "/landlord/invoices",
+          createdAt: new Date(),
+        });
+
+        if (io) {
+          receivers.forEach((uid) => {
+            io.to(`user:${uid}`).emit("new_notification", {
+              _id: notiLandlord._id,
+              title: notiLandlord.title,
+              content: notiLandlord.content,
+              type: notiLandlord.type,
+              link: notiLandlord.link,
+              createdAt: notiLandlord.createdAt,
+              createBy: { role: "system" },
+            });
+
+            io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 });
+          });
+          console.log(`[CRON] Sent reminder to landlord + staff (${receivers.length} người)`);
+        }
+      }
     } catch (notiErr) {
       // Không fail hook nếu không tạo được notification
       // eslint-disable-next-line no-console
