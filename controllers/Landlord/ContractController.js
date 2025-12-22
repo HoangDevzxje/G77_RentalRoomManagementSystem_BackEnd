@@ -15,6 +15,7 @@ const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
 const mongoose = require("mongoose");
+const { decrypt } = require("../../utils/crypto");
 const ROOM_CONFLICT_STATUSES = [
   "sent_to_tenant",
   "signed_by_tenant",
@@ -832,6 +833,22 @@ exports.confirmMoveIn = async (req, res) => {
     return res.status(400).json({ message: e.message });
   }
 };
+function decryptIdentityForView(contract) {
+  const iv = contract?.identityVerification;
+
+  if (
+    !iv ||
+    iv.status !== "verified" ||
+    !iv.ocrData?.cccdEncrypted
+  ) {
+    return;
+  }
+
+  const decrypted = decrypt(iv.ocrData.cccdEncrypted);
+  iv.ocrData.cccd = decrypted || null;
+
+  delete iv.ocrData.cccdEncrypted;
+}
 
 // GET /landlords/contracts/:id
 exports.getDetail = async (req, res) => {
@@ -883,7 +900,7 @@ exports.getDetail = async (req, res) => {
         userId: req.user._id,
       }
     );
-
+    decryptIdentityForView(contract);
     res.json(contract);
   } catch (e) {
     res.status(400).json({ message: e.message });

@@ -15,14 +15,15 @@ const personSchema = new mongoose.Schema(
 );
 const identityVerificationSchema = new mongoose.Schema(
   {
-    cccdFrontUrl: String,
-    cccdBackUrl: String,
-    selfieUrl: String,
-
     ocrData: {
       name: String,
       dob: String,
-      cccd: String,
+      cccdEncrypted: {
+        iv: { type: String, required: true },
+        content: { type: String, required: true },
+        tag: { type: String, required: true },
+        algo: { type: String, default: "aes-256-gcm" },
+      },
       permanentAddress: String,
     },
 
