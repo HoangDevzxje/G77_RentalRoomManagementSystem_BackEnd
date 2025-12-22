@@ -242,7 +242,7 @@ const getRoomDetailByTenant = async (req, res) => {
       data: {
         ...room,
         furnitures: furnitures.map((f) => ({
-          id: f._id,
+          _id: f._id,
           name: f.furnitureId?.name,
           type: f.furnitureId?.type,
           description: f.furnitureId?.description,

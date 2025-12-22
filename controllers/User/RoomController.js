@@ -55,6 +55,13 @@ exports.getMyRoomDetail = async (req, res) => {
           roomNumber: c.roomId.roomNumber,
           buildingName: c.buildingId?.name || "Tòa nhà",
           status: currentStatus,
+          contract: {
+            _id: c._id,
+            contractNo: c.contract.no || `HD${c._id.toString().slice(-6).toUpperCase()}`,
+            startDate: startDate,
+            endDate: endDate,
+            status: currentStatus,
+          },
         });
       }
     });
