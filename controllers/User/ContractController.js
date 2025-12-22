@@ -16,6 +16,7 @@ const Notification = require("../../models/Notification");
 const os = require("os");
 const FormData = require("form-data");
 const { uploadIdentityToCloud } = require("../../configs/identityCloud");
+const { encrypt, decrypt } = require("../../utils/crypto");
 const FONT_REGULAR =
   process.env.CONTRACT_FONT_PATH || "public/fonts/NotoSans-Regular.ttf";
 const FONT_BOLD =
@@ -143,6 +144,18 @@ exports.getMyContract = async (req, res) => {
       damageCount: rf.damageCount,
       notes: rf.notes,
     }));
+    if (
+      doc.identityVerification?.ocrData?.cccdEncrypted
+    ) {
+      const decryptedCccd = decrypt(
+        doc.identityVerification.ocrData.cccdEncrypted
+      );
+
+      doc.identityVerification.ocrData.cccd =
+        decryptedCccd || null;
+
+      delete doc.identityVerification.ocrData.cccdEncrypted;
+    }
 
     res.json(doc);
   } catch (e) {
@@ -316,11 +329,6 @@ exports.uploadIdentityVerification = async (req, res) => {
     if (selfie && faceMatchScore !== null && faceMatchScore < FACE_THRESHOLD) {
       isVerified = false;
     }
-    const cloudUrls = await uploadIdentityToCloud(
-      files,
-      contract._id,
-      tenantId
-    );
     const reasons = [];
     if (!isNameMatch) reasons.push("Tên không khớp");
     if (!isCccdMatch) reasons.push("Số CCCD không khớp");
@@ -333,11 +341,17 @@ exports.uploadIdentityVerification = async (req, res) => {
     ) {
       reasons.push("Khuôn mặt không khớp");
     }
+    const encryptedCccd = ocrData.cccd
+      ? encrypt(String(ocrData.cccd).trim())
+      : null;
 
     contract.identityVerification = {
-      ...cloudUrls,
-
-      ocrData,
+      ocrData: {
+        name: ocrData.name,
+        dob: ocrData.dob,
+        cccdEncrypted: encryptedCccd,
+        permanentAddress: ocrData.permanentAddress,
+      },
       faceMatchScore,
 
       provider: "fpt",
