@@ -13,21 +13,21 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  * @swagger
  * components:
  *   schemas:
- *     Address:
+ *     BankInfo:
  *       type: object
  *       properties:
- *         address:
+ *         bankName:
  *           type: string
- *           example: "123 Nguyễn Trãi"
- *         provinceName:
+ *           example: "Vietcombank"
+ *         accountNumber:
  *           type: string
- *           example: "Hà Nội"
- *         districtName:
+ *           example: "1234567890"
+ *         accountName:
  *           type: string
- *           example: "Thanh Xuân"
- *         wardName:
+ *           example: "NGUYEN VAN A"
+ *         qrImageUrl:
  *           type: string
- *           example: "Thượng Đình"
+ *           example: "https://example.com/qr.png"
  *
  *     UserInformation:
  *       type: object
@@ -50,9 +50,16 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *           enum: [male, female, other]
  *           example: "male"
  *         address:
- *           type: array
- *           items:
- *             $ref: '#/components/schemas/Address'
+ *           type: string
+ *           example: "123 Nguyễn Trãi, Thanh Xuân, Hà Nội"
+ *         bankInfo:
+ *           $ref: '#/components/schemas/BankInfo'
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
  *
  *     Account:
  *       type: object
@@ -65,11 +72,14 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *           example: "user@example.com"
  *         role:
  *           type: string
- *           enum: [resident, landlord, admin]
+ *           enum: [resident, landlord, admin, staff]
  *           example: "resident"
  *         isActivated:
  *           type: boolean
  *           example: true
+ *         mustChangePassword:
+ *           type: boolean
+ *           example: false
  *         userInfo:
  *           $ref: '#/components/schemas/UserInformation'
  *         createdAt:
@@ -85,6 +95,9 @@ const { checkAuthorize } = require("../middleware/authMiddleware");
  *         message:
  *           type: string
  *           example: "Đã có lỗi xảy ra"
+ *         error:
+ *           type: string
+ *           example: "Chi tiết lỗi từ server"
  */
 
 /**
@@ -159,9 +172,23 @@ router.get("/", checkAuthorize(["admin", "landlord", "resident", "staff"]), user
  *                 enum: [male, female, other]
  *                 example: "female"
  *               address:
- *                 type: array
- *                 items:
- *                   $ref: '#/components/schemas/Address'
+ *                 type: string
+ *                 example: "456 Lê Lợi, Quận 1, TP.HCM"
+ *               bankInfo:
+ *                 type: object
+ *                 properties:
+ *                   bankName:
+ *                     type: string
+ *                     example: "Vietcombank"
+ *                   accountNumber:
+ *                     type: string
+ *                     example: "1234567890"
+ *                   accountName:
+ *                     type: string
+ *                     example: "NGUYEN VAN B"
+ *                   qrImageUrl:
+ *                     type: string
+ *                     example: "https://example.com/qr.png"
  *     responses:
  *       200:
  *         description: Cập nhật thành công

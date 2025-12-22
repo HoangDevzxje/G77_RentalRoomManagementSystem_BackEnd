@@ -86,6 +86,7 @@ exports.listMyContracts = async (req, res) => {
             "contract.startDate",
             "contract.endDate",
             "terminationRequest",
+            "identityVerification",
           ].join(" ")
         )
         .populate("buildingId", "name")
