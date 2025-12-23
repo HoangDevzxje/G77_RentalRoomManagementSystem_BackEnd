@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const furnitureSchema = new mongoose.Schema(
   {
+    landlordId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+      required: true,
+    },
     name: { type: String, required: true, unique: true },
     // category: { type: String },
     price: { type: Number },
