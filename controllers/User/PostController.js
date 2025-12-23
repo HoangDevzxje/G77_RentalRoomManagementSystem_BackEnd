@@ -96,7 +96,7 @@ const getDetailPostByTenant = async (req, res) => {
       });
     }
 
-    if (post.landlordId && post.landlordId.userInfo) {
+    if (post.landlordId?.userInfo) {
       post.landlordId.fullName = post.landlordId.userInfo.fullName;
       post.landlordId.phoneNumber = post.landlordId.userInfo.phoneNumber;
       delete post.landlordId.userInfo;
@@ -105,70 +105,133 @@ const getDetailPostByTenant = async (req, res) => {
     let roomList = [];
     if (post.roomIds?.length) {
       const thresholdDate = new Date();
-      thresholdDate.setDate(thresholdDate.getDate() + 30)
+      thresholdDate.setDate(thresholdDate.getDate() + 30);
 
       roomList = await Room.aggregate([
         {
           $match: {
-            _id: { $in: post.roomIds.map(id => new mongoose.Types.ObjectId(id)) },
-            isDeleted: false
-          }
+            _id: {
+              $in: post.roomIds.map(
+                (id) => new mongoose.Types.ObjectId(id)
+              ),
+            },
+            isDeleted: false,
+          },
         },
+
         {
           $lookup: {
             from: "contracts",
-            localField: "_id",
-            foreignField: "roomId",
-            as: "contract"
-          }
+            let: { roomId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ["$roomId", "$$roomId"] },
+                  status: "completed",
+                  moveInConfirmedAt: { $ne: null },
+                  terminatedAt: null,
+                  isDeleted: false,
+                },
+              },
+              { $sort: { "contract.endDate": -1 } },
+              { $limit: 1 },
+            ],
+            as: "activeContract",
+          },
         },
-        { $unwind: { path: "$contract", preserveNullAndEmptyArrays: true } },
 
         {
           $addFields: {
             activeContract: {
-              $cond: {
-                if: {
-                  $and: [
-                    { $ne: ["$contract", null] },
-                    { $eq: ["$contract.status", "completed"] },
-                    { $ne: ["$contract.moveInConfirmedAt", null] },
-                    { $ne: ["$contract.contract.endDate", null] }
-                  ]
-                },
-                then: "$contract",
-                else: null
-              }
-            }
-          }
+              $arrayElemAt: ["$activeContract", 0],
+            },
+          },
         },
 
         {
           $addFields: {
             currentContractEndDate: {
-              $cond: {
-                if: {
+              $cond: [
+                {
                   $and: [
                     { $ne: ["$activeContract", null] },
-                    { $lte: ["$activeContract.contract.endDate", thresholdDate] }
-                  ]
+                    {
+                      $ne: [
+                        "$activeContract.contract.endDate",
+                        null,
+                      ],
+                    },
+                  ],
                 },
-                then: "$activeContract.contract.endDate",
-                else: null
-              }
-            }
-          }
+                {
+                  $toDate:
+                    "$activeContract.contract.endDate",
+                },
+                null,
+              ],
+            },
+          },
         },
+
+        {
+          $addFields: {
+            isSoonAvailable: {
+              $and: [
+                { $eq: ["$status", "rented"] },
+                { $ne: ["$currentContractEndDate", null] },
+                {
+                  $lte: [
+                    "$currentContractEndDate",
+                    thresholdDate,
+                  ],
+                },
+              ],
+            },
+          },
+        },
+
         {
           $addFields: {
             expectedAvailableDate: {
-              $cond: {
-                if: { $ne: ["$currentContractEndDate", null] },
-                then: { $dateAdd: { startDate: "$currentContractEndDate", unit: "day", amount: 1 } },
-                else: null
-              }
-            }
-          }
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$status", "rented"] },
+                    {
+                      $ne: [
+                        "$currentContractEndDate",
+                        null,
+                      ],
+                    },
+                    {
+                      $lte: [
+                        "$currentContractEndDate",
+                        thresholdDate,
+                      ],
+                    },
+                  ],
+                },
+                {
+                  $dateAdd: {
+                    startDate:
+                      "$currentContractEndDate",
+                    unit: "day",
+                    amount: 1,
+                  },
+                },
+                null,
+              ],
+            },
+          },
+        },
+
+        {
+          $addFields: {
+            isRented: { $eq: ["$status", "rented"] },
+            isAvailable: {
+              $eq: ["$status", "available"],
+            },
+          },
         },
 
         {
@@ -178,15 +241,18 @@ const getDetailPostByTenant = async (req, res) => {
             name: 1,
             price: 1,
             area: 1,
-            status: 1,
             images: 1,
+
+            status: 1,
+
             currentContractEndDate: 1,
             expectedAvailableDate: 1,
-            isSoonAvailable: { $ne: ["$expectedAvailableDate", null] },
-            isRented: { $eq: ["$status", "rented"] },
-            isAvailable: { $eq: ["$status", "available"] }
-          }
-        }
+
+            isRented: 1,
+            isAvailable: 1,
+            isSoonAvailable: 1,
+          },
+        },
       ]);
     }
 
