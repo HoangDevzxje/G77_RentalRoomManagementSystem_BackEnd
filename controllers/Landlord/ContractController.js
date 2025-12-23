@@ -127,8 +127,15 @@ async function confirmMoveInCore(contractId, { io, mode = "manual" } = {}) {
     throw new Error("Thiếu ngày bắt đầu/kết thúc hợp đồng");
   }
 
-  const now = new Date();
-  if (now < startDate || now > endDate) {
+  const tz = "Asia/Ho_Chi_Minh";
+
+  const nowLuxon = DateTime.now().setZone(tz);
+  const start = DateTime.fromJSDate(new Date(startDate))
+    .setZone(tz)
+    .startOf("day");
+  const end = DateTime.fromJSDate(new Date(endDate)).setZone(tz).endOf("day");
+
+  if (nowLuxon < start || nowLuxon > end) {
     throw new Error("Chỉ được xác nhận vào ở trong khoảng thời gian hợp đồng");
   }
 
@@ -156,7 +163,8 @@ async function confirmMoveInCore(contractId, { io, mode = "manual" } = {}) {
   room.currentContractId = contract._id;
   await room.save();
 
-  contract.moveInConfirmedAt = now;
+  // Lưu thời điểm xác nhận theo thời gian thực (JS Date)
+  contract.moveInConfirmedAt = nowLuxon.toJSDate();
   await contract.save();
 
   // Gửi notification (system)
@@ -164,11 +172,12 @@ async function confirmMoveInCore(contractId, { io, mode = "manual" } = {}) {
 
   return { success: true };
 }
+
 async function createMoveInNotifications(contract, { io, mode }) {
   const landlordId = contract.landlordId;
   const tenantId = contract.tenantId;
   const buildingId = contract.buildingId;
-  const roomId = contract.roomId;
+
   const staffList = await Staff.find({
     assignedBuildings: { $in: [buildingId] },
     isDeleted: false,
@@ -176,12 +185,15 @@ async function createMoveInNotifications(contract, { io, mode }) {
     .select("accountId")
     .lean();
 
-  const staffIds = staffList.map((s) => s.accountId.toString()).filter(Boolean);
+  const staffIds = staffList.map((s) => s.accountId).filter(Boolean);
+
   const receivers = [...new Set([landlordId, ...staffIds])].filter(Boolean);
+
   const titleForLandlord =
     mode === "auto"
       ? "Hệ thống đã xác nhận người thuê vào ở"
       : "Đã xác nhận người thuê vào ở";
+
   const contentForLandlord = `Hợp đồng ${
     contract.contract?.no || ""
   } cho phòng ${contract?.roomId?.roomNumber} đã được xác nhận vào ở.`;
@@ -190,20 +202,19 @@ async function createMoveInNotifications(contract, { io, mode }) {
     mode === "auto"
       ? "Hệ thống đã xác nhận bạn vào ở"
       : "Bạn đã được xác nhận vào ở";
+
   const contentForTenant = `Hợp đồng thuê phòng ${contract?.roomId?.roomNumber} đã được xác nhận vào ở. Chúc bạn ở vui vẻ!`;
 
-  // Thông báo cho landlord (và staff qua building)
   const notiLandlord = await Notification.create({
     landlordId,
     createByRole: "system",
     title: titleForLandlord,
     content: contentForLandlord,
     type: "reminder",
-    target: { residents: [receivers] },
+    target: { residents: receivers },
     link: `/landlord/contracts`,
   });
 
-  // Thông báo cho tenant
   const notiTenant = await Notification.create({
     landlordId,
     createByRole: "system",
@@ -220,7 +231,6 @@ async function createMoveInNotifications(contract, { io, mode }) {
         title: notiLandlord.title,
         content: notiLandlord.content,
         type: notiLandlord.type,
-        link: notiLandlord.link,
         createdAt: notiLandlord.createdAt,
         createBy: { role: "system" },
       });
@@ -228,19 +238,23 @@ async function createMoveInNotifications(contract, { io, mode }) {
       io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 });
     });
 
-    const payloadTenant = {
-      id: notiTenant._id.toString(),
-      title: notiTenant.title,
-      content: notiTenant.content,
-      type: notiTenant.type,
-      link: notiTenant.link,
-      createdAt: notiTenant.createdAt,
-      createBy: { id: null, name: "System", role: "system" },
-    };
-    io.to(`user:${tenantId}`).emit("new_notification", payloadTenant);
-    io.to(`user:${tenantId}`).emit("unread_count_increment", { increment: 1 });
+    if (tenantId) {
+      io.to(`user:${tenantId}`).emit("new_notification", {
+        _id: notiTenant._id,
+        title: notiTenant.title,
+        content: notiTenant.content,
+        type: notiTenant.type,
+        createdAt: notiTenant.createdAt,
+        createBy: { role: "system" },
+      });
+
+      io.to(`user:${tenantId}`).emit("unread_count_increment", {
+        increment: 1,
+      });
+    }
   }
 }
+
 function computeShouldShowMoveInActions(contract, { isStaff, userId } = {}) {
   if (!contract) return false;
 

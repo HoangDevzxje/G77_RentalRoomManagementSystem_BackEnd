@@ -813,6 +813,7 @@ const quickCreate = async (req, res) => {
     session.endSession();
   }
 };
+
 // GET /landlords/rooms/:id/active-contract
 const getActiveContractByRoomId = async (req, res) => {
   try {
@@ -849,6 +850,7 @@ const getActiveContractByRoomId = async (req, res) => {
       return res.status(403).json({ message: "Không có quyền" });
     }
 
+    // staff chỉ được xem phòng thuộc tòa được assign
     if (isStaff) {
       const assigned = req.staff?.assignedBuildingIds || [];
       if (!assigned.map(String).includes(String(room.buildingId))) {
@@ -857,52 +859,22 @@ const getActiveContractByRoomId = async (req, res) => {
           .json({ message: "Bạn không được quản lý tòa này" });
       }
     }
-    const now = new Date();
 
-    const baseQuery = {
+    if (!room.currentContractId) {
+      return res.json({ contract: null });
+    }
+
+    const contract = await Contract.findOne({
+      _id: room.currentContractId,
       landlordId,
       roomId: room._id,
       isDeleted: false,
-      status: "completed",
-      "contract.startDate": { $lte: now },
-      "contract.endDate": { $gte: now },
-    };
+    })
+      .populate("buildingId", "name")
+      .populate("roomId", "roomNumber")
+      .lean();
 
-    let contract = null;
-
-    // 1) ưu tiên currentContractId (nếu có)
-    if (room.currentContractId) {
-      contract = await Contract.findOne({
-        ...baseQuery,
-        _id: room.currentContractId,
-      })
-        .populate("buildingId", "name")
-        .populate("roomId", "roomNumber")
-        .lean();
-    }
-
-    // 2) fallback: tìm theo thời gian hiệu lực
-    if (!contract) {
-      contract = await Contract.findOne(baseQuery)
-        .sort({ "contract.startDate": -1, createdAt: -1 })
-        .populate("buildingId", "name")
-        .populate("roomId", "roomNumber")
-        .lean();
-    }
-
-    // (optional) sync currentContractId cho room nếu lệch
-    if (
-      contract &&
-      (!room.currentContractId ||
-        String(room.currentContractId) !== String(contract._id))
-    ) {
-      await Room.updateOne(
-        { _id: room._id },
-        { $set: { currentContractId: contract._id } }
-      );
-    }
-
-    return res.json({ contract }); // null nếu không có HĐ còn hiệu lực
+    return res.json({ contract });
   } catch (err) {
     console.error("[getActiveContractByRoomId]", err);
     return res.status(500).json({ message: "Lỗi hệ thống" });
