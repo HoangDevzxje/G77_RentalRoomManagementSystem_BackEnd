@@ -579,10 +579,7 @@ const updateStatus = async (req, res) => {
       }
     }
 
-    await Building.updateOne(
-      { _id: building._id },
-      { $set: { status } }
-    );
+    await Building.updateOne({ _id: building._id }, { $set: { status } });
     if (status === "inactive") {
       await Floor.updateMany(
         { buildingId: building._id, isDeleted: false },
@@ -646,13 +643,13 @@ const downloadImportTemplate = async (req, res) => {
       roomStatus: [
         ["available", "Sẵn sàng"],
         ["occupied", "Đang thuê"],
-        ["maintenance", "Bảo trì"],
+
         ["inactive", "Ngưng hoạt động"],
       ],
-      indexType: [
+      eIndexType: [["byNumber", "Theo chỉ số"]],
+      wIndexType: [
         ["byNumber", "Theo chỉ số"],
         ["byPerson", "Theo đầu người"],
-        ["included", "Đã bao gồm"],
       ],
     };
 
@@ -662,7 +659,8 @@ const downloadImportTemplate = async (req, res) => {
       buildingStatus: "A",
       floorStatus: "C",
       roomStatus: "E",
-      indexType: "G",
+      eIndexType: "G",
+      wIndexType: "I",
     };
 
     // Header
@@ -672,8 +670,11 @@ const downloadImportTemplate = async (req, res) => {
     refs.getCell("D1").value = "FloorStatus_VI";
     refs.getCell("E1").value = "RoomStatus_EN";
     refs.getCell("F1").value = "RoomStatus_VI";
-    refs.getCell("G1").value = "IndexType_EN";
-    refs.getCell("H1").value = "IndexType_VI";
+
+    refs.getCell("G1").value = "EIndexType_EN";
+    refs.getCell("H1").value = "EIndexType_VI";
+    refs.getCell("I1").value = "WIndexType_EN";
+    refs.getCell("J1").value = "WIndexType_VI";
 
     // Đổ dữ liệu enums
     const putEnum = (startCol, rows) => {
@@ -687,8 +688,8 @@ const downloadImportTemplate = async (req, res) => {
     putEnum("A", enumBlocks.buildingStatus);
     putEnum("C", enumBlocks.floorStatus);
     putEnum("E", enumBlocks.roomStatus);
-    putEnum("G", enumBlocks.indexType);
-
+    putEnum("G", enumBlocks.eIndexType);
+    putEnum("I", enumBlocks.wIndexType);
     // (Ẩn) sheet tham chiếu
     refs.state = "veryHidden";
 
@@ -789,11 +790,14 @@ const downloadImportTemplate = async (req, res) => {
     // ===== Data Validation (Dropdown tiếng Việt) =====
     // Công thức tham chiếu danh sách tiếng Việt ở sheet References
     const lists = {
-      buildingStatusVI: `References!$B$2:$B$${enumBlocks.buildingStatus.length + 1
-        }`,
+      buildingStatusVI: `References!$B$2:$B$${
+        enumBlocks.buildingStatus.length + 1
+      }`,
       floorStatusVI: `References!$D$2:$D$${enumBlocks.floorStatus.length + 1}`,
       roomStatusVI: `References!$F$2:$F$${enumBlocks.roomStatus.length + 1}`,
-      indexTypeVI: `References!$H$2:$H$${enumBlocks.indexType.length + 1}`,
+
+      eIndexTypeVI: `References!$H$2:$H$${enumBlocks.eIndexType.length + 1}`,
+      wIndexTypeVI: `References!$J$2:$J$${enumBlocks.wIndexType.length + 1}`,
     };
 
     // Helper: áp dropdown cho 1 cột từ dòng 2 → 1000 (tùy chỉnh)
@@ -816,8 +820,8 @@ const downloadImportTemplate = async (req, res) => {
 
     // Buildings: status (C), eIndexType (D), wIndexType (F)
     applyListValidation(wsB, 3, lists.buildingStatusVI);
-    applyListValidation(wsB, 4, lists.indexTypeVI);
-    applyListValidation(wsB, 6, lists.indexTypeVI);
+    applyListValidation(wsB, 4, lists.eIndexTypeVI); // eIndexType chỉ byNumber
+    applyListValidation(wsB, 6, lists.wIndexTypeVI); // wIndexType byNumber/byPerson
 
     // Floors: status (D)
     applyListValidation(wsF, 4, lists.floorStatusVI);
@@ -885,11 +889,8 @@ const VI_EN_MAP = {
     "bảo trì": "maintenance",
     "ngưng hoạt động": "inactive",
   },
-  indexType: {
-    "theo chỉ số": "byNumber",
-    "theo đầu người": "byPerson",
-    "đã bao gồm": "included",
-  },
+  eIndexType: { "theo chỉ số": "byNumber" },
+  wIndexType: { "theo chỉ số": "byNumber", "theo đầu người": "byPerson" },
 };
 
 // Tập EN hợp lệ (để chấp nhận cả khi user gõ code EN)
@@ -897,7 +898,8 @@ const ALLOW = {
   buildingStatus: new Set(["active", "inactive"]),
   floorStatus: new Set(["active", "inactive"]),
   roomStatus: new Set(["available", "occupied", "maintenance", "inactive"]),
-  indexType: new Set(["byNumber", "byPerson", "included"]),
+  eIndexType: new Set(["byNumber"]),
+  wIndexType: new Set(["byNumber", "byPerson"]),
 };
 
 // Helper: map & validate enum
@@ -978,130 +980,128 @@ const importFromExcel = async (req, res) => {
     // Buildings
     const buildingsPayload = willDoB
       ? shBuildings.map((r, i) => {
-        const name = r.name;
-        const address = r.address;
+          const name = r.name;
+          const address = r.address;
 
-        // status: default 'active'
-        const mStatus = mapEnumOrError(r.status, "buildingStatus", "active", [
-          "Hoạt động/active",
-          "Ngưng hoạt động/inactive",
-        ]);
+          // status: default 'active'
+          const mStatus = mapEnumOrError(r.status, "buildingStatus", "active", [
+            "Hoạt động/active",
+            "Ngưng hoạt động/inactive",
+          ]);
 
-        // eIndexType, wIndexType: default 'byNumber'
-        const mEIdx = mapEnumOrError(r.eIndexType, "indexType", "byNumber", [
-          "Theo chỉ số/byNumber",
-          "Theo đầu người/byPerson",
-          "Đã bao gồm/included",
-        ]);
-        const mWIdx = mapEnumOrError(r.wIndexType, "indexType", "byNumber", [
-          "Theo chỉ số/byNumber",
-          "Theo đầu người/byPerson",
-          "Đã bao gồm/included",
-        ]);
+          // eIndexType, wIndexType: default 'byNumber'
+          const mEIdx = mapEnumOrError(r.eIndexType, "eIndexType", "byNumber", [
+            "Theo chỉ số/byNumber",
+          ]);
 
-        const ePrice = toNum(r.ePrice, 0);
-        const wPrice = toNum(r.wPrice, 0);
+          const mWIdx = mapEnumOrError(r.wIndexType, "wIndexType", "byNumber", [
+            "Theo chỉ số/byNumber",
+            "Theo đầu người/byPerson",
+          ]);
 
-        const rowErr = [];
-        if (!name || !norm(name)) rowErr.push("name bắt buộc");
-        if (!address) rowErr.push("address bắt buộc");
-        if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
-        if (!mEIdx.ok) rowErr.push(`eIndexType: ${mEIdx.error}`);
-        if (!mWIdx.ok) rowErr.push(`wIndexType: ${mWIdx.error}`);
-        if (ePrice < 0) rowErr.push("ePrice >= 0");
-        if (wPrice < 0) rowErr.push("wPrice >= 0");
+          const ePrice = toNum(r.ePrice, 0);
+          const wPrice = toNum(r.wPrice, 0);
 
-        if (rowErr.length)
-          errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
+          const rowErr = [];
+          if (!name || !norm(name)) rowErr.push("name bắt buộc");
+          if (!address) rowErr.push("address bắt buộc");
+          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+          if (!mEIdx.ok) rowErr.push(`eIndexType: ${mEIdx.error}`);
+          if (!mWIdx.ok) rowErr.push(`wIndexType: ${mWIdx.error}`);
+          if (ePrice < 0) rowErr.push("ePrice >= 0");
+          if (wPrice < 0) rowErr.push("wPrice >= 0");
 
-        return {
-          name,
-          address,
-          status: mStatus.ok ? mStatus.value : "active",
-          eIndexType: mEIdx.ok ? mEIdx.value : "byNumber",
-          ePrice,
-          wIndexType: mWIdx.ok ? mWIdx.value : "byNumber",
-          wPrice,
-        };
-      })
+          if (rowErr.length)
+            errors.push({ sheet: "Buildings", row: i + 2, errors: rowErr });
+
+          return {
+            name,
+            address,
+            status: mStatus.ok ? mStatus.value : "active",
+            eIndexType: mEIdx.ok ? mEIdx.value : "byNumber",
+            ePrice,
+            wIndexType: mWIdx.ok ? mWIdx.value : "byNumber",
+            wPrice,
+          };
+        })
       : [];
 
     // Floors
     const floorsPayload = willDoF
       ? shFloors.map((r, i) => {
-        const buildingName = r.buildingName;
-        const level = toNum(r.level, NaN);
-        const description = r.description || "";
+          const buildingName = r.buildingName;
+          const level = toNum(r.level, NaN);
+          const description = r.description || "";
 
-        const mStatus = mapEnumOrError(r.status, "floorStatus", "active", [
-          "Hoạt động/active",
-          "Ngưng hoạt động/inactive",
-        ]);
+          const mStatus = mapEnumOrError(r.status, "floorStatus", "active", [
+            "Hoạt động/active",
+            "Ngưng hoạt động/inactive",
+          ]);
 
-        const rowErr = [];
-        if (!buildingName) rowErr.push("buildingName bắt buộc");
-        if (!isNum(level)) rowErr.push("level bắt buộc và là số");
-        if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+          const rowErr = [];
+          if (!buildingName) rowErr.push("buildingName bắt buộc");
+          if (!isNum(level)) rowErr.push("level bắt buộc và là số");
+          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
 
-        if (rowErr.length)
-          errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
+          if (rowErr.length)
+            errors.push({ sheet: "Floors", row: i + 2, errors: rowErr });
 
-        return {
-          buildingName,
-          level: Number(level),
-          description,
-          status: mStatus.ok ? mStatus.value : "active",
-        };
-      })
+          return {
+            buildingName,
+            level: Number(level),
+            description,
+            status: mStatus.ok ? mStatus.value : "active",
+          };
+        })
       : [];
 
     // Rooms
     const roomsPayload = willDoR
       ? shRooms.map((r, i) => {
-        const buildingName = r.buildingName;
-        const floorLevel = toNum(r.floorLevel, NaN);
-        const roomNumber = String(r.roomNumber || "").trim();
-        const area = toNum(r.area, 0);
-        const price = toNum(r.price, 0);
-        const maxTenants = toNum(r.maxTenants, 1);
-        const eStart = toNum(r.eStart, 0);
-        const wStart = toNum(r.wStart, 0);
-        const description = r.description || "";
+          const buildingName = r.buildingName;
+          const floorLevel = toNum(r.floorLevel, NaN);
+          const roomNumber = String(r.roomNumber || "").trim();
+          const area = toNum(r.area, 0);
+          const price = toNum(r.price, 0);
+          const maxTenants = toNum(r.maxTenants, 1);
+          const eStart = toNum(r.eStart, 0);
+          const wStart = toNum(r.wStart, 0);
+          const description = r.description || "";
 
-        const mStatus = mapEnumOrError(r.status, "roomStatus", "available", [
-          "Sẵn sàng/available",
-          "Đang thuê/occupied",
-          "Bảo trì/maintenance",
-          "Ngưng hoạt động/inactive",
-        ]);
+          const mStatus = mapEnumOrError(r.status, "roomStatus", "available", [
+            "Sẵn sàng/available",
+            "Đang thuê/occupied",
+            "Bảo trì/maintenance",
+            "Ngưng hoạt động/inactive",
+          ]);
 
-        const rowErr = [];
-        if (!buildingName) rowErr.push("buildingName bắt buộc");
-        if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
-        if (!roomNumber) rowErr.push("roomNumber bắt buộc");
-        if (area <= 0) rowErr.push("area > 0");
-        if (price < 0) rowErr.push("price >= 0");
-        if (maxTenants < 1) rowErr.push("maxTenants >= 1");
-        if (eStart < 0) rowErr.push("eStart >= 0");
-        if (wStart < 0) rowErr.push("wStart >= 0");
-        if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
+          const rowErr = [];
+          if (!buildingName) rowErr.push("buildingName bắt buộc");
+          if (!isNum(floorLevel)) rowErr.push("floorLevel bắt buộc và là số");
+          if (!roomNumber) rowErr.push("roomNumber bắt buộc");
+          if (area <= 0) rowErr.push("area > 0");
+          if (price < 0) rowErr.push("price >= 0");
+          if (maxTenants < 1) rowErr.push("maxTenants >= 1");
+          if (eStart < 0) rowErr.push("eStart >= 0");
+          if (wStart < 0) rowErr.push("wStart >= 0");
+          if (!mStatus.ok) rowErr.push(`status: ${mStatus.error}`);
 
-        if (rowErr.length)
-          errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
+          if (rowErr.length)
+            errors.push({ sheet: "Rooms", row: i + 2, errors: rowErr });
 
-        return {
-          buildingName,
-          floorLevel: Number(floorLevel),
-          roomNumber,
-          area,
-          price,
-          maxTenants,
-          status: mStatus.ok ? mStatus.value : "available",
-          eStart,
-          wStart,
-          description,
-        };
-      })
+          return {
+            buildingName,
+            floorLevel: Number(floorLevel),
+            roomNumber,
+            area,
+            price,
+            maxTenants,
+            status: mStatus.ok ? mStatus.value : "available",
+            eStart,
+            wStart,
+            description,
+          };
+        })
       : [];
 
     if (errors.length)

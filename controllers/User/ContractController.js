@@ -86,6 +86,7 @@ exports.listMyContracts = async (req, res) => {
             "contract.startDate",
             "contract.endDate",
             "terminationRequest",
+            "moveInConfirmedAt",
             "identityVerification",
           ].join(" ")
         )
@@ -144,15 +145,12 @@ exports.getMyContract = async (req, res) => {
       damageCount: rf.damageCount,
       notes: rf.notes,
     }));
-    if (
-      doc.identityVerification?.ocrData?.cccdEncrypted
-    ) {
+    if (doc.identityVerification?.ocrData?.cccdEncrypted) {
       const decryptedCccd = decrypt(
         doc.identityVerification.ocrData.cccdEncrypted
       );
 
-      doc.identityVerification.ocrData.cccd =
-        decryptedCccd || null;
+      doc.identityVerification.ocrData.cccd = decryptedCccd || null;
 
       delete doc.identityVerification.ocrData.cccdEncrypted;
     }
@@ -279,7 +277,6 @@ exports.uploadIdentityVerification = async (req, res) => {
     const cccdBack = files.cccdBack?.[0];
     const selfie = files.selfie?.[0];
 
-
     if (!cccdFront) {
       return res.status(400).json({ message: "Thiếu ảnh CCCD mặt trước" });
     }
@@ -305,24 +302,18 @@ exports.uploadIdentityVerification = async (req, res) => {
     const { ocrData, faceMatchScore, rawResponse } = fptResult;
     const B = contract.B || {};
 
-    const isNameMatch =
-      normalizeName(B.name) === normalizeName(ocrData.name);
+    const isNameMatch = normalizeName(B.name) === normalizeName(ocrData.name);
 
     const isCccdMatch =
       String(B.cccd || "").trim() === String(ocrData.cccd || "").trim();
 
-    const isDobMatch =
-      normalizeDate(B.dob) === normalizeDate(ocrData.dob);
+    const isDobMatch = normalizeDate(B.dob) === normalizeDate(ocrData.dob);
 
-    const isAddressMatch =
-      normalizeAddress(ocrData.permanentAddress)
-        ?.toLowerCase()
-        .includes(
-          normalizeAddress(B.permanentAddress)?.toLowerCase()
-        );
+    const isAddressMatch = normalizeAddress(ocrData.permanentAddress)
+      ?.toLowerCase()
+      .includes(normalizeAddress(B.permanentAddress)?.toLowerCase());
 
-    let isVerified =
-      isNameMatch && isCccdMatch && isDobMatch && isAddressMatch;
+    let isVerified = isNameMatch && isCccdMatch && isDobMatch && isAddressMatch;
 
     const FACE_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || 80);
 
@@ -334,11 +325,7 @@ exports.uploadIdentityVerification = async (req, res) => {
     if (!isCccdMatch) reasons.push("Số CCCD không khớp");
     if (!isDobMatch) reasons.push("Ngày sinh không khớp");
     if (!isAddressMatch) reasons.push("Địa chỉ không khớp");
-    if (
-      selfie &&
-      faceMatchScore !== null &&
-      faceMatchScore < FACE_THRESHOLD
-    ) {
+    if (selfie && faceMatchScore !== null && faceMatchScore < FACE_THRESHOLD) {
       reasons.push("Khuôn mặt không khớp");
     }
     const encryptedCccd = ocrData.cccd
@@ -418,10 +405,7 @@ async function verifyWithFPT(frontPath, backPath = null, selfiePath = null) {
       dob: result.dob || result.date_of_birth || "",
       cccd: result.id || result.number || "",
       permanentAddress:
-        result.address ||
-        result.permanent_address ||
-        result.home_town ||
-        "",
+        result.address || result.permanent_address || result.home_town || "",
     };
 
     let faceMatchScore = null;
@@ -1068,7 +1052,7 @@ async function streamContractPdf(contract, res) {
     } else {
       try {
         res.end();
-      } catch { }
+      } catch {}
     }
   });
 
@@ -1091,14 +1075,14 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.8);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(16)
     .text("HỢP ĐỒNG THUÊ PHÒNG", { align: "center", underline: true });
 
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
   pdf.moveDown(0.5);
   pdf
     .fontSize(10)
@@ -1114,7 +1098,8 @@ async function streamContractPdf(contract, res) {
       `Hôm nay, ngày ${formatDate(meta.signDate) || "....../....../......"}`
     );
   pdf.text(
-    `Tại: ${meta.signPlace || (building && building.address) || "................"
+    `Tại: ${
+      meta.signPlace || (building && building.address) || "................"
     }`
   );
 
@@ -1124,17 +1109,18 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.3);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf.text("BÊN CHO THUÊ (BÊN A):");
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
 
   pdf
     .fontSize(11)
     .text(`Họ tên: ${A?.name || ""}`)
     .text(
-      `CCCD: ${A?.cccd || ""}   Cấp ngày: ${formatDate(A?.cccdIssuedDate) || ""
+      `CCCD: ${A?.cccd || ""}   Cấp ngày: ${
+        formatDate(A?.cccdIssuedDate) || ""
       }   Nơi cấp: ${A?.cccdIssuedPlace || ""}`
     )
     .text(`Hộ khẩu thường trú: ${A?.permanentAddress || ""}`)
@@ -1145,17 +1131,18 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.6);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf.text("BÊN THUÊ (BÊN B):");
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
 
   pdf
     .fontSize(11)
     .text(`Họ tên: ${B?.name || ""}`)
     .text(
-      `CCCD: ${B?.cccd || ""}   Cấp ngày: ${formatDate(B?.cccdIssuedDate) || ""
+      `CCCD: ${B?.cccd || ""}   Cấp ngày: ${
+        formatDate(B?.cccdIssuedDate) || ""
       }   Nơi cấp: ${B?.cccdIssuedPlace || ""}`
     )
     .text(`Hộ khẩu thường trú: ${B?.permanentAddress || ""}`)
@@ -1167,17 +1154,18 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(0.6);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("Người ở cùng (roommates):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     roommates.forEach((r, idx) => {
       pdf
         .fontSize(11)
         .text(
-          `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""} – Điện thoại: ${r.phone || ""
+          `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""} – Điện thoại: ${
+            r.phone || ""
           }`
         );
     });
@@ -1187,11 +1175,11 @@ async function streamContractPdf(contract, res) {
   pdf.moveDown(0.8);
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf.text("THÔNG TIN PHÒNG VÀ GIÁ THUÊ:");
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
 
   const buildingName = building?.name || "";
   const roomNumber = room?.roomNumber || "";
@@ -1199,13 +1187,15 @@ async function streamContractPdf(contract, res) {
   pdf
     .fontSize(11)
     .text(
-      `Tòa nhà: ${buildingName} – Địa chỉ: ${building?.address || "................................"
+      `Tòa nhà: ${buildingName} – Địa chỉ: ${
+        building?.address || "................................"
       }`
     )
     .text(`Phòng: ${roomNumber}    Diện tích: ${area || ""} m²`)
     .text(`Giá thuê: ${meta.price?.toLocaleString("vi-VN") || ""} VND/tháng`)
     .text(
-      `Tiền cọc: ${meta.deposit?.toLocaleString("vi-VN") || ""
+      `Tiền cọc: ${
+        meta.deposit?.toLocaleString("vi-VN") || ""
       } VND (bằng chữ: ................................)`
     )
     .text(
@@ -1220,17 +1210,18 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(0.5);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("Phương tiện gửi kèm:");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     bikes.forEach((b, idx) => {
       pdf
         .fontSize(11)
         .text(
-          `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${b.color || ""
+          `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${
+            b.color || ""
           } – Hãng: ${b.brand || ""}`
         );
     });
@@ -1241,11 +1232,11 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(1);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.fontSize(13).text("I. ĐIỀU KHOẢN HỢP ĐỒNG", { underline: true });
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf.moveDown(0.5);
 
     const sortedTerms = [...terms].sort(
@@ -1255,11 +1246,11 @@ async function streamContractPdf(contract, res) {
     sortedTerms.forEach((t, idx) => {
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       const desc = t.description || "";
       if (!desc) {
@@ -1275,11 +1266,11 @@ async function streamContractPdf(contract, res) {
             const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
             try {
               pdf.font(FONT_BOLD);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(prefix, { continued: true });
             try {
               pdf.font(FONT_REGULAR);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(it, {
               paragraphGap: 4,
               align: "justify",
@@ -1307,11 +1298,11 @@ async function streamContractPdf(contract, res) {
     pdf.moveDown(1);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.fontSize(13).text("II. NỘI QUY / QUY ĐỊNH", { underline: true });
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf.moveDown(0.5);
 
     const sortedRegs = [...regulations].sort(
@@ -1321,11 +1312,11 @@ async function streamContractPdf(contract, res) {
     sortedRegs.forEach((r, idx) => {
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       const desc = r.description || "";
       if (!desc) {
@@ -1341,11 +1332,11 @@ async function streamContractPdf(contract, res) {
             const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
             try {
               pdf.font(FONT_BOLD);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(prefix, { continued: true });
             try {
               pdf.font(FONT_REGULAR);
-            } catch { }
+            } catch {}
             pdf.fontSize(11).text(it, {
               paragraphGap: 4,
               align: "justify",
@@ -1391,7 +1382,7 @@ async function streamContractPdf(contract, res) {
   // ===== Tiêu đề =====
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(12)
     .text("ĐẠI DIỆN BÊN A", leftX, pdf.y, {
@@ -1408,7 +1399,7 @@ async function streamContractPdf(contract, res) {
   // ===== Hướng dẫn ký =====
   try {
     pdf.font(FONT_REGULAR);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(11)
     .text("(Ký, ghi rõ họ tên)", leftX, pdf.y, {
@@ -1445,7 +1436,7 @@ async function streamContractPdf(contract, res) {
 
   try {
     pdf.font(FONT_BOLD);
-  } catch { }
+  } catch {}
   pdf
     .fontSize(12)
     .text(AName, leftX, pdf.y, {
@@ -1498,7 +1489,7 @@ exports.residentDownloadMyContractPdf = async (req, res) => {
     }
     try {
       res.end();
-    } catch { }
+    } catch {}
   }
 };
 // PATCH /tenants/contracts/:id/request-terminate

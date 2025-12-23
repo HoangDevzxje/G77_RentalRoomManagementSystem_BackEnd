@@ -19,7 +19,7 @@ const buildingSchema = new mongoose.Schema(
 
     wIndexType: {
       type: String,
-      enum: ["byNumber"],
+      enum: ["byNumber", "byPerson"],
       default: "byNumber",
     },
     wPrice: { type: Number, default: 0 }, // giá nước trên 1m3 hoặc 1 người
