@@ -249,7 +249,6 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     text,
   });
 
-  console.log("Kết quả gửi email invoice:", emailResult);
 
   const update = {
     $set: {
@@ -1798,8 +1797,8 @@ exports.sendInvoiceEmail = async (req, res) => {
           select: "name",
         },
       })
+      .populate("contractId", "tenantId")
       .lean();
-    console.log(invoice);
     if (!invoice) {
       return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
     }
@@ -1822,10 +1821,25 @@ exports.sendInvoiceEmail = async (req, res) => {
         skipped: true,
       });
     }
-    const affectedTenantIds = invoice.roomId.currentTenantIds.map((id) =>
-      id.toString()
-    );
+    let affectedTenantIds = [];
 
+    if (
+      invoice.roomId?.currentTenantIds &&
+      invoice.roomId.currentTenantIds.length > 0
+    ) {
+      affectedTenantIds = invoice.roomId.currentTenantIds.map((id) =>
+        id.toString()
+      );
+    }
+    else if (invoice.contractId?.tenantId) {
+      affectedTenantIds = [invoice.contractId.tenantId.toString()];
+    }
+
+    if (affectedTenantIds.length === 0) {
+      return res.status(400).json({
+        message: "Không xác định được người nhận hóa đơn",
+      });
+    }
     const roomNumber = invoice.roomId.roomNumber;
     const buildingName = invoice.roomId.buildingId?.name;
 

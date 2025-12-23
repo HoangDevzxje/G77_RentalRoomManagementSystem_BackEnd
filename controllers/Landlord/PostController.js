@@ -409,21 +409,28 @@ const generateDescription = async (req, res) => {
                 : `${areaMin || areaMax} m²`;
 
         const prompt = `
-Viết mô tả hấp dẫn cho bài đăng cho thuê phòng trọ:
+Bạn là hệ thống tạo nội dung cho website cho thuê phòng trọ.
 
+Hãy tạo NỘI DUNG MÔ TẢ cho bài đăng bên dưới.
+
+⚠️ QUY ĐỊNH BẮT BUỘC:
+- CHỈ trả về NỘI DUNG HTML
+- KHÔNG lời mở đầu, KHÔNG giải thích, KHÔNG markdown
+- KHÔNG dùng \`\`\`html
+- Nội dung NGẮN GỌN, súc tích, dễ đọc
+- Dùng <p>, <ul>, <li>, <b>
+- Emoji nhẹ (tối đa 3 emoji)
+- Không sinh script, link, hoặc text ngoài HTML
+
+THÔNG TIN BÀI ĐĂNG:
 🏢 Tòa nhà: ${title}
 📍 Địa chỉ: ${address}
 💰 Giá thuê: ${priceText}
 📐 Diện tích: ${areaText}
 
-Thông tin thêm:
-${buildingText.join("\n")}
+${buildingText.length ? `TIỆN ÍCH & CHI PHÍ:\n${buildingText.join("\n")}` : ""}
 
-Yêu cầu:
-- Viết mô tả thân thiện, dễ đọc, giúp người thuê dễ hình dung.
-- Trả về kết quả **ở dạng HTML** (dùng <p>, <ul>, <li>, <b>, <i>...).
-- Có thể dùng emoji nhẹ nhàng.
-- Không sinh script hoặc link độc hại.
+CHỈ TRẢ VỀ HTML.
 `;
 
         let aiDescription = "";

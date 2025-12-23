@@ -383,8 +383,8 @@ contractSchema.post("save", async function (doc) {
         1,
         Number(
           doc?.contract?.depositRentMonths ||
-            doc?.contract?.paymentCycleMonths ||
-            1
+          doc?.contract?.paymentCycleMonths ||
+          1
         )
       );
 
@@ -489,15 +489,13 @@ contractSchema.post("save", async function (doc) {
       const receivers = [...new Set([doc.landlordId, ...staffIds])].filter(
         Boolean
       );
-      console.log(receivers);
       if (receivers.length > 0) {
         const notiLandlord = await Notification.create({
           landlordId: doc.landlordId,
           createByRole: "system",
           title: "Hệ thống đã tạo hóa đơn tiền cọc",
           content:
-            `Đã tạo hóa đơn tiền cọc cho hợp đồng${
-              roomNumber ? ` phòng ${roomNumber}` : ""
+            `Đã tạo hóa đơn tiền cọc cho hợp đồng${roomNumber ? ` phòng ${roomNumber}` : ""
             }${buildingName ? ` – ${buildingName}` : ""}.\n` +
             `Số tiền: ${depositAmount.toLocaleString("vi-VN")} ₫`,
           type: "reminder",

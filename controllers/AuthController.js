@@ -197,7 +197,6 @@ const refreshToken = async (req, res) => {
       access_token,
     });
   } catch (e) {
-    console.log(e);
     return res.status(401).json({
       status: "ERR",
       message: "Invalid or expired token",
