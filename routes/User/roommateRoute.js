@@ -39,7 +39,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *                   - type: string
  *                     example: "67b1abfa5433ef1a0193a111"
  *             description: >
- *               - **userIds** có thể là 1 `string` hoặc một **mảng string**.  
+ *               - **userIds** có thể là 1 `string` hoặc một **mảng string**.
  *               - Hệ thống sẽ tự chuyển thành mảng.
  *     responses:
  *       200:
@@ -132,7 +132,7 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *                   - type: string
  *                     example: "67b1abfa5433ef1a0193a111"
  *             description: >
- *               - **userIds** có thể là 1 `string` hoặc một **mảng string**.  
+ *               - **userIds** có thể là 1 `string` hoặc một **mảng string**.
  *               - Hệ thống sẽ tự chuyển thành mảng.
  *     responses:
  *       200:
@@ -194,7 +194,6 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *                   type: string
  *                   example: "Lỗi hệ thống, vui lòng thử lại"
  */
-
 
 /**
  * @swagger
@@ -273,12 +272,92 @@ const { checkAuthorize } = require("../../middleware/authMiddleware");
  *       500:
  *         description: Lỗi server
  */
+/**
+ * @swagger
+ * /roommates/leave:
+ *   post:
+ *     summary: Roommate tự rời phòng (chỉ roommate, không áp dụng cho người đứng tên hợp đồng)
+ *     tags: [Resident Roommates]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - roomId
+ *             properties:
+ *               roomId:
+ *                 type: string
+ *                 example: "67a881bd5a0ce02b58ccbc19"
+ *     responses:
+ *       200:
+ *         description: Rời phòng thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Đã rời phòng thành công"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     roomId:
+ *                       type: string
+ *                       example: "67a881bd5a0ce02b58ccbc19"
+ *                     roomNumber:
+ *                       type: string
+ *                       example: "P302"
+ *                     currentCount:
+ *                       type: number
+ *                       example: 2
+ *                     maxTenants:
+ *                       type: number
+ *                       example: 6
+ *       400:
+ *         description: roomId không hợp lệ / thiếu roomId
+ *       403:
+ *         description: Không thuộc phòng hoặc là người đứng tên hợp đồng
+ *       500:
+ *         description: Lỗi server
+ */
 
-
-router.post("/add", checkAuthorize(["resident"]), roommateController.addRoommate);
-router.post("/remove", checkAuthorize(["resident"]), roommateController.removeRoommate);
-router.get("/search", checkAuthorize(["resident"]), roommateController.searchUser);
-router.get("/:roomId", checkAuthorize(["resident"]), roommateController.getMyRoommates);
-router.get("/:userId/detail", checkAuthorize(["resident"]), roommateController.getRoommateDetail);
+router.post(
+  "/add",
+  checkAuthorize(["resident"]),
+  roommateController.addRoommate
+);
+router.post(
+  "/remove",
+  checkAuthorize(["resident"]),
+  roommateController.removeRoommate
+);
+router.get(
+  "/search",
+  checkAuthorize(["resident"]),
+  roommateController.searchUser
+);
+router.post(
+  "/leave",
+  checkAuthorize(["resident"]),
+  roommateController.leaveRoommate
+);
+router.get(
+  "/:roomId",
+  checkAuthorize(["resident"]),
+  roommateController.getMyRoommates
+);
+router.get(
+  "/:userId/detail",
+  checkAuthorize(["resident"]),
+  roommateController.getRoommateDetail
+);
 
 module.exports = router;

@@ -12,17 +12,49 @@ exports.getMyRoomDetail = async (req, res) => {
         .status(403)
         .json({ message: "Chỉ resident mới được dùng API này" });
     }
+
     const tenantId = req.user._id;
     if (!tenantId) {
       return res.status(400).json({ message: "Thiếu thông tin người dùng" });
     }
+
     const { roomId } = req.query;
     const now = new Date();
+
+    // 1) Lấy các phòng mà user thuộc currentTenantIds (tenant chính hoặc roommate)
+    const myRooms = await Room.find({
+      isDeleted: false,
+      status: "rented",
+      currentTenantIds: tenantId,
+    })
+      .select("_id")
+      .lean();
+
+    if (!myRooms || myRooms.length === 0) {
+      return res.status(404).json({
+        message: "Bạn chưa thuộc phòng nào đang thuê.",
+      });
+    }
+
+    // Nếu FE truyền roomId -> bắt buộc roomId phải thuộc myRooms
+    if (roomId) {
+      const isMine = myRooms.some((r) => String(r._id) === String(roomId));
+      if (!isMine) {
+        return res.status(403).json({
+          message: "Bạn không thuộc phòng này.",
+        });
+      }
+    }
+
+    const roomIds = roomId ? [roomId] : myRooms.map((r) => r._id);
+
+    // 2) Tìm hợp đồng hiệu lực theo roomId (KHÔNG lọc tenantId nữa)
     const allContracts = await Contract.find({
-      tenantId: tenantId,
+      roomId: { $in: roomIds },
       status: "completed",
       moveInConfirmedAt: { $ne: null },
       isDeleted: { $ne: true },
+      "contract.startDate": { $lte: now },
       "contract.endDate": { $gte: now },
     })
       .populate("roomId", "roomNumber buildingId eStart wStart")
@@ -31,11 +63,13 @@ exports.getMyRoomDetail = async (req, res) => {
       .lean();
 
     if (!allContracts || allContracts.length === 0) {
-      return res.status(404).json({
-        message: "Bạn không có hợp đồng thuê phòng nào đang hoạt động.",
+      return res.status(403).json({
+        message:
+          "Bạn chỉ được xem room detail sau khi đã được xác nhận vào ở và hợp đồng đang trong thời gian hiệu lực.",
       });
     }
 
+    // 3) Build availableRooms giống logic cũ
     const roomMap = new Map();
 
     allContracts.forEach((c) => {
@@ -44,9 +78,8 @@ exports.getMyRoomDetail = async (req, res) => {
       const startDate = new Date(c.contract.startDate);
       const endDate = new Date(c.contract.endDate);
       const isActive = now >= startDate && now <= endDate;
-      if (!isActive) {
-        return;
-      }
+      if (!isActive) return;
+
       const rId = c.roomId._id.toString();
       roomMap.set(rId, {
         _id: rId,
@@ -71,8 +104,10 @@ exports.getMyRoomDetail = async (req, res) => {
           "Bạn chỉ được xem room detail sau khi đã được xác nhận vào ở và hợp đồng đang trong thời gian hiệu lực.",
       });
     }
+
+    // roomId đã được validate belongs-to ở trên, nên chọn chắc chắn được
     const targetRoomInfo =
-      (roomId ? availableRooms.find((r) => r._id === roomId) : null) ||
+      (roomId ? availableRooms.find((r) => r._id === String(roomId)) : null) ||
       availableRooms[0];
 
     const roomDetail = await Room.findById(targetRoomInfo._id)
@@ -183,10 +218,31 @@ exports.getMyRoomsList = async (req, res) => {
     const tenantId = req.user._id;
     const now = new Date();
 
+    // 1) Lấy danh sách phòng user đang thuộc currentTenantIds
+    const myRooms = await Room.find({
+      isDeleted: false,
+      status: "rented",
+      currentTenantIds: tenantId,
+    })
+      .select("_id")
+      .lean();
+
+    if (!myRooms || myRooms.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Bạn chưa thuộc phòng nào đang thuê.",
+      });
+    }
+
+    const roomIds = myRooms.map((r) => r._id);
+
+    // 2) Lấy hợp đồng hiệu lực theo roomIds (không lọc tenantId)
     const allContracts = await Contract.find({
-      tenantId: tenantId,
+      roomId: { $in: roomIds },
       status: "completed",
+      moveInConfirmedAt: { $ne: null },
       isDeleted: { $ne: true },
+      "contract.startDate": { $lte: now },
       "contract.endDate": { $gte: now },
     })
       .populate("roomId", "roomNumber buildingId")
@@ -195,9 +251,10 @@ exports.getMyRoomsList = async (req, res) => {
       .lean();
 
     if (!allContracts || allContracts.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Không tìm thấy hợp đồng." });
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy hợp đồng đang hoạt động cho phòng của bạn.",
+      });
     }
 
     const roomMap = new Map();
@@ -208,10 +265,8 @@ exports.getMyRoomsList = async (req, res) => {
       const rId = c.roomId._id.toString();
       const startDate = new Date(c.contract.startDate);
       const endDate = new Date(c.contract.endDate);
-      const status = now >= startDate && now <= endDate;
-      if (!status) {
-        return;
-      }
+      const isActive = now >= startDate && now <= endDate;
+      if (!isActive) return;
 
       const contractData = {
         _id: c._id,
@@ -219,27 +274,21 @@ exports.getMyRoomsList = async (req, res) => {
           c.contract?.no || `HD${c._id.toString().slice(-6).toUpperCase()}`,
         startDate: c.contract.startDate,
         endDate: c.contract.endDate,
-        status: status,
+        status: "active",
       };
 
-      if (!roomMap.has(rId) || status === "active") {
-        roomMap.set(rId, {
-          _id: rId,
-          roomNumber: c.roomId.roomNumber,
-          buildingName: c.buildingId?.name || "Tòa nhà",
-          status: status,
-          contract: contractData,
-          formattedStartDate: formatContractDate(c.contract.startDate),
-          formattedEndDate: formatContractDate(c.contract.endDate),
-        });
-      }
+      roomMap.set(rId, {
+        _id: rId,
+        roomNumber: c.roomId.roomNumber,
+        buildingName: c.buildingId?.name || "Tòa nhà",
+        status: "active",
+        contract: contractData,
+        formattedStartDate: formatContractDate(c.contract.startDate),
+        formattedEndDate: formatContractDate(c.contract.endDate),
+      });
     });
 
-    const result = Array.from(roomMap.values()).sort((a, b) => {
-      if (a.status === "active" && b.status !== "active") return -1;
-      if (a.status !== "active" && b.status === "active") return 1;
-      return 0;
-    });
+    const result = Array.from(roomMap.values());
 
     return res.json({
       success: true,
