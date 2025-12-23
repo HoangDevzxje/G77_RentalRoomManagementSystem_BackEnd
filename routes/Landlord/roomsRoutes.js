@@ -4,7 +4,9 @@ const RoomCtrl = require("../../controllers/Landlord/RoomController");
 const checkSubscription = require("../../middleware/checkSubscription");
 const checkBuildingActive = require("../../middleware/checkBuildingActive");
 const { uploadMultiple, uploadSingle } = require("../../configs/cloudinary");
-const { checkStaffPermission } = require("../../middleware/checkStaffPermission");
+const {
+  checkStaffPermission,
+} = require("../../middleware/checkStaffPermission");
 const { PERMISSIONS } = require("../../constants/permissions");
 /**
  * @swagger
@@ -340,13 +342,11 @@ router.get(
 router.get(
   "/:id",
   checkAuthorize(["admin", "landlord", "resident", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_VIEW,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Room"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.ROOM_VIEW, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Room",
+  }),
   RoomCtrl.getById
 );
 
@@ -613,13 +613,11 @@ router.post(
 router.put(
   "/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_EDIT,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Room"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.ROOM_EDIT, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Room",
+  }),
   uploadMultiple,
   checkSubscription,
   RoomCtrl.update
@@ -696,12 +694,11 @@ router.put(
 router.delete(
   "/:id",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_DELETE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Room"
-    }),
+  checkStaffPermission(PERMISSIONS.ROOM_DELETE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Room",
+  }),
   checkSubscription,
   RoomCtrl.remove
 );
@@ -1164,13 +1161,11 @@ router.post(
 router.delete(
   "/:id/soft",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_DELETE,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Room"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.ROOM_DELETE, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Room",
+  }),
   checkSubscription,
   RoomCtrl.softDelete
 );
@@ -1246,13 +1241,11 @@ router.delete(
 router.post(
   "/:id/restore",
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_EDIT,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Room"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.ROOM_EDIT, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Room",
+  }),
   checkSubscription,
   RoomCtrl.restore
 );
@@ -1355,15 +1348,118 @@ router.patch(
     next();
   },
   checkAuthorize(["admin", "landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.ROOM_EDIT,
-    {
-      checkBuilding: true,
-      allowFromDb: true,
-      model: "Room"
-    }
-  ),
+  checkStaffPermission(PERMISSIONS.ROOM_EDIT, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Room",
+  }),
   checkSubscription,
   RoomCtrl.updateActive
+);
+/**
+ * @swagger
+ * /landlords/rooms/{id}/active-contract:
+ *   get:
+ *     summary: Lấy hợp đồng đang có hiệu lực của phòng
+ *     description: >
+ *       Trả về hợp đồng thuê đang còn hiệu lực theo roomId.
+ *       Điều kiện thường dùng: isDeleted=false, status="completed", contract.startDate <= now <= contract.endDate.
+ *       Nếu không có hợp đồng hiệu lực thì trả contract=null.
+ *     tags: [Landlord Room Management]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Room ID
+ *         example: 68e3fe79ec7f3071215fd042
+ *     responses:
+ *       200:
+ *         description: Thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 contract:
+ *                   nullable: true
+ *                   oneOf:
+ *                     - type: "null"
+ *                     - type: object
+ *                       properties:
+ *                         _id: { type: string, example: 69444d18e3edd91ccb68986f }
+ *                         status: { type: string, example: completed }
+ *                         tenantId: { type: string, example: 692865706a2decb782a7994e }
+ *                         landlordId: { type: string, example: 6928651c6a2decb782a7992e }
+ *                         buildingId: { type: string, example: 69444befe3edd91ccb6896ea }
+ *                         roomId: { type: string, example: 69444c08e3edd91ccb689724 }
+ *                         eIndexType: { type: string, example: byNumber }
+ *                         ePrice: { type: number, example: 3000 }
+ *                         wIndexType: { type: string, example: byNumber }
+ *                         wPrice: { type: number, example: 15000 }
+ *                         contract:
+ *                           type: object
+ *                           properties:
+ *                             no: { type: string, example: HD-2025-001 }
+ *                             startDate: { type: string, format: date-time, example: 2025-12-01T00:00:00.000Z }
+ *                             endDate: { type: string, format: date-time, example: 2026-11-30T00:00:00.000Z }
+ *                             price: { type: number, example: 3000000 }
+ *                             deposit: { type: number, example: 1800000 }
+ *                         createdAt: { type: string, format: date-time }
+ *                         updatedAt: { type: string, format: date-time }
+ *       400:
+ *         description: ID không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: id không hợp lệ }
+ *       401:
+ *         description: Token không hợp lệ hoặc đã hết hạn
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: Token không hợp lệ hoặc đã hết hạn! }
+ *       403:
+ *         description: Không có quyền
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: Không có quyền }
+ *       404:
+ *         description: Không tìm thấy phòng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: Không tìm thấy phòng }
+ *       500:
+ *         description: Lỗi hệ thống
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: Lỗi hệ thống! }
+ */
+router.get(
+  "/:id/active-contract",
+  checkAuthorize(["admin", "landlord", "staff"]),
+  checkStaffPermission(PERMISSIONS.ROOM_VIEW, {
+    checkBuilding: true,
+    allowFromDb: true,
+    model: "Room",
+  }),
+  RoomCtrl.getActiveContractByRoomId
 );
 
 module.exports = router;

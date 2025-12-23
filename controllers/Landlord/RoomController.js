@@ -187,7 +187,9 @@ const create = async (req, res) => {
     if (!isOwner) return res.status(403).json({ message: "Không có quyền" });
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     }
     const numPrice = Number(price);
@@ -482,7 +484,7 @@ const softDelete = async (req, res) => {
   try {
     const { id } = req.params;
     const { force } = req.query;
-    if (!id) return res.status(400).json({ message: 'Thiếu id' });
+    if (!id) return res.status(400).json({ message: "Thiếu id" });
     const r = await Room.findById(id).select("buildingId isDeleted");
     if (!r || r.isDeleted)
       return res.status(404).json({ message: "Không tìm thấy phòng" });
@@ -620,10 +622,7 @@ const updateActive = async (req, res) => {
       }
     }
 
-    await Room.updateOne(
-      { _id: room._id },
-      { $set: { active } }
-    );
+    await Room.updateOne({ _id: room._id }, { $set: { active } });
 
     res.json({
       message: active
@@ -814,6 +813,101 @@ const quickCreate = async (req, res) => {
     session.endSession();
   }
 };
+// GET /landlords/rooms/:id/active-contract
+const getActiveContractByRoomId = async (req, res) => {
+  try {
+    const { id } = req.params; // roomId
+    if (!id) return res.status(400).json({ message: "Thiếu roomId" });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "roomId không hợp lệ" });
+    }
+
+    const isStaff = req.user.role === "staff";
+    const landlordId = isStaff ? req.staff?.landlordId : req.user._id;
+
+    const room = await Room.findById(id)
+      .select("_id buildingId isDeleted currentContractId")
+      .lean();
+
+    if (!room || room.isDeleted) {
+      return res.status(404).json({ message: "Không tìm thấy phòng" });
+    }
+
+    const building = await Building.findById(room.buildingId)
+      .select("_id landlordId status isDeleted")
+      .lean();
+
+    if (!building || building.isDeleted) {
+      return res.status(404).json({ message: "Tòa nhà không tồn tại" });
+    }
+
+    // landlord chỉ được xem phòng thuộc tòa của mình
+    if (
+      req.user.role === "landlord" &&
+      String(building.landlordId) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
+
+    if (isStaff) {
+      const assigned = req.staff?.assignedBuildingIds || [];
+      if (!assigned.map(String).includes(String(room.buildingId))) {
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa này" });
+      }
+    }
+    const now = new Date();
+
+    const baseQuery = {
+      landlordId,
+      roomId: room._id,
+      isDeleted: false,
+      status: "completed",
+      "contract.startDate": { $lte: now },
+      "contract.endDate": { $gte: now },
+    };
+
+    let contract = null;
+
+    // 1) ưu tiên currentContractId (nếu có)
+    if (room.currentContractId) {
+      contract = await Contract.findOne({
+        ...baseQuery,
+        _id: room.currentContractId,
+      })
+        .populate("buildingId", "name")
+        .populate("roomId", "roomNumber")
+        .lean();
+    }
+
+    // 2) fallback: tìm theo thời gian hiệu lực
+    if (!contract) {
+      contract = await Contract.findOne(baseQuery)
+        .sort({ "contract.startDate": -1, createdAt: -1 })
+        .populate("buildingId", "name")
+        .populate("roomId", "roomNumber")
+        .lean();
+    }
+
+    // (optional) sync currentContractId cho room nếu lệch
+    if (
+      contract &&
+      (!room.currentContractId ||
+        String(room.currentContractId) !== String(contract._id))
+    ) {
+      await Room.updateOne(
+        { _id: room._id },
+        { $set: { currentContractId: contract._id } }
+      );
+    }
+
+    return res.json({ contract }); // null nếu không có HĐ còn hiệu lực
+  } catch (err) {
+    console.error("[getActiveContractByRoomId]", err);
+    return res.status(500).json({ message: "Lỗi hệ thống" });
+  }
+};
 
 module.exports = {
   list,
@@ -827,4 +921,5 @@ module.exports = {
   softDelete,
   restore,
   updateActive,
+  getActiveContractByRoomId,
 };
