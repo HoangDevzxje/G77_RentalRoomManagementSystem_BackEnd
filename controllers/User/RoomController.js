@@ -21,6 +21,7 @@ exports.getMyRoomDetail = async (req, res) => {
     const allContracts = await Contract.find({
       tenantId: tenantId,
       status: "completed",
+      moveInConfirmedAt: { $ne: null },
       isDeleted: { $ne: true },
       "contract.endDate": { $gte: now },
     })
@@ -64,6 +65,12 @@ exports.getMyRoomDetail = async (req, res) => {
     });
 
     const availableRooms = Array.from(roomMap.values());
+    if (!availableRooms.length) {
+      return res.status(403).json({
+        message:
+          "Bạn chỉ được xem room detail sau khi đã được xác nhận vào ở và hợp đồng đang trong thời gian hiệu lực.",
+      });
+    }
     const targetRoomInfo =
       (roomId ? availableRooms.find((r) => r._id === roomId) : null) ||
       availableRooms[0];
