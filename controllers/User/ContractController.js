@@ -1199,11 +1199,7 @@ async function streamContractPdf(contract, res) {
     )
     .text(`Phòng: ${roomNumber}    Diện tích: ${area || ""} m²`)
     .text(`Giá thuê: ${meta.price?.toLocaleString("vi-VN") || ""} VND/tháng`)
-    .text(
-      `Tiền cọc: ${
-        meta.deposit?.toLocaleString("vi-VN") || ""
-      } VND (bằng chữ: ................................)`
-    )
+    .text(`Tiền cọc: ${meta.deposit?.toLocaleString("vi-VN") || ""}`)
     .text(
       `Thời hạn thuê: từ ngày ${formatDate(
         meta.startDate
