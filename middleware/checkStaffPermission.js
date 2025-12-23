@@ -60,7 +60,7 @@ const checkStaffPermission = (requiredPermission, options = {}) => {
 
             if (!employeeData.permissions?.includes(requiredPermission)) {
                 return res.status(403).json({
-                    message: `Bạn không có quyền: ${requiredPermission}`,
+                    message: `Bạn không có quyền thực hiện hành động này`,
                     required: requiredPermission,
                     current: employeeData.permissions,
                 });

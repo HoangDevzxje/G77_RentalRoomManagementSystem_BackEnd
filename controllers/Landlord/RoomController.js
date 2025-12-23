@@ -94,6 +94,18 @@ const getById = async (req, res) => {
         "name address status isDeleted landlordId ePrice wPrice eIndexType wIndexType"
       )
       .populate("floorId", "floorNumber level status isDeleted")
+      .populate({
+        path: "currentContractId",
+        select: "contract.no", 
+      })
+      .populate({
+        path: "currentTenantIds",
+        select: "email avatar isDeleted", 
+        populate: {
+          path: "userInfo",
+          select: "fullName phoneNumber avatar", 
+        },
+      })
       .lean();
 
     if (!r || r.isDeleted) {
