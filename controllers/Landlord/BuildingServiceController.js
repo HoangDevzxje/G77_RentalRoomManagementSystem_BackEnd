@@ -5,20 +5,37 @@ async function assertCanAccessBuilding(req, buildingId) {
   const user = req.user;
   const staff = req.staff;
 
-  if (!user) throw Object.assign(new Error("Không có người dùng"), { statusCode: 401 });
+  if (!user)
+    throw Object.assign(new Error("Không có người dùng"), { statusCode: 401 });
 
   if (user.role === "landlord") {
-    const b = await Building.findOne({ _id: buildingId, landlordId: user._id, isDeleted: false });
-    if (!b) throw Object.assign(new Error("Không tìm thấy tòa nhà hoặc không có quyền"), { statusCode: 404 });
+    const b = await Building.findOne({
+      _id: buildingId,
+      landlordId: user._id,
+      isDeleted: false,
+    });
+    if (!b)
+      throw Object.assign(
+        new Error("Không tìm thấy tòa nhà hoặc không có quyền"),
+        { statusCode: 404 }
+      );
     return b;
   }
 
   if (user.role === "staff") {
-    if (!staff?.assignedBuildingIds?.includes(buildingId)) {
-      throw Object.assign(new Error("Bạn không được quản lý tòa nhà này"), { statusCode: 403 });
+    const assigned = (staff?.assignedBuildingIds || []).map((x) => String(x));
+    if (!assigned.includes(String(buildingId))) {
+      throw Object.assign(new Error("Bạn không được quản lý tòa nhà này"), {
+        statusCode: 403,
+      });
     }
-    const b = await Building.findById(buildingId).select("_id landlordId").lean();
-    if (!b) throw Object.assign(new Error("Không tìm thấy tòa nhà"), { statusCode: 404 });
+    const b = await Building.findById(buildingId)
+      .select("_id landlordId")
+      .lean();
+    if (!b)
+      throw Object.assign(new Error("Không tìm thấy tòa nhà"), {
+        statusCode: 404,
+      });
     return b;
   }
   if (user.role === "resident") {
@@ -27,7 +44,9 @@ async function assertCanAccessBuilding(req, buildingId) {
       .lean();
 
     if (!b || b.isDeleted) {
-      throw Object.assign(new Error("Không tìm thấy tòa nhà"), { statusCode: 404 });
+      throw Object.assign(new Error("Không tìm thấy tòa nhà"), {
+        statusCode: 404,
+      });
     }
     return b;
   }
@@ -37,7 +56,8 @@ async function assertCanAccessBuilding(req, buildingId) {
 exports.listByBuilding = async (req, res) => {
   try {
     const { buildingId } = req.params;
-    if (!buildingId) return res.status(400).json({ message: "Thiếu buildingId" });
+    if (!buildingId)
+      return res.status(400).json({ message: "Thiếu buildingId" });
     await assertCanAccessBuilding(req, buildingId);
 
     const filter = { buildingId };
@@ -63,12 +83,16 @@ exports.create = async (req, res) => {
       name,
       label,
       description,
-      chargeType = "fixed",
+      chargeType = "perRoom",
       fee = 0,
       currency = "VND",
     } = req.body;
 
-    if (!name?.trim()) return res.status(400).json({ message: "Thiếu tên dịch vụ" });
+    if (!name?.trim())
+      return res.status(400).json({ message: "Thiếu tên dịch vụ" });
+    if (!["perRoom", "perPerson", "included"].includes(chargeType)) {
+      return res.status(400).json({ message: "chargeType không hợp lệ" });
+    }
     const service = await BuildingService.create({
       buildingId,
       landlordId: building.landlordId,
@@ -105,7 +129,9 @@ exports.update = async (req, res) => {
     );
 
     if (!updated) {
-      return res.status(404).json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
     }
 
     res.json(updated);
@@ -120,9 +146,15 @@ exports.remove = async (req, res) => {
     const { buildingId, id } = req.params;
     await assertCanAccessBuilding(req, buildingId);
 
-    const service = await BuildingService.findOne({ _id: id, buildingId, isDeleted: false });
+    const service = await BuildingService.findOne({
+      _id: id,
+      buildingId,
+      isDeleted: false,
+    });
     if (!service) {
-      return res.status(404).json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy dịch vụ hoặc đã bị xóa" });
     }
 
     service.isDeleted = true;

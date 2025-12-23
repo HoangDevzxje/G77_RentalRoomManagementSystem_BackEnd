@@ -188,7 +188,7 @@ exports.createReading = async (req, res) => {
     }
 
     const building = await Building.findById(room.buildingId)
-      .select("landlordId isDeleted status ePrice wPrice")
+      .select("landlordId isDeleted status ePrice wPrice wIndexType")
       .lean();
 
     if (
@@ -208,13 +208,24 @@ exports.createReading = async (req, res) => {
     }
     if (isStaff) {
       const buildingIdStr = building._id.toString();
-      if (!req.staff.assignedBuildingIds.includes(buildingIdStr)) {
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) =>
+        String(x)
+      );
+      if (!assigned.includes(buildingIdStr)) {
         return res.status(403).json({
           message: "Bạn không được quản lý tòa nhà này",
           buildingId: buildingIdStr,
           yourAssigned: req.staff.assignedBuildingIds,
         });
       }
+    }
+
+    const isWaterByPerson = building.wIndexType === "byPerson";
+    if (isWaterByPerson && wCurrentIndex != null) {
+      return res.status(400).json({
+        message:
+          "Tòa đang tính nước theo đầu người nên không được nhập chỉ số nước",
+      });
     }
     const existed = await UtilityReading.findOne({
       landlordId,
@@ -252,7 +263,7 @@ exports.createReading = async (req, res) => {
     }
 
     let wCurr = null;
-    if (wCurrentIndex != null) {
+    if (!isWaterByPerson && wCurrentIndex != null) {
       wCurr = Number(wCurrentIndex);
       if (!Number.isFinite(wCurr) || wCurr < 0) {
         return res
@@ -271,10 +282,11 @@ exports.createReading = async (req, res) => {
       typeof building.ePrice === "number" && Number.isFinite(building.ePrice)
         ? building.ePrice
         : 0;
-    const wUnitPrice =
-      typeof building.wPrice === "number" && Number.isFinite(building.wPrice)
-        ? building.wPrice
-        : 0;
+    const wUnitPrice = isWaterByPerson
+      ? 0
+      : typeof building.wPrice === "number" && Number.isFinite(building.wPrice)
+      ? building.wPrice
+      : 0;
 
     const eConsumption =
       eCurr != null && Number.isFinite(ePreviousIndex)
@@ -282,10 +294,11 @@ exports.createReading = async (req, res) => {
         : 0;
     const eAmount = eConsumption * eUnitPrice;
 
-    const wConsumption =
-      wCurr != null && Number.isFinite(wPreviousIndex)
-        ? wCurr - wPreviousIndex
-        : 0;
+    const wConsumption = isWaterByPerson
+      ? 0
+      : wCurr != null && Number.isFinite(wPreviousIndex)
+      ? wCurr - wPreviousIndex
+      : 0;
     const wAmount = wConsumption * wUnitPrice;
 
     const doc = await UtilityReading.create({
@@ -313,7 +326,7 @@ exports.createReading = async (req, res) => {
       data: doc,
     });
   } catch (e) {
-    console.error("createReading error:", e.messagee);
+    console.error("createReading error:", e.message);
     res.status(400).json({ message: "Lỗi hệ thống" });
   }
 };
@@ -352,7 +365,8 @@ exports.getReading = async (req, res) => {
           .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
-      if (!req.staff.assignedBuildingIds.includes(buildingIdFromRoom)) {
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      if (!assigned.includes(String(buildingIdFromRoom))) {
         return res.status(403).json({
           message: "Bạn không được quản lý tòa nhà chứa chỉ số này",
           buildingId: buildingIdFromRoom,
@@ -407,7 +421,7 @@ exports.updateReading = async (req, res) => {
       select: "buildingId",
       populate: {
         path: "buildingId",
-        select: "landlordId status",
+        select: "landlordId status wIndexType",
       },
     });
 
@@ -422,11 +436,24 @@ exports.updateReading = async (req, res) => {
           .status(500)
           .json({ message: "Dữ liệu phòng/tòa nhà bị lỗi" });
       }
-      if (!req.staff.assignedBuildingIds.includes(buildingIdFromRoom)) {
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      if (!assigned.includes(String(buildingIdFromRoom))) {
         return res.status(403).json({
           message: "Bạn không được phép chỉnh sửa chỉ số của tòa nhà này",
         });
       }
+    }
+
+    // Nếu tòa tính nước theo đầu người thì không cho sửa các trường nước
+    const wIndexTypeOfBuilding = reading.roomId?.buildingId?.wIndexType;
+    if (
+      wIndexTypeOfBuilding === "byPerson" &&
+      (wPreviousIndex != null || wCurrentIndex != null || wUnitPrice != null)
+    ) {
+      return res.status(400).json({
+        message:
+          "Tòa đang tính nước theo đầu người nên không được chỉnh sửa các trường chỉ số nước.",
+      });
     }
 
     const lockedStatuses = ["confirmed", "billed"];
@@ -656,7 +683,7 @@ exports.confirmReading = async (req, res) => {
       select: "buildingId",
       populate: {
         path: "buildingId",
-        select: "landlordId status",
+        select: "landlordId status wIndexType",
       },
     });
 
@@ -671,7 +698,8 @@ exports.confirmReading = async (req, res) => {
           .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
-      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      if (!assigned.includes(String(buildingId))) {
         return res.status(403).json({
           message: "Bạn không được phép xác nhận chỉ số của tòa nhà này",
           buildingId,
@@ -915,7 +943,8 @@ exports.deleteReading = async (req, res) => {
           .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
-      if (!req.staff.assignedBuildingIds.includes(buildingId)) {
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      if (!assigned.includes(String(buildingId))) {
         return res.status(403).json({
           message: "Bạn không được phép xóa chỉ số của tòa nhà này",
           buildingId,
@@ -1010,7 +1039,7 @@ exports.bulkCreateReadings = async (req, res) => {
         }
 
         const building = await Building.findById(room.buildingId)
-          .select("landlordId isDeleted status ePrice wPrice")
+          .select("landlordId isDeleted status ePrice wPrice wIndexType")
           .lean();
 
         if (
@@ -1064,6 +1093,14 @@ exports.bulkCreateReadings = async (req, res) => {
           landlordId
         );
 
+        const isWaterByPerson = building.wIndexType === "byPerson";
+        if (isWaterByPerson && wCurrentIndex != null) {
+          itemResult.error =
+            "Tòa đang tính nước theo đầu người nên không nhập chỉ số nước (wCurrentIndex)";
+          results.push(itemResult);
+          continue;
+        }
+
         // Validate current indexes
         let eCurr = null;
         if (eCurrentIndex != null) {
@@ -1102,8 +1139,9 @@ exports.bulkCreateReadings = async (req, res) => {
             Number.isFinite(building.ePrice)
             ? building.ePrice
             : 0;
-        const wUnitPrice =
-          typeof building.wPrice === "number" &&
+        const wUnitPrice = isWaterByPerson
+          ? 0
+          : typeof building.wPrice === "number" &&
             Number.isFinite(building.wPrice)
             ? building.wPrice
             : 0;
@@ -1114,8 +1152,9 @@ exports.bulkCreateReadings = async (req, res) => {
             : 0;
         const eAmount = eConsumption * eUnitPrice;
 
-        const wConsumption =
-          wCurr != null && Number.isFinite(wPreviousIndex)
+        const wConsumption = isWaterByPerson
+          ? 0
+          : wCurr != null && Number.isFinite(wPreviousIndex)
             ? wCurr - wPreviousIndex
             : 0;
         const wAmount = wConsumption * wUnitPrice;
@@ -1237,8 +1276,9 @@ exports.listRoomsForUtility = async (req, res) => {
       status: "rented",
     };
     if (isStaff) {
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
       if (buildingId) {
-        if (!req.staff.assignedBuildingIds.includes(buildingId.toString())) {
+        if (!assigned.includes(String(buildingId))) {
           return res.status(403).json({
             message: "Bạn không được quản lý tòa nhà này",
           });

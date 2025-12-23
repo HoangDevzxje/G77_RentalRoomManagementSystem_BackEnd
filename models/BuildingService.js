@@ -19,7 +19,7 @@ const buildingServiceSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      enum: ["internet", "parking", "cleaning", "security", "other"],
+      enum: ["internet", "parking", "cleaning", "security", "water", "other"],
     },
 
     label: { type: String, trim: true },

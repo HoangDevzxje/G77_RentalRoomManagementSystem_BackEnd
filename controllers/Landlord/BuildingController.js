@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Building = require("../../models/Building");
 const Floor = require("../../models/Floor");
 const Room = require("../../models/Room");
+const BuildingService = require("../../models/BuildingService");
 const xlsx = require("xlsx");
 const Excel = require("exceljs");
 
@@ -157,6 +158,14 @@ const create = async (req, res) => {
 
     await building.save();
 
+    if (building.wIndexType === "byPerson") {
+      await upsertWaterPerPersonService({
+        buildingId: building._id,
+        landlordId: building.landlordId,
+        fee: building.wPrice,
+      });
+    }
+
     res.status(201).json({ success: true, data: building });
   } catch (err) {
     console.error("Error creating building:", err);
@@ -187,6 +196,52 @@ function renderRoomNumber(tpl, { block, floorLevel, seq }) {
     return pad ? s.padStart(pad, "0") : s;
   });
   return out;
+}
+
+async function upsertWaterPerPersonService({
+  buildingId,
+  landlordId,
+  fee,
+  session,
+}) {
+  // "water" service dùng cho trường hợp tính nước theo đầu người.
+  // Nếu đã có (kể cả soft delete) thì khôi phục và cập nhật.
+  const existing = await BuildingService.findOne({
+    buildingId,
+    landlordId,
+    name: "water",
+  }).session(session || null);
+
+  const payload = {
+    landlordId,
+    buildingId,
+    name: "water",
+    label: "Nước (theo đầu người)",
+    chargeType: "perPerson",
+    fee: Number.isFinite(Number(fee)) ? Number(fee) : 0,
+    currency: "VND",
+    description: "Tự động tạo khi chọn loại chỉ số nước theo đầu người",
+    isDeleted: false,
+    deletedAt: null,
+  };
+
+  if (existing) {
+    Object.assign(existing, payload);
+    await existing.save({ session });
+    return existing;
+  }
+
+  const created = new BuildingService(payload);
+  await created.save({ session });
+  return created;
+}
+
+async function softDeleteWaterService({ buildingId, landlordId, session }) {
+  await BuildingService.updateMany(
+    { buildingId, landlordId, name: "water", isDeleted: false },
+    { $set: { isDeleted: true, deletedAt: new Date() } },
+    { session }
+  );
 }
 
 const quickSetup = async (req, res) => {
@@ -238,6 +293,15 @@ const quickSetup = async (req, res) => {
       wPrice,
     });
     if (!dryRun) await building.save({ session });
+
+    if (!dryRun && wIndexType === "byPerson") {
+      await upsertWaterPerPersonService({
+        buildingId: building._id,
+        landlordId,
+        fee: wPrice,
+        session,
+      });
+    }
 
     // 2) Tạo Floors
     let createdFloors = [];
@@ -376,8 +440,22 @@ const update = async (req, res) => {
     if (!building)
       return res.status(404).json({ message: "Không tìm thấy tòa nhà" });
 
-    const { name, address, ePrice, wPrice } = req.body;
-    const landlordId = req.user._id;
+    // auth
+    if (req.user.role === "staff") {
+      const assigned = (req.staff?.assignedBuildingIds || []).map((x) =>
+        String(x)
+      );
+      if (!assigned.includes(String(building._id))) {
+        return res.status(403).json({ message: "Không có quyền" });
+      }
+    } else if (req.user.role === "landlord") {
+      if (String(building.landlordId) !== String(req.user._id)) {
+        return res.status(403).json({ message: "Không có quyền" });
+      }
+    }
+
+    const { name, address, ePrice, wPrice, wIndexType } = req.body;
+    const ownerLandlordId = building.landlordId;
     if (!name) {
       return res.status(400).json({ message: "Thiếu tên tòa nhà" });
     }
@@ -395,16 +473,35 @@ const update = async (req, res) => {
         return res.status(400).json({ message: "Tiền nước không hợp lệ" });
       }
     }
-    if (
-      req.user.role !== "landlord" &&
-      String(building.landlordId) !== String(landlordId)
-    ) {
-      return res.status(403).json({ message: "Không có quyền" });
+
+    // Nếu đổi wIndexType thì chặn khi đang có hợp đồng completed còn hiệu lực
+    if (wIndexType && wIndexType !== building.wIndexType) {
+      const now = new Date();
+      const roomIds = await Room.find({
+        buildingId: building._id,
+        isDeleted: false,
+      })
+        .select("_id")
+        .lean();
+      const ids = roomIds.map((r) => r._id);
+      const hasActiveContract = await Contract.exists({
+        roomId: { $in: ids },
+        isDeleted: false,
+        status: "completed",
+        "contract.startDate": { $lte: now },
+        "contract.endDate": { $gte: now },
+      });
+      if (hasActiveContract) {
+        return res.status(400).json({
+          message:
+            "Không thể thay đổi loại chỉ số nước vì tòa đang có hợp đồng thuê còn hiệu lực",
+        });
+      }
     }
 
     if (name && name.trim() !== building.name) {
       const existed = await Building.exists({
-        landlordId,
+        landlordId: ownerLandlordId,
         name: name.trim(),
         _id: { $ne: building._id },
         isDeleted: false,
@@ -417,8 +514,28 @@ const update = async (req, res) => {
       }
     }
 
+    const oldWIndexType = building.wIndexType;
     Object.assign(building, req.body);
     await building.save();
+
+    const wIndexChanged = wIndexType && wIndexType !== oldWIndexType;
+    const wPriceChanged = wPrice !== undefined && wPrice !== null;
+
+    // Đồng bộ BuildingService cho trường hợp tính nước theo đầu người
+    if (building.wIndexType === "byPerson") {
+      if (wIndexChanged || wPriceChanged) {
+        await upsertWaterPerPersonService({
+          buildingId: building._id,
+          landlordId: building.landlordId,
+          fee: building.wPrice,
+        });
+      }
+    } else if (wIndexChanged && oldWIndexType === "byPerson") {
+      await softDeleteWaterService({
+        buildingId: building._id,
+        landlordId: building.landlordId,
+      });
+    }
 
     res.json({ success: true, data: building });
   } catch (err) {
@@ -820,8 +937,8 @@ const downloadImportTemplate = async (req, res) => {
 
     // Buildings: status (C), eIndexType (D), wIndexType (F)
     applyListValidation(wsB, 3, lists.buildingStatusVI);
-    applyListValidation(wsB, 4, lists.eIndexTypeVI); // eIndexType chỉ byNumber
-    applyListValidation(wsB, 6, lists.wIndexTypeVI); // wIndexType byNumber/byPerson
+    applyListValidation(wsB, 4, lists.eIndexTypeVI);
+    applyListValidation(wsB, 6, lists.wIndexTypeVI);
 
     // Floors: status (D)
     applyListValidation(wsF, 4, lists.floorStatusVI);
@@ -889,8 +1006,11 @@ const VI_EN_MAP = {
     "bảo trì": "maintenance",
     "ngưng hoạt động": "inactive",
   },
-  eIndexType: { "theo chỉ số": "byNumber" },
-  wIndexType: { "theo chỉ số": "byNumber", "theo đầu người": "byPerson" },
+  indexType: {
+    "theo chỉ số": "byNumber",
+    "theo đầu người": "byPerson",
+    "đã bao gồm": "included",
+  },
 };
 
 // Tập EN hợp lệ (để chấp nhận cả khi user gõ code EN)
@@ -898,8 +1018,7 @@ const ALLOW = {
   buildingStatus: new Set(["active", "inactive"]),
   floorStatus: new Set(["active", "inactive"]),
   roomStatus: new Set(["available", "occupied", "maintenance", "inactive"]),
-  eIndexType: new Set(["byNumber"]),
-  wIndexType: new Set(["byNumber", "byPerson"]),
+  indexType: new Set(["byNumber", "byPerson", "included"]),
 };
 
 // Helper: map & validate enum
@@ -990,13 +1109,15 @@ const importFromExcel = async (req, res) => {
           ]);
 
           // eIndexType, wIndexType: default 'byNumber'
-          const mEIdx = mapEnumOrError(r.eIndexType, "eIndexType", "byNumber", [
-            "Theo chỉ số/byNumber",
-          ]);
-
-          const mWIdx = mapEnumOrError(r.wIndexType, "wIndexType", "byNumber", [
+          const mEIdx = mapEnumOrError(r.eIndexType, "indexType", "byNumber", [
             "Theo chỉ số/byNumber",
             "Theo đầu người/byPerson",
+            "Đã bao gồm/included",
+          ]);
+          const mWIdx = mapEnumOrError(r.wIndexType, "indexType", "byNumber", [
+            "Theo chỉ số/byNumber",
+            "Theo đầu người/byPerson",
+            "Đã bao gồm/included",
           ]);
 
           const ePrice = toNum(r.ePrice, 0);
