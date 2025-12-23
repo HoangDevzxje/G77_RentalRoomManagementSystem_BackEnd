@@ -17,6 +17,7 @@ const fs = require("fs");
 const axios = require("axios");
 const mongoose = require("mongoose");
 const { decrypt } = require("../../utils/crypto");
+const { DateTime } = require("luxon");
 const ROOM_CONFLICT_STATUSES = [
   "sent_to_tenant",
   "signed_by_tenant",
@@ -259,12 +260,19 @@ function computeShouldShowMoveInActions(contract, { isStaff, userId } = {}) {
   const endDate = contract.contract?.endDate;
   if (!startDate || !endDate) return false;
 
-  const now = new Date();
-  if (now < new Date(startDate) || now > new Date(endDate)) return false;
+  const tz = "Asia/Ho_Chi_Minh";
+
+  // So theo ngày VN: start = đầu ngày, end = cuối ngày
+  const now = DateTime.now().setZone(tz);
+  const start = DateTime.fromJSDate(new Date(startDate))
+    .setZone(tz)
+    .startOf("day");
+  const end = DateTime.fromJSDate(new Date(endDate)).setZone(tz).endOf("day");
+
+  if (now < start || now > end) return false;
 
   return true;
 }
-
 // POST /landlords/contracts/from-contact
 // body: { contactId }
 exports.createFromContact = async (req, res) => {
