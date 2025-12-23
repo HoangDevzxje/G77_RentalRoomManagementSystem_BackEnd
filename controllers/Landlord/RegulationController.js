@@ -7,18 +7,31 @@ exports.getList = async (req, res) => {
     const { buildingId } = req.query;
     if (!buildingId)
       return res.status(400).json({ message: "Thiếu buildingId" });
-    const building = await Building.findOne({ _id: buildingId, isDeleted: false });
+
+    const building = await Building.findOne({
+      _id: buildingId,
+      isDeleted: false,
+    }).select(
+      "name address status ePrice wPrice eIndexType wIndexType landlordId"
+    );
+
     if (!building) {
       return res.status(404).json({ message: "Không tìm thấy tòa nhà!" });
     }
-    req.query.buildingId = buildingId;
 
     if (req.user.role === "staff") {
-      if (!req.staff?.assignedBuildingIds.includes(buildingId)) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
-      }
+      // chú ý: assignedBuildingIds thường là ObjectId => so sánh string cho chắc
+      const ok = (req.staff?.assignedBuildingIds || []).some(
+        (id) => String(id) === String(buildingId)
+      );
+      if (!ok)
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
     }
+
     const query = { buildingId, status: "active" };
+
     const regulations = await Regulation.find(query)
       .populate({
         path: "createdBy",
@@ -29,7 +42,14 @@ exports.getList = async (req, res) => {
           select: "fullName phoneNumber",
         },
       })
-      .sort({ createdAt: -1 });
+      .populate({
+        path: "buildingId",
+        select: "name address status ePrice wPrice eIndexType wIndexType",
+        match: { isDeleted: false },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
     return res.json(regulations);
   } catch (err) {
     return res.status(500).json({ message: err.message });
@@ -54,7 +74,9 @@ exports.create = async (req, res) => {
       String(building.landlordId) !== String(req.user._id) &&
       req.user.role !== "staff"
     ) {
-      return res.status(403).json({ message: "Không có quyền tạo quy định cho tòa này" });
+      return res
+        .status(403)
+        .json({ message: "Không có quyền tạo quy định cho tòa này" });
     }
     const newReg = await Regulation.create({
       buildingId,
