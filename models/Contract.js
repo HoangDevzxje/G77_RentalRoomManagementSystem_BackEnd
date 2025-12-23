@@ -302,6 +302,16 @@ const contractSchema = new mongoose.Schema(
     },
     terminationRequest: terminationRequestSchema,
     identityVerification: identityVerificationSchema,
+
+    eIndexType: { type: String, enum: ["byNumber"], default: "byNumber" },
+    ePrice: { type: Number, default: 0 },
+
+    wIndexType: {
+      type: String,
+      enum: ["byNumber", "byPerson"],
+      default: "byNumber",
+    },
+    wPrice: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
@@ -373,8 +383,8 @@ contractSchema.post("save", async function (doc) {
         1,
         Number(
           doc?.contract?.depositRentMonths ||
-          doc?.contract?.paymentCycleMonths ||
-          1
+            doc?.contract?.paymentCycleMonths ||
+            1
         )
       );
 
@@ -465,8 +475,7 @@ contractSchema.post("save", async function (doc) {
         mongoose.models.Notification || require("./Notification");
       const roomNumber = doc?.roomId?.roomNumber || "";
       const buildingName = doc?.buildingId?.name || "";
-      const Staff =
-        mongoose.models.Staff || require("./Staff");
+      const Staff = mongoose.models.Staff || require("./Staff");
       const staffList = await Staff.find({
         assignedBuildings: { $in: [doc?.buildingId] },
         isDeleted: false,
@@ -474,8 +483,12 @@ contractSchema.post("save", async function (doc) {
         .select("accountId")
         .lean();
 
-      const staffIds = staffList.map((s) => s.accountId.toString()).filter(Boolean);
-      const receivers = [...new Set([doc.landlordId, ...staffIds])].filter(Boolean);
+      const staffIds = staffList
+        .map((s) => s.accountId.toString())
+        .filter(Boolean);
+      const receivers = [...new Set([doc.landlordId, ...staffIds])].filter(
+        Boolean
+      );
       console.log(receivers);
       if (receivers.length > 0) {
         const notiLandlord = await Notification.create({
@@ -483,7 +496,8 @@ contractSchema.post("save", async function (doc) {
           createByRole: "system",
           title: "Hệ thống đã tạo hóa đơn tiền cọc",
           content:
-            `Đã tạo hóa đơn tiền cọc cho hợp đồng${roomNumber ? ` phòng ${roomNumber}` : ""
+            `Đã tạo hóa đơn tiền cọc cho hợp đồng${
+              roomNumber ? ` phòng ${roomNumber}` : ""
             }${buildingName ? ` – ${buildingName}` : ""}.\n` +
             `Số tiền: ${depositAmount.toLocaleString("vi-VN")} ₫`,
           type: "reminder",
@@ -504,9 +518,13 @@ contractSchema.post("save", async function (doc) {
               createBy: { role: "system" },
             });
 
-            io.to(`user:${uid}`).emit("unread_count_increment", { increment: 1 });
+            io.to(`user:${uid}`).emit("unread_count_increment", {
+              increment: 1,
+            });
           });
-          console.log(`[CRON] Sent reminder to landlord + staff (${receivers.length} người)`);
+          console.log(
+            `[CRON] Sent reminder to landlord + staff (${receivers.length} người)`
+          );
         }
       }
     } catch (notiErr) {

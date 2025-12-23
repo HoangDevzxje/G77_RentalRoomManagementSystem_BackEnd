@@ -16,6 +16,7 @@ const fs = require("fs");
 const axios = require("axios");
 const mongoose = require("mongoose");
 const { decrypt } = require("../../utils/crypto");
+const Building = require("../../models/Building");
 const ROOM_CONFLICT_STATUSES = [
   "sent_to_tenant",
   "signed_by_tenant",
@@ -445,6 +446,15 @@ exports.createFromContact = async (req, res) => {
     const contractInfo = {
       price: room?.price || undefined,
     };
+    const bSnapshot =
+      contact?.buildingId && typeof contact.buildingId === "object"
+        ? contact.buildingId
+        : null;
+
+    const eIndexType = bSnapshot?.eIndexType || "byNumber";
+    const ePrice = Number(bSnapshot?.ePrice || 0);
+    const wIndexType = bSnapshot?.wIndexType || "byNumber";
+    const wPrice = Number(bSnapshot?.wPrice || 0);
 
     const doc = await Contract.create({
       landlordId,
@@ -460,6 +470,10 @@ exports.createFromContact = async (req, res) => {
       contract: contractInfo,
       status: "draft",
       createBy: req.user._id,
+      eIndexType,
+      ePrice,
+      wIndexType,
+      wPrice,
     });
 
     contact.contractId = doc._id;
@@ -1056,6 +1070,10 @@ exports.cloneContract = async (req, res) => {
 
       status: "draft",
       clonedFrom: old._id,
+      eIndexType: old.eIndexType,
+      ePrice: old.ePrice,
+      wIndexType: old.wIndexType,
+      wPrice: old.wPrice,
     });
 
     res.json({

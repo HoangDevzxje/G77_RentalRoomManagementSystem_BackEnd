@@ -13,6 +13,33 @@ function getPeriodRange(periodMonth, periodYear) {
 }
 
 /**
+ * Lấy hợp đồng completed hiệu lực trong kỳ (snapshot tiện ích).
+ * UtilityReading sẽ lấy ePrice/wPrice và eIndexType/wIndexType từ Contract.
+ */
+async function getActiveContractSnapshot({
+  landlordId,
+  roomId,
+  periodMonth,
+  periodYear,
+}) {
+  const { start, end } = getPeriodRange(periodMonth, periodYear);
+  return Contract.findOne({
+    landlordId,
+    roomId,
+    status: "completed",
+    "contract.startDate": { $lte: end },
+    $or: [
+      { "contract.endDate": { $gte: start } },
+      { "contract.endDate": null },
+    ],
+    isDeleted: false,
+  })
+    .select("_id buildingId eIndexType ePrice wIndexType wPrice")
+    .sort({ "contract.startDate": -1, createdAt: -1 })
+    .lean();
+}
+
+/**
  * GET /landlords/utility-readings
  * query:
  *  - buildingId
@@ -83,10 +110,8 @@ exports.listReadings = async (req, res) => {
     const [items, total] = await Promise.all([
       UtilityReading.find(filter)
         .populate("roomId", "roomNumber buildingId")
-        .populate(
-          "buildingId",
-          "name address status ePrice wPrice eIndexType wIndexType"
-        )
+        .populate("buildingId", "name address status")
+        .populate("contractId", "eIndexType ePrice wIndexType wPrice")
         .sort({ periodYear: -1, periodMonth: -1, createdAt: -1 })
         .skip(skip)
         .limit(pageSize)
@@ -189,6 +214,7 @@ exports.createReading = async (req, res) => {
         .json({ message: "Không tìm thấy phòng hoặc phòng đã bị xóa" });
     }
 
+    // Vẫn load Building để check ownership / status, và fallback giá nếu Contract cũ thiếu snapshot
     const building = await Building.findById(room.buildingId)
       .select("landlordId isDeleted status ePrice wPrice wIndexType")
       .lean();
@@ -222,11 +248,26 @@ exports.createReading = async (req, res) => {
       }
     }
 
-    const isWaterByPerson = building.wIndexType === "byPerson";
+    // Lấy snapshot tiện ích từ Hợp đồng (Contract) trong kỳ
+    const cSnapshot = await getActiveContractSnapshot({
+      landlordId,
+      roomId,
+      periodMonth: month,
+      periodYear: year,
+    });
+    if (!cSnapshot) {
+      return res.status(400).json({
+        message: "Phòng chưa có hợp đồng completed hiệu lực trong kỳ này",
+      });
+    }
+
+    const wIndexTypeEffective =
+      cSnapshot.wIndexType || building.wIndexType || "byNumber";
+    const isWaterByPerson = wIndexTypeEffective === "byPerson";
     if (isWaterByPerson && wCurrentIndex != null) {
       return res.status(400).json({
         message:
-          "Tòa đang tính nước theo đầu người nên không được nhập chỉ số nước",
+          "HĐ đang tính nước theo đầu người nên không được nhập chỉ số nước",
       });
     }
     const existed = await UtilityReading.findOne({
@@ -280,12 +321,15 @@ exports.createReading = async (req, res) => {
       }
     }
 
-    const eUnitPrice =
-      typeof building.ePrice === "number" && Number.isFinite(building.ePrice)
-        ? building.ePrice
-        : 0;
+    const eUnitPrice = Number.isFinite(cSnapshot.ePrice)
+      ? cSnapshot.ePrice
+      : typeof building.ePrice === "number" && Number.isFinite(building.ePrice)
+      ? building.ePrice
+      : 0;
     const wUnitPrice = isWaterByPerson
       ? 0
+      : Number.isFinite(cSnapshot.wPrice)
+      ? cSnapshot.wPrice
       : typeof building.wPrice === "number" && Number.isFinite(building.wPrice)
       ? building.wPrice
       : 0;
@@ -307,6 +351,7 @@ exports.createReading = async (req, res) => {
       landlordId,
       buildingId: room.buildingId,
       roomId,
+      contractId: cSnapshot._id,
       periodMonth: month,
       periodYear: year,
       readingDate: new Date(),
@@ -353,10 +398,8 @@ exports.getReading = async (req, res) => {
       isDeleted: false,
     })
       .populate("roomId", "roomNumber buildingId")
-      .populate(
-        "buildingId",
-        "name address status ePrice wPrice eIndexType wIndexType"
-      )
+      .populate("buildingId", "name address status")
+      .populate("contractId", "eIndexType ePrice wIndexType wPrice")
       .lean();
 
     if (!doc) {
@@ -423,14 +466,16 @@ exports.updateReading = async (req, res) => {
       _id: id,
       landlordId,
       isDeleted: false,
-    }).populate({
-      path: "roomId",
-      select: "buildingId",
-      populate: {
-        path: "buildingId",
-        select: "landlordId status wIndexType",
-      },
-    });
+    })
+      .populate({
+        path: "roomId",
+        select: "buildingId",
+        populate: {
+          path: "buildingId",
+          select: "landlordId status wIndexType",
+        },
+      })
+      .populate("contractId", "eIndexType ePrice wIndexType wPrice");
 
     if (!reading) {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
@@ -453,10 +498,13 @@ exports.updateReading = async (req, res) => {
       }
     }
 
-    // Nếu tòa tính nước theo đầu người thì không cho sửa các trường nước
-    const wIndexTypeOfBuilding = reading.roomId?.buildingId?.wIndexType;
+    // Nếu HĐ (ưu tiên) / tòa tính nước theo đầu người thì không cho sửa các trường nước
+    const wIndexTypeEffective =
+      reading.contractId?.wIndexType ||
+      reading.roomId?.buildingId?.wIndexType ||
+      "byNumber";
     if (
-      wIndexTypeOfBuilding === "byPerson" &&
+      wIndexTypeEffective === "byPerson" &&
       (wPreviousIndex != null || wCurrentIndex != null || wUnitPrice != null)
     ) {
       return res.status(400).json({
@@ -687,14 +735,16 @@ exports.confirmReading = async (req, res) => {
       _id: id,
       landlordId,
       isDeleted: false,
-    }).populate({
-      path: "roomId",
-      select: "buildingId",
-      populate: {
-        path: "buildingId",
-        select: "landlordId status wIndexType",
-      },
-    });
+    })
+      .populate({
+        path: "roomId",
+        select: "buildingId",
+        populate: {
+          path: "buildingId",
+          select: "landlordId status wIndexType",
+        },
+      })
+      .populate("contractId", "eIndexType ePrice wIndexType wPrice");
 
     if (!doc) {
       return res.status(404).json({ message: "Không tìm thấy chỉ số" });
@@ -748,27 +798,49 @@ exports.confirmReading = async (req, res) => {
       }
     }
 
-    // Validate nước
-    if (doc.wCurrentIndex != null) {
-      if (
-        !Number.isFinite(doc.wCurrentIndex) ||
-        doc.wCurrentIndex < 0 ||
-        !Number.isFinite(doc.wPreviousIndex) ||
-        doc.wPreviousIndex < 0
-      ) {
+    // Validate nước (ưu tiên theo snapshot từ HĐ)
+    const wIndexTypeEffective =
+      doc.contractId?.wIndexType ||
+      doc.roomId?.buildingId?.wIndexType ||
+      "byNumber";
+
+    if (wIndexTypeEffective === "byPerson") {
+      // HĐ tính nước theo đầu người => không được có chỉ số nước
+      if (doc.wCurrentIndex != null) {
         return res.status(400).json({
           message:
-            "Giá trị wPreviousIndex / wCurrentIndex không hợp lệ (phải là số >= 0)",
+            "HĐ đang tính nước theo đầu người nên không được xác nhận khi có chỉ số nước",
         });
       }
-      if (doc.wCurrentIndex < doc.wPreviousIndex) {
-        return res.status(400).json({
-          message:
-            "wCurrentIndex phải >= wPreviousIndex (chỉ số nước kỳ trước)",
-        });
-      }
-      if (doc.wUnitPrice != null && doc.wUnitPrice < 0) {
-        return res.status(400).json({ message: "wUnitPrice phải là số >= 0" });
+      // Đảm bảo không phát sinh tiền nước từ chỉ số
+      doc.wUnitPrice = 0;
+      doc.wConsumption = 0;
+      doc.wAmount = 0;
+    } else {
+      // byNumber => validate nếu có nhập chỉ số
+      if (doc.wCurrentIndex != null) {
+        if (
+          !Number.isFinite(doc.wCurrentIndex) ||
+          doc.wCurrentIndex < 0 ||
+          !Number.isFinite(doc.wPreviousIndex) ||
+          doc.wPreviousIndex < 0
+        ) {
+          return res.status(400).json({
+            message:
+              "Giá trị wPreviousIndex / wCurrentIndex không hợp lệ (phải là số >= 0)",
+          });
+        }
+        if (doc.wCurrentIndex < doc.wPreviousIndex) {
+          return res.status(400).json({
+            message:
+              "wCurrentIndex phải >= wPreviousIndex (chỉ số nước kỳ trước)",
+          });
+        }
+        if (doc.wUnitPrice != null && doc.wUnitPrice < 0) {
+          return res
+            .status(400)
+            .json({ message: "wUnitPrice phải là số >= 0" });
+        }
       }
     }
 
@@ -1100,16 +1172,32 @@ exports.bulkCreateReadings = async (req, res) => {
           continue;
         }
 
+        // Lấy snapshot tiện ích từ HĐ trong kỳ
+        const cSnapshot = await getActiveContractSnapshot({
+          landlordId,
+          roomId,
+          periodMonth: month,
+          periodYear: year,
+        });
+        if (!cSnapshot) {
+          itemResult.error =
+            "Phòng chưa có hợp đồng completed hiệu lực trong kỳ này";
+          results.push(itemResult);
+          continue;
+        }
+
         // previous indexes
         const { ePreviousIndex, wPreviousIndex } = await getPreviousIndexes(
           roomId,
           landlordId
         );
 
-        const isWaterByPerson = building.wIndexType === "byPerson";
+        const wIndexTypeEffective =
+          cSnapshot.wIndexType || building.wIndexType || "byNumber";
+        const isWaterByPerson = wIndexTypeEffective === "byPerson";
         if (isWaterByPerson && wCurrentIndex != null) {
           itemResult.error =
-            "Tòa đang tính nước theo đầu người nên không nhập chỉ số nước (wCurrentIndex)";
+            "HĐ đang tính nước theo đầu người nên không nhập chỉ số nước (wCurrentIndex)";
           results.push(itemResult);
           continue;
         }
@@ -1132,7 +1220,7 @@ exports.bulkCreateReadings = async (req, res) => {
         }
 
         let wCurr = null;
-        if (wCurrentIndex != null) {
+        if (!isWaterByPerson && wCurrentIndex != null) {
           wCurr = Number(wCurrentIndex);
           if (!Number.isFinite(wCurr) || wCurr < 0) {
             itemResult.error = "wCurrentIndex phải là số >= 0";
@@ -1147,13 +1235,16 @@ exports.bulkCreateReadings = async (req, res) => {
           }
         }
 
-        const eUnitPrice =
-          typeof building.ePrice === "number" &&
-          Number.isFinite(building.ePrice)
-            ? building.ePrice
-            : 0;
+        const eUnitPrice = Number.isFinite(cSnapshot.ePrice)
+          ? cSnapshot.ePrice
+          : typeof building.ePrice === "number" &&
+            Number.isFinite(building.ePrice)
+          ? building.ePrice
+          : 0;
         const wUnitPrice = isWaterByPerson
           ? 0
+          : Number.isFinite(cSnapshot.wPrice)
+          ? cSnapshot.wPrice
           : typeof building.wPrice === "number" &&
             Number.isFinite(building.wPrice)
           ? building.wPrice
@@ -1176,6 +1267,7 @@ exports.bulkCreateReadings = async (req, res) => {
           landlordId,
           buildingId: room.buildingId,
           roomId,
+          contractId: cSnapshot._id,
           periodMonth: month,
           periodYear: year,
           readingDate: new Date(),
@@ -1263,7 +1355,10 @@ exports.listRoomsForUtility = async (req, res) => {
       ],
       isDeleted: false,
     })
-      .select("roomId")
+      .select(
+        "_id roomId eIndexType ePrice wIndexType wPrice contract.startDate"
+      )
+      .sort({ "contract.startDate": -1, createdAt: -1 })
       .lean();
 
     if (!activeContracts.length) {
