@@ -473,7 +473,7 @@ router.patch(
 router.delete(
   "/:id",
   checkAuthorize(["landlord", "staff"]),
-  checkStaffPermission(PERMISSIONS.INVOICE_EDIT),
+  checkStaffPermission(PERMISSIONS.INVOICE_DELETE),
   checkSubscription,
   invoiceController.deleteInvoice
 );
