@@ -716,9 +716,9 @@ const cancelledSubscription = async (req, res) => {
             return sendError(res, 400, 'Chỉ có thể hủy gói đang active hoặc upcoming.');
         }
 
-        if (sub.isTrial) {
-            return sendError(res, 400, 'Không thể hủy gói dùng thử.');
-        }
+        // if (sub.isTrial) {
+        //     return sendError(res, 400, 'Không thể hủy gói dùng thử.');
+        // }
 
         if (sub.status === 'upcoming' && sub.renewedFrom) {
             await Subscription.findByIdAndUpdate(sub.renewedFrom, {

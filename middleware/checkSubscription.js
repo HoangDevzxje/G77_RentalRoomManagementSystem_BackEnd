@@ -122,7 +122,7 @@ module.exports = async (req, res, next) => {
     const totalAfter = currentRoomCount + additionalRooms;
     if (activeSub.packageId.roomLimit !== -1 && totalAfter > activeSub.packageId.roomLimit) {
       return res.status(403).json({
-        message: `Vượt quá giới hạn phòng!`,
+        message: `Vượt quá giới hạn phòng! Vui lòng nâng cấp gói hoặc giảm số phòng tạo!`,
         currentRooms: currentRoomCount,
         adding: additionalRooms,
         totalAfter,
