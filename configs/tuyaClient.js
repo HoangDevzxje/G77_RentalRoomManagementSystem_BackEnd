@@ -98,7 +98,7 @@ async function getAccessToken() {
     },
   });
 
-  console.log("Tuya token raw response:", res.data);
+  // console.log("Tuya token raw response:", res.data);
 
   if (res.data && res.data.success && res.data.result) {
     const { access_token, expire_time } = res.data.result;

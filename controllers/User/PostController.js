@@ -233,16 +233,15 @@ const getRoomDetailByTenant = async (req, res) => {
     }
 
     const furnitures = await RoomFurniture.find({ roomId: room._id })
-      .populate("furnitureId", "name type description image")
+      .populate("furnitureId", "name type description")
       .select("furnitureId quantity condition damageCount notes")
       .lean();
-
     res.json({
       success: true,
       data: {
         ...room,
         furnitures: furnitures.map((f) => ({
-          _id: f._id,
+          _id: f.furnitureId?._id,
           name: f.furnitureId?.name,
           type: f.furnitureId?.type,
           description: f.furnitureId?.description,

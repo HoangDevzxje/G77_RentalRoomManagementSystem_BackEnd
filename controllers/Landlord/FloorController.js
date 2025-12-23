@@ -499,7 +499,7 @@ const updateStatus = async (req, res) => {
         if (hasActiveContract) {
           return res.status(400).json({
             message:
-              "Không thể ngưng tầng vì vẫn còn phòng có hợp đồng thuê còn hiệu lực",
+              "Không thể ngừng hoạt động tầng vì vẫn còn phòng có hợp đồng thuê còn hiệu lực",
           });
         }
 
