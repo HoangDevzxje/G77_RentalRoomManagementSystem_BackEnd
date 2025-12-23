@@ -83,7 +83,10 @@ exports.listReadings = async (req, res) => {
     const [items, total] = await Promise.all([
       UtilityReading.find(filter)
         .populate("roomId", "roomNumber buildingId")
-        .populate("buildingId", "name address")
+        .populate(
+          "buildingId",
+          "name address status ePrice wPrice eIndexType wIndexType"
+        )
         .sort({ periodYear: -1, periodMonth: -1, createdAt: -1 })
         .skip(skip)
         .limit(pageSize)
@@ -104,7 +107,6 @@ exports.listReadings = async (req, res) => {
   }
 };
 
-
 async function getPreviousIndexes(roomId, landlordId) {
   const last = await UtilityReading.findOne({
     roomId,
@@ -118,12 +120,12 @@ async function getPreviousIndexes(roomId, landlordId) {
     return {
       ePreviousIndex:
         typeof last.eCurrentIndex === "number" &&
-          Number.isFinite(last.eCurrentIndex)
+        Number.isFinite(last.eCurrentIndex)
           ? last.eCurrentIndex
           : 0,
       wPreviousIndex:
         typeof last.wCurrentIndex === "number" &&
-          Number.isFinite(last.wCurrentIndex)
+        Number.isFinite(last.wCurrentIndex)
           ? last.wCurrentIndex
           : 0,
     };
@@ -351,7 +353,10 @@ exports.getReading = async (req, res) => {
       isDeleted: false,
     })
       .populate("roomId", "roomNumber buildingId")
-      .populate("buildingId", "name address")
+      .populate(
+        "buildingId",
+        "name address status ePrice wPrice eIndexType wIndexType"
+      )
       .lean();
 
     if (!doc) {
@@ -365,7 +370,9 @@ exports.getReading = async (req, res) => {
           .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
-      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) =>
+        String(x)
+      );
       if (!assigned.includes(String(buildingIdFromRoom))) {
         return res.status(403).json({
           message: "Bạn không được quản lý tòa nhà chứa chỉ số này",
@@ -436,7 +443,9 @@ exports.updateReading = async (req, res) => {
           .status(500)
           .json({ message: "Dữ liệu phòng/tòa nhà bị lỗi" });
       }
-      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) =>
+        String(x)
+      );
       if (!assigned.includes(String(buildingIdFromRoom))) {
         return res.status(403).json({
           message: "Bạn không được phép chỉnh sửa chỉ số của tòa nhà này",
@@ -698,7 +707,9 @@ exports.confirmReading = async (req, res) => {
           .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
-      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) =>
+        String(x)
+      );
       if (!assigned.includes(String(buildingId))) {
         return res.status(403).json({
           message: "Bạn không được phép xác nhận chỉ số của tòa nhà này",
@@ -713,7 +724,7 @@ exports.confirmReading = async (req, res) => {
       });
     }
 
-    // Validate điện 
+    // Validate điện
     if (doc.eCurrentIndex != null) {
       if (
         !Number.isFinite(doc.eCurrentIndex) ||
@@ -737,7 +748,7 @@ exports.confirmReading = async (req, res) => {
       }
     }
 
-    // Validate nước 
+    // Validate nước
     if (doc.wCurrentIndex != null) {
       if (
         !Number.isFinite(doc.wCurrentIndex) ||
@@ -943,7 +954,9 @@ exports.deleteReading = async (req, res) => {
           .json({ message: "Không xác định được tòa nhà của chỉ số này" });
       }
 
-      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) =>
+        String(x)
+      );
       if (!assigned.includes(String(buildingId))) {
         return res.status(403).json({
           message: "Bạn không được phép xóa chỉ số của tòa nhà này",
@@ -1136,15 +1149,15 @@ exports.bulkCreateReadings = async (req, res) => {
 
         const eUnitPrice =
           typeof building.ePrice === "number" &&
-            Number.isFinite(building.ePrice)
+          Number.isFinite(building.ePrice)
             ? building.ePrice
             : 0;
         const wUnitPrice = isWaterByPerson
           ? 0
           : typeof building.wPrice === "number" &&
             Number.isFinite(building.wPrice)
-            ? building.wPrice
-            : 0;
+          ? building.wPrice
+          : 0;
 
         const eConsumption =
           eCurr != null && Number.isFinite(ePreviousIndex)
@@ -1155,8 +1168,8 @@ exports.bulkCreateReadings = async (req, res) => {
         const wConsumption = isWaterByPerson
           ? 0
           : wCurr != null && Number.isFinite(wPreviousIndex)
-            ? wCurr - wPreviousIndex
-            : 0;
+          ? wCurr - wPreviousIndex
+          : 0;
         const wAmount = wConsumption * wUnitPrice;
 
         const doc = await UtilityReading.create({
@@ -1276,7 +1289,9 @@ exports.listRoomsForUtility = async (req, res) => {
       status: "rented",
     };
     if (isStaff) {
-      const assigned = (req.staff.assignedBuildingIds || []).map((x) => String(x));
+      const assigned = (req.staff.assignedBuildingIds || []).map((x) =>
+        String(x)
+      );
       if (buildingId) {
         if (!assigned.includes(String(buildingId))) {
           return res.status(403).json({
