@@ -1589,16 +1589,38 @@ async function getLaundryDevicesInBuilding({
   const mapDeviceWithStatus = async (dev) => {
     try {
       const statusList = await getDeviceStatus(dev.tuyaDeviceId);
+
       let power = 0;
       let switchOn = false;
+      let voltageRaw = null;
+      let currentRaw = null;
 
       statusList.forEach((item) => {
         if (item.code === "cur_power") power = item.value || 0;
         if (item.code === "switch_1") switchOn = !!item.value;
+
+        if (item.code === "cur_voltage" || item.code === "voltage")
+          voltageRaw = item.value;
+        if (item.code === "cur_current" || item.code === "current")
+          currentRaw = item.value;
       });
 
+      const voltageV =
+        voltageRaw == null
+          ? null
+          : voltageRaw > 1000
+          ? voltageRaw / 10
+          : voltageRaw;
+
+      const hasPowerInput =
+        (voltageV != null && voltageV >= 50) ||
+        (currentRaw != null && currentRaw > 0) ||
+        power > 0;
+
       let runningStatus = "idle";
-      if (switchOn && power > 3) runningStatus = "running";
+      if (switchOn && hasPowerInput) runningStatus = "running";
+
+      return { ...dev, status: runningStatus, power };
 
       return { ...dev, status: runningStatus, power };
     } catch (err) {

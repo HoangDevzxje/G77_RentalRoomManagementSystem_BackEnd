@@ -25,14 +25,40 @@ async function getLaundryStatusForFloor(floorId) {
       const statusList = await getDeviceStatus(device.tuyaDeviceId);
       let power = 0;
       let switchOn = false;
+      let voltageRaw = null; // thường là cur_voltage
+      let currentRaw = null; // thường là cur_current
 
       statusList.forEach((item) => {
         if (item.code === "cur_power") power = item.value || 0;
         if (item.code === "switch_1") switchOn = !!item.value;
+
+        // Tuya tùy thiết bị: có thể là cur_voltage / voltage
+        if (item.code === "cur_voltage" || item.code === "voltage") {
+          voltageRaw = item.value;
+        }
+
+        // Tuya tùy thiết bị: có thể là cur_current / current
+        if (item.code === "cur_current" || item.code === "current") {
+          currentRaw = item.value;
+        }
       });
 
+      // normalize voltage: nhiều ổ cắm trả về đơn vị 0.1V (vd 2200 = 220V)
+      const voltageV =
+        voltageRaw == null
+          ? null
+          : voltageRaw > 1000
+          ? voltageRaw / 10
+          : voltageRaw;
+
+      // “có điện vào” ưu tiên theo voltage/current, fallback theo power
+      const hasPowerInput =
+        (voltageV != null && voltageV >= 50) || // có điện lưới
+        (currentRaw != null && currentRaw > 0) ||
+        power > 0;
+
       let status = "idle";
-      if (switchOn && power > 3) status = "running";
+      if (switchOn && hasPowerInput) status = "running";
 
       return {
         _id: device._id,
@@ -467,13 +493,17 @@ const updateStatus = async (req, res) => {
 
     if (req.user.role === "staff") {
       if (!req.staff?.assignedBuildingIds.includes(String(floor.buildingId))) {
-        return res.status(403).json({ message: "Bạn không được quản lý tòa nhà này" });
+        return res
+          .status(403)
+          .json({ message: "Bạn không được quản lý tòa nhà này" });
       }
     } else if (
       req.user.role === "landlord" &&
       String(building.landlordId) !== String(req.user._id)
     ) {
-      return res.status(403).json({ message: "Không có quyền với tòa nhà này" });
+      return res
+        .status(403)
+        .json({ message: "Không có quyền với tòa nhà này" });
     }
     if (floor.status === status) {
       return res.json({ message: "Trạng thái không thay đổi" });
@@ -510,10 +540,7 @@ const updateStatus = async (req, res) => {
       }
     }
 
-    await Floor.updateOne(
-      { _id: floor._id },
-      { $set: { status } }
-    );
+    await Floor.updateOne({ _id: floor._id }, { $set: { status } });
 
     res.json({ message: "Cập nhật trạng thái tầng thành công" });
   } catch (err) {
