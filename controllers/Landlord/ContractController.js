@@ -8,6 +8,7 @@ const Account = require("../../models/Account");
 const RoomFurniture = require("../../models/RoomFurniture");
 const Notification = require("../../models/Notification");
 const Invoice = require("../../models/Invoice");
+const Staff = require("../../models/Staff");
 const he = require("he");
 const PDFDocument = require("pdfkit");
 const contentDisposition = require("content-disposition");
@@ -180,8 +181,9 @@ async function createMoveInNotifications(contract, { io, mode }) {
     mode === "auto"
       ? "Hệ thống đã xác nhận người thuê vào ở"
       : "Đã xác nhận người thuê vào ở";
-  const contentForLandlord = `Hợp đồng ${contract.contract?.no || ""
-    } cho phòng ${contract?.roomId?.roomNumber} đã được xác nhận vào ở.`;
+  const contentForLandlord = `Hợp đồng ${
+    contract.contract?.no || ""
+  } cho phòng ${contract?.roomId?.roomNumber} đã được xác nhận vào ở.`;
 
   const titleForTenant =
     mode === "auto"
@@ -1288,14 +1290,14 @@ exports.listMine = async (req, res) => {
 
     const depositInvoices = contractIds.length
       ? await Invoice.find({
-        landlordId,
-        contractId: { $in: contractIds },
-        invoiceKind: "deposit",
-        isDeleted: false,
-      })
-        .select("_id contractId invoiceKind status totalAmount paidAt")
-        .sort({ issuedAt: -1 })
-        .lean()
+          landlordId,
+          contractId: { $in: contractIds },
+          invoiceKind: "deposit",
+          isDeleted: false,
+        })
+          .select("_id contractId invoiceKind status totalAmount paidAt")
+          .sort({ issuedAt: -1 })
+          .lean()
       : [];
 
     const depositByContractId = new Map();
@@ -1745,7 +1747,7 @@ exports.downloadContractPdf = async (req, res) => {
       } else {
         try {
           res.end();
-        } catch { }
+        } catch {}
       }
     });
 
@@ -1768,14 +1770,14 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.8);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(16)
       .text("HỢP ĐỒNG THUÊ PHÒNG", { align: "center", underline: true });
 
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf.moveDown(0.5);
     pdf
       .fontSize(10)
@@ -1791,7 +1793,8 @@ exports.downloadContractPdf = async (req, res) => {
         `Hôm nay, ngày ${formatDate(meta.signDate) || "....../....../......"},`
       );
     pdf.text(
-      `Tại: ${meta.signPlace || (building && building.address) || "................"
+      `Tại: ${
+        meta.signPlace || (building && building.address) || "................"
       }`
     );
 
@@ -1801,17 +1804,18 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.3);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("BÊN CHO THUÊ (BÊN A):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     pdf
       .fontSize(11)
       .text(`Họ tên: ${A?.name || ""}`)
       .text(
-        `CCCD: ${A?.cccd || ""}   Cấp ngày: ${formatDate(A?.cccdIssuedDate) || ""
+        `CCCD: ${A?.cccd || ""}   Cấp ngày: ${
+          formatDate(A?.cccdIssuedDate) || ""
         }   Nơi cấp: ${A?.cccdIssuedPlace || ""}`
       )
       .text(`Hộ khẩu thường trú: ${A?.permanentAddress || ""}`)
@@ -1822,17 +1826,18 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.6);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("BÊN THUÊ (BÊN B):");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     pdf
       .fontSize(11)
       .text(`Họ tên: ${B?.name || ""}`)
       .text(
-        `CCCD: ${B?.cccd || ""}   Cấp ngày: ${formatDate(B?.cccdIssuedDate) || ""
+        `CCCD: ${B?.cccd || ""}   Cấp ngày: ${
+          formatDate(B?.cccdIssuedDate) || ""
         }   Nơi cấp: ${B?.cccdIssuedPlace || ""}`
       )
       .text(`Hộ khẩu thường trú: ${B?.permanentAddress || ""}`)
@@ -1844,17 +1849,18 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(0.6);
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.text("Người ở cùng (roommates):");
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       roommates.forEach((r, idx) => {
         pdf
           .fontSize(11)
           .text(
-            `${idx + 1}. ${r.name || ""} – CCCD: ${r.cccd || ""
+            `${idx + 1}. ${r.name || ""} – CCCD: ${
+              r.cccd || ""
             } – Điện thoại: ${r.phone || ""}`
           );
       });
@@ -1864,11 +1870,11 @@ exports.downloadContractPdf = async (req, res) => {
     pdf.moveDown(0.8);
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf.text("THÔNG TIN PHÒNG VÀ GIÁ THUÊ:");
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
 
     const buildingName = building?.name || "";
     const roomNumber = room?.roomNumber || "";
@@ -1876,7 +1882,8 @@ exports.downloadContractPdf = async (req, res) => {
     pdf
       .fontSize(11)
       .text(
-        `Tòa nhà: ${buildingName} – Địa chỉ: ${building?.address || "................................"
+        `Tòa nhà: ${buildingName} – Địa chỉ: ${
+          building?.address || "................................"
         }`
       )
       .text(`Phòng: ${roomNumber}    Diện tích: ${area || ""} m²`)
@@ -1894,17 +1901,18 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(0.5);
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.text("Phương tiện gửi kèm:");
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
 
       bikes.forEach((b, idx) => {
         pdf
           .fontSize(11)
           .text(
-            `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${b.color || ""
+            `${idx + 1}. Biển số: ${b.bikeNumber || ""} – Màu: ${
+              b.color || ""
             } – Hãng: ${b.brand || ""}`
           );
       });
@@ -1915,11 +1923,11 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(1);
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(13).text("I. ĐIỀU KHOẢN HỢP ĐỒNG", { underline: true });
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
       pdf.moveDown(0.5);
 
       // sort theo order nếu có
@@ -1930,11 +1938,11 @@ exports.downloadContractPdf = async (req, res) => {
       sortedTerms.forEach((t, idx) => {
         try {
           pdf.font(FONT_BOLD);
-        } catch { }
+        } catch {}
         pdf.fontSize(12).text(`${idx + 1}. ${t.name || "Điều khoản"}`);
         try {
           pdf.font(FONT_REGULAR);
-        } catch { }
+        } catch {}
 
         const desc = t.description || "";
         if (!desc) {
@@ -1950,11 +1958,11 @@ exports.downloadContractPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 pdf.font(FONT_BOLD);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(prefix, { continued: true });
               try {
                 pdf.font(FONT_REGULAR);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -1982,11 +1990,11 @@ exports.downloadContractPdf = async (req, res) => {
       pdf.moveDown(1);
       try {
         pdf.font(FONT_BOLD);
-      } catch { }
+      } catch {}
       pdf.fontSize(13).text("II. NỘI QUY / QUY ĐỊNH", { underline: true });
       try {
         pdf.font(FONT_REGULAR);
-      } catch { }
+      } catch {}
       pdf.moveDown(0.5);
 
       const sortedRegs = [...regulations].sort(
@@ -1996,11 +2004,11 @@ exports.downloadContractPdf = async (req, res) => {
       sortedRegs.forEach((r, idx) => {
         try {
           pdf.font(FONT_BOLD);
-        } catch { }
+        } catch {}
         pdf.fontSize(12).text(`${idx + 1}. ${r.title || "Quy định"}`);
         try {
           pdf.font(FONT_REGULAR);
-        } catch { }
+        } catch {}
 
         const desc = r.description || "";
         if (!desc) {
@@ -2016,11 +2024,11 @@ exports.downloadContractPdf = async (req, res) => {
               const prefix = list.isOrdered ? `${i + 1}. ` : "• ";
               try {
                 pdf.font(FONT_BOLD);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(prefix, { continued: true });
               try {
                 pdf.font(FONT_REGULAR);
-              } catch { }
+              } catch {}
               pdf.fontSize(11).text(it, {
                 paragraphGap: 4,
                 align: "justify",
@@ -2063,7 +2071,7 @@ exports.downloadContractPdf = async (req, res) => {
     // ===== Tiêu đề =====
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(12)
       .text("ĐẠI DIỆN BÊN A", leftX, pdf.y, {
@@ -2080,7 +2088,7 @@ exports.downloadContractPdf = async (req, res) => {
     // ===== Hướng dẫn ký =====
     try {
       pdf.font(FONT_REGULAR);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(11)
       .text("(Ký, ghi rõ họ tên)", leftX, pdf.y, {
@@ -2117,7 +2125,7 @@ exports.downloadContractPdf = async (req, res) => {
 
     try {
       pdf.font(FONT_BOLD);
-    } catch { }
+    } catch {}
     pdf
       .fontSize(12)
       .text(AName, leftX, pdf.y, {
@@ -2138,7 +2146,7 @@ exports.downloadContractPdf = async (req, res) => {
     }
     try {
       res.end();
-    } catch { }
+    } catch {}
   }
 };
 exports.approveTerminate = async (req, res) => {
