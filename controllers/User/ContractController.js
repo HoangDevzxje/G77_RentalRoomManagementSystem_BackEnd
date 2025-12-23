@@ -90,7 +90,10 @@ exports.listMyContracts = async (req, res) => {
             "identityVerification",
           ].join(" ")
         )
-        .populate("buildingId", "name")
+        .populate(
+          "buildingId",
+          "name address ePrice wPrice eIndexType wIndexType"
+        )
         .populate("roomId", "roomNumber")
         .sort({ updatedAt: -1 })
         .skip(skip)
@@ -114,7 +117,10 @@ exports.getMyContract = async (req, res) => {
       return res.status(404).json({ message: "Thiếu id" });
     }
     const doc = await Contract.findOne({ _id: id, tenantId })
-      .populate("buildingId", "name address")
+      .populate(
+        "buildingId",
+        "name address ePrice wPrice eIndexType wIndexType"
+      )
       .populate("roomId", "roomNumber price maxTenants")
       .populate({
         path: "landlordId",

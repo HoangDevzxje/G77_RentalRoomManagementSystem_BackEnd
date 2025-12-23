@@ -142,14 +142,42 @@ exports.remove = async (req, res) => {
 exports.listMine = async (req, res) => {
   try {
     let filter = {};
+
+    const buildingIds = Array.from(
+      new Set([
+        ...pickArr(req.query, "buildingId"),
+        ...pickArr(req.query, "buildingIds"),
+      ])
+    );
+
     if (req.user.role === "staff") {
       const buildings = await Building.find({
         _id: { $in: req.staff.assignedBuildingIds },
         isDeleted: false,
       }).distinct("_id");
-      filter.buildingId = { $in: buildings };
+
+      // If caller asks to filter by building, restrict to staff assigned buildings only
+      if (buildingIds.length) {
+        const allowed = new Set(buildings.map((id) => String(id)));
+        const picked = buildingIds.filter((id) => allowed.has(String(id)));
+        if (!picked.length) return res.json([]);
+        filter.buildingId = { $in: picked };
+      } else {
+        filter.buildingId = { $in: buildings };
+      }
     } else {
       filter.ownerId = req.user._id;
+
+      if (buildingIds.length) {
+        // Ensure building belongs to landlord to prevent probing other buildings
+        const owned = await Building.find({
+          _id: { $in: buildingIds },
+          landlordId: req.user._id,
+          isDeleted: false,
+        }).distinct("_id");
+        if (!owned.length) return res.json([]);
+        filter.buildingId = { $in: owned };
+      }
     }
 
     const items = await ContractTemplate.find(filter)
