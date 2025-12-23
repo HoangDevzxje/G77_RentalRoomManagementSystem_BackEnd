@@ -40,30 +40,27 @@ exports.getMyRoomDetail = async (req, res) => {
     allContracts.forEach((c) => {
       if (!c.roomId?._id) return;
 
-      const rId = c.roomId._id.toString();
       const startDate = new Date(c.contract.startDate);
       const endDate = new Date(c.contract.endDate);
-
-      let currentStatus = "upcoming";
-      if (now >= startDate && now <= endDate) {
-        currentStatus = "active";
+      const isActive = now >= startDate && now <= endDate;
+      if (!isActive) {
+        return;
       }
-
-      if (!roomMap.has(rId) || currentStatus === "active") {
-        roomMap.set(rId, {
-          _id: rId,
-          roomNumber: c.roomId.roomNumber,
-          buildingName: c.buildingId?.name || "Tòa nhà",
-          status: currentStatus,
-          contract: {
-            _id: c._id,
-            contractNo: c.contract.no || `HD${c._id.toString().slice(-6).toUpperCase()}`,
-            startDate: startDate,
-            endDate: endDate,
-            status: currentStatus,
-          },
-        });
-      }
+      const rId = c.roomId._id.toString();
+      roomMap.set(rId, {
+        _id: rId,
+        roomNumber: c.roomId.roomNumber,
+        buildingName: c.buildingId?.name || "Tòa nhà",
+        status: "active",
+        contract: {
+          _id: c._id,
+          contractNo:
+            c.contract.no || `HD${c._id.toString().slice(-6).toUpperCase()}`,
+          startDate: startDate,
+          endDate: endDate,
+          status: "active",
+        },
+      });
     });
 
     const availableRooms = Array.from(roomMap.values());
@@ -204,7 +201,10 @@ exports.getMyRoomsList = async (req, res) => {
       const rId = c.roomId._id.toString();
       const startDate = new Date(c.contract.startDate);
       const endDate = new Date(c.contract.endDate);
-      const status = now >= startDate && now <= endDate ? "active" : "upcoming";
+      const status = now >= startDate && now <= endDate;
+      if (!status) {
+        return;
+      }
 
       const contractData = {
         _id: c._id,
