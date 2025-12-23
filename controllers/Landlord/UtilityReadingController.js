@@ -1321,6 +1321,7 @@ exports.bulkCreateReadings = async (req, res) => {
  *  - phòng đang rented
  *  - có hợp đồng completed hiệu lực trong kỳ periodMonth/periodYear
  *  - kèm trạng thái đã nhập chỉ số tiện ích trong kỳ
+ *  - kèm config điện/nước theo Contract (snapshot) để FE quyết định UI
  */
 exports.listRoomsForUtility = async (req, res) => {
   try {
@@ -1358,7 +1359,7 @@ exports.listRoomsForUtility = async (req, res) => {
       .select(
         "_id roomId eIndexType ePrice wIndexType wPrice contract.startDate"
       )
-      .sort({ "contract.startDate": -1, createdAt: -1 })
+      .sort({ "contract.startDate": -1, createdAt: -1 }) 
       .lean();
 
     if (!activeContracts.length) {
@@ -1373,9 +1374,36 @@ exports.listRoomsForUtility = async (req, res) => {
       });
     }
 
-    const activeRoomIds = [
-      ...new Set(activeContracts.map((c) => c.roomId.toString())),
-    ];
+    // Map roomId -> snapshot contract config (lấy bản đầu tiên vì đã sort desc)
+    const contractMap = {};
+    for (const c of activeContracts) {
+      const rid = c.roomId?.toString();
+      if (!rid) continue;
+
+      if (!contractMap[rid]) {
+        contractMap[rid] = {
+          contractId: c._id,
+          eIndexType: c.eIndexType || "byNumber",
+          ePrice: Number(c.ePrice || 0),
+          wIndexType: c.wIndexType || "byNumber",
+          wPrice: Number(c.wPrice || 0),
+        };
+      }
+    }
+
+    const activeRoomIds = Object.keys(contractMap);
+
+    if (!activeRoomIds.length) {
+      return res.json({
+        message: "Không có hợp đồng hiệu lực trong kỳ",
+        data: [],
+        total: 0,
+        page: pageNum,
+        limit: limitNum,
+        periodMonth: month,
+        periodYear: year,
+      });
+    }
 
     // 2) Lọc phòng thuộc các hợp đồng này + option filter buildingId, q
     const roomFilter = {
@@ -1383,10 +1411,12 @@ exports.listRoomsForUtility = async (req, res) => {
       isDeleted: false,
       status: "rented",
     };
+
     if (isStaff) {
       const assigned = (req.staff.assignedBuildingIds || []).map((x) =>
         String(x)
       );
+
       if (buildingId) {
         if (!assigned.includes(String(buildingId))) {
           return res.status(403).json({
@@ -1398,10 +1428,9 @@ exports.listRoomsForUtility = async (req, res) => {
         roomFilter.buildingId = { $in: req.staff.assignedBuildingIds };
       }
     } else {
-      if (buildingId) {
-        roomFilter.buildingId = buildingId;
-      }
+      if (buildingId) roomFilter.buildingId = buildingId;
     }
+
     if (q) {
       roomFilter.roomNumber = { $regex: q, $options: "i" };
     }
@@ -1429,7 +1458,7 @@ exports.listRoomsForUtility = async (req, res) => {
       });
     }
 
-    // 3) Lấy trạng thái UtilityReading cho từng phòng trong kỳ (1 query duy nhất)
+    // 3) Lấy trạng thái UtilityReading cho từng phòng trong kỳ (1 query)
     const pageRoomIds = rooms.map((r) => r._id.toString());
 
     const readings = await UtilityReading.find({
@@ -1464,25 +1493,37 @@ exports.listRoomsForUtility = async (req, res) => {
       }
     }
 
-    // 4) Gắn meterStatus + template cho FE vào từng room
+    // 4) Gắn meterStatus + contract config để FE quyết định hiển thị ô nhập nước
     const data = rooms.map((room) => {
       const rid = room._id.toString();
+
       const meterStatus = readingMap[rid] || {
         hasReading: false,
         status: null,
       };
+
+      const activeContract = contractMap[rid] || null;
+      const disableWaterIndexInput = activeContract?.wIndexType === "byPerson";
 
       const readingTemplate = {
         roomId: room._id,
         periodMonth: month,
         periodYear: year,
         eCurrentIndex: null,
-        wCurrentIndex: null,
+        // Nếu tính theo đầu người thì FE không cần show ô này
+        wCurrentIndex: disableWaterIndexInput ? undefined : null,
+        // Optional: FE dùng trực tiếp
+        wIndexType: activeContract?.wIndexType || "byNumber",
       };
 
       return {
         ...room,
         meterStatus,
+
+        // Contract snapshot theo kỳ để FE check
+        activeContract, // { contractId, eIndexType, ePrice, wIndexType, wPrice }
+        disableWaterIndexInput,
+
         readingTemplate,
       };
     });
