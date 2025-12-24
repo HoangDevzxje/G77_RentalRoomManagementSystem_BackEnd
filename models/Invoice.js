@@ -288,6 +288,19 @@ invoiceSchema.index(
   { name: "idx_tenant_status_due" }
 );
 
+// Không cho phép có 2 hoá đơn định kỳ cùng phòng + cùng kỳ ở trạng thái draft/sent
+invoiceSchema.index(
+  { landlordId: 1, roomId: 1, periodYear: 1, periodMonth: 1, invoiceKind: 1 },
+  {
+    unique: true,
+    name: "uniq_periodic_room_period_draft_sent",
+    partialFilterExpression: {
+      isDeleted: false,
+      invoiceKind: "periodic",
+      status: { $in: ["draft", "sent"] },
+    },
+  }
+);
 // Helper tính toán lại tổng tiền từ items
 invoiceSchema.methods.recalculateTotals = function () {
   const subtotal = (this.items || []).reduce(

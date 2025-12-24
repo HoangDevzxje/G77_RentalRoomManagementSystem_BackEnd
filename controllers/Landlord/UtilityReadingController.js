@@ -1195,7 +1195,7 @@ exports.bulkCreateReadings = async (req, res) => {
         const wIndexTypeEffective =
           cSnapshot.wIndexType || building.wIndexType || "byNumber";
         const isWaterByPerson = wIndexTypeEffective === "byPerson";
-        if (isWaterByPerson && wCurrentIndex != null) {
+        if (isWaterByPerson) {
           itemResult.error =
             "HĐ đang tính nước theo đầu người nên không nhập chỉ số nước (wCurrentIndex)";
           results.push(itemResult);
@@ -1359,7 +1359,7 @@ exports.listRoomsForUtility = async (req, res) => {
       .select(
         "_id roomId eIndexType ePrice wIndexType wPrice contract.startDate"
       )
-      .sort({ "contract.startDate": -1, createdAt: -1 }) 
+      .sort({ "contract.startDate": -1, createdAt: -1 })
       .lean();
 
     if (!activeContracts.length) {
