@@ -4,6 +4,8 @@ const Invoice = require("../../models/Invoice");
 const Account = require("../../models/Account");
 const UserInformation = require("../../models/UserInformation");
 const mongoose = require("mongoose");
+const Notification = require("../../models/Notification");
+const Staff = require("../../models/Staff");
 exports.listMyInvoices = async (req, res) => {
   try {
     const tenantId = req.user?._id;
@@ -295,7 +297,53 @@ exports.requestBankTransferConfirmation = async (req, res) => {
     if (note) invoice.paymentNote = note;
 
     await invoice.save();
+    const notification = await Notification.create({
+      landlordId: invoice.landlordId,
+      createBy: tenantId,
+      createByRole: "resident",
+      title: "Yêu cầu xác nhận thanh toán hóa đơn",
+      content: `${invoice?.tenantId?.userInfo?.fullName} đã gửi yêu cầu thanh toán hóa đơn ${invoice.invoiceNumber} với số tiền ${invoice.totalAmount.toLocaleString()}đ`,
+      target: { buildings: [invoice.buildingId] },
+      type: "reminder",
+      link: `/landlord/invoices`,
+    });
+    const io = req.app.get("io");
+    if (io) {
+      const payload = {
+        id: notification._id.toString(),
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        link: notification.link,
+        createdAt: notification.createdAt,
+        createBy: {
+          id: tenantId.toString(),
+          name: req.user.fullName,
+          role: "resident",
+        },
+      };
 
+      io.to(`user:${invoice.landlordId}`).emit("new_notification", payload);
+      io.to(`user:${invoice.landlordId}`).emit("unread_count_increment", {
+        increment: 1,
+      });
+
+      if (invoice.buildingId) {
+        const staffList = await Staff.find({
+          assignedBuildings: invoice.buildingId,
+          isDeleted: false,
+        })
+          .select("accountId")
+          .lean();
+
+        staffList.forEach((staff) => {
+          io.to(`user:${staff.accountId}`).emit("new_notification", payload);
+          io.to(`user:${staff.accountId}`).emit("unread_count_increment", {
+            increment: 1,
+          });
+        });
+      }
+    }
     return res.json({
       message:
         "Đã gửi yêu cầu xác nhận chuyển khoản. Vui lòng chờ chủ trọ kiểm tra.",

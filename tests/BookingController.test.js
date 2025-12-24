@@ -29,7 +29,6 @@ const mockReq = (override = {}) => ({
     ...override,
 });
 
-// ======================= MOCK BOOKING ============================
 jest.mock("../models/Booking", () => {
     const sampleBooking = {
         _id: bookingId,
@@ -48,7 +47,6 @@ jest.mock("../models/Booking", () => {
         save: jest.fn().mockResolvedValue(true),
     }));
 
-    // ==== FIND ====
     Booking.find = jest.fn(() => ({
         populate: jest.fn().mockReturnThis(),
         sort: jest.fn().mockReturnThis(),
@@ -59,14 +57,13 @@ jest.mock("../models/Booking", () => {
 
     Booking.countDocuments = jest.fn().mockResolvedValue(15);
 
-    // ==== FIXED FINDONE → FULL CHAIN: populate().lean() ====
     Booking.findOne = jest.fn(({ _id }) => ({
         populate: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue(
             _id === bookingId
                 ? {
                     ...sampleBooking,
-                    save: jest.fn().mockResolvedValue(true), // ⚠ BẮT BUỘC PHẢI CÓ
+                    save: jest.fn().mockResolvedValue(true),
                 }
                 : null
         ),
@@ -76,7 +73,6 @@ jest.mock("../models/Booking", () => {
 });
 
 
-// ======================= MOCK NOTIFICATION =======================
 jest.mock("../models/Notification", () => ({
     create: jest.fn().mockResolvedValue(true)
 }));
@@ -88,11 +84,9 @@ global.io = {
 };
 
 
-// ======================= TEST START ===============================
 describe('Booking Controller – Test', () => {
     afterEach(() => jest.clearAllMocks());
 
-    // ==================== getAllBookings ====================
     describe('getAllBookings', () => {
         it('landlord lấy danh sách → thành công', async () => {
             const req = mockReq({ query: { page: '1', limit: '10' } });
@@ -154,7 +148,6 @@ describe('Booking Controller – Test', () => {
         });
     });
 
-    // ==================== getBookingDetail ====================
     describe('getBookingDetail', () => {
         it('landlord xem chi tiết → thành công', async () => {
             const req = mockReq({ params: { id: bookingId } });
@@ -212,7 +205,6 @@ describe('Booking Controller – Test', () => {
         });
     });
 
-    // ==================== updateBookingStatus ====================
     describe('updateBookingStatus', () => {
         it('landlord accept → thành công + gửi noti realtime', async () => {
             const io = {

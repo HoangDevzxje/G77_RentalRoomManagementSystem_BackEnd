@@ -215,9 +215,8 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
     : "N/A";
 
-  let html = `<p>Chào ${
-    tenant.userInfo?.fullName || "Anh/Chị"
-  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  let html = `<p>Chào ${tenant.userInfo?.fullName || "Anh/Chị"
+    },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
   html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
   html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
   html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
@@ -296,9 +295,8 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
     const amount = Number(invoice.totalAmount) || 0;
     if (amount <= 0) return;
 
-    const title = `Thu tiền hóa đơn ${
-      invoice.invoiceNumber || String(invoice._id)
-    }`;
+    const title = `Thu tiền hóa đơn ${invoice.invoiceNumber || String(invoice._id)
+      }`;
 
     const descParts = [];
     if (invoice.roomSnapshot?.roomNumber) {
@@ -547,12 +545,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -995,9 +993,9 @@ exports.updateInvoice = async (req, res) => {
               reading.eConsumption != null
                 ? reading.eConsumption
                 : Math.max(
-                    0,
-                    (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
-                  );
+                  0,
+                  (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.eUnitPrice != null
@@ -1019,9 +1017,9 @@ exports.updateInvoice = async (req, res) => {
               reading.wConsumption != null
                 ? reading.wConsumption
                 : Math.max(
-                    0,
-                    (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
-                  );
+                  0,
+                  (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.wUnitPrice != null
@@ -1278,9 +1276,8 @@ exports.updateInvoice = async (req, res) => {
       }
 
       for (const oldItem of oldElectricWater) {
-        const key = `${oldItem.type || ""}:${
-          oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
-        }`;
+        const key = `${oldItem.type || ""}:${oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
+          }`;
         const touched = bodyElectricWater.some(
           (b) => `${b.type || ""}:${String(b.utilityReadingId || "")}` === key
         );
@@ -1724,62 +1721,74 @@ exports.markInvoicePaid = async (req, res) => {
 
     // Sau khi hóa đơn đã "paid" → tự động ghi log thu
     await ensureRevenueLogForInvoicePaid(invoice, { actorId: req.user?._id });
-    const room = invoice.roomId;
-    if (room && room.currentTenantIds && room.currentTenantIds.length > 0) {
-      const affectedTenantIds = room.currentTenantIds.map((id) =>
+    let affectedTenantIds = [];
+
+    if (
+      invoice.roomId?.currentTenantIds &&
+      invoice.roomId.currentTenantIds.length > 0
+    ) {
+      affectedTenantIds = invoice.roomId.currentTenantIds.map((id) =>
         id.toString()
       );
-      const roomNumber = room.roomNumber;
-      const buildingName = room.buildingId?.name;
+    }
+    else if (invoice?.tenantId) {
+      affectedTenantIds = [invoice.tenantId.toString()];
+    }
 
-      const paidDateStr = invoice.paidAt.toLocaleDateString("vi-VN");
-      const isDeposit = invoice.invoiceKind === "deposit";
+    if (affectedTenantIds.length === 0) {
+      return res.status(400).json({
+        message: "Không xác định được người nhận hóa đơn",
+      });
+    }
+    const roomNumber = invoice.roomId.roomNumber;
+    const buildingName = invoice.roomId.buildingId?.name;
 
-      const notification = await Notification.create({
-        landlordId,
-        createByRole: "system",
-        title: isDeposit
-          ? "Thanh toán tiền cọc thành công"
-          : "Thanh toán thành công",
-        content:
-          `${
-            isDeposit
-              ? "Hóa đơn tiền cọc\n"
-              : `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n`
-          }` +
-          `Phòng ${roomNumber} – ${buildingName}\n` +
-          `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
-          `Đã được ghi nhận thanh toán thành công vào ngày ${paidDateStr}.\n` +
-          `Cảm ơn bạn đã thanh toán đúng hạn!`,
-        type: "reminder",
-        target: { residents: affectedTenantIds },
+    const paidDateStr = invoice.paidAt.toLocaleDateString("vi-VN");
+    const isDeposit = invoice.invoiceKind === "deposit";
+
+    const notification = await Notification.create({
+      landlordId,
+      createByRole: "system",
+      title: isDeposit
+        ? "Thanh toán tiền cọc thành công"
+        : "Thanh toán thành công",
+      content:
+        `${isDeposit
+          ? "Hóa đơn tiền cọc\n"
+          : `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n`
+        }` +
+        `Phòng ${roomNumber} – ${buildingName}\n` +
+        `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
+        `Đã được ghi nhận thanh toán thành công vào ngày ${paidDateStr}.\n` +
+        `Cảm ơn bạn đã thanh toán đúng hạn!`,
+      type: "reminder",
+      target: { residents: affectedTenantIds },
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      const payload = {
+        _id: notification._id,
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        createdAt: notification.createdAt,
+        relatedInvoiceId: invoice._id,
+        createBy: {
+          role: "system",
+        },
+      };
+
+      affectedTenantIds.forEach((tenantId) => {
+        io.to(`user:${tenantId}`).emit("new_notification", payload);
+        io.to(`user:${tenantId}`).emit("unread_count_increment", {
+          increment: 1,
+        });
       });
 
-      const io = req.app.get("io");
-      if (io) {
-        const payload = {
-          _id: notification._id,
-          title: notification.title,
-          content: notification.content,
-          type: notification.type,
-          createdAt: notification.createdAt,
-          relatedInvoiceId: invoice._id,
-          createBy: {
-            role: "system",
-          },
-        };
-
-        affectedTenantIds.forEach((tenantId) => {
-          io.to(`user:${tenantId}`).emit("new_notification", payload);
-          io.to(`user:${tenantId}`).emit("unread_count_increment", {
-            increment: 1,
-          });
-        });
-
-        console.log(
-          `[PAYMENT] ĐÃ XÁC NHẬN] Đã gửi thông báo thanh toán thành công đến ${affectedTenantIds.length} người – Hóa đơn ${invoice.invoiceNumber}`
-        );
-      }
+      console.log(
+        `[PAYMENT] ĐÃ XÁC NHẬN] Đã gửi thông báo thanh toán thành công đến ${affectedTenantIds.length} người – Hóa đơn ${invoice.invoiceNumber}`
+      );
     }
     return res.json({
       message: "Đã ghi nhận thanh toán hóa đơn",
@@ -2165,20 +2174,19 @@ exports.generateInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
         label,
         description:
           sv.description ||
-          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${
-            prevPeriod.year
+          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${prevPeriod.year
           }`,
         quantity,
         unitPrice,
