@@ -38,7 +38,6 @@ jest.mock('../models/BuildingService');
 describe('BuildingService Controller – Test Toàn Diện', () => {
     afterEach(() => jest.clearAllMocks());
 
-    // ==================== listByBuilding ====================
     describe('listByBuilding', () => {
         test('thành công - landlord', async () => {
             const req = mockReq({ params: { buildingId } });
@@ -99,7 +98,6 @@ describe('BuildingService Controller – Test Toàn Diện', () => {
         });
     });
 
-    // ==================== create ====================
     describe('create', () => {
         test('thành công', async () => {
             const req = mockReq({
@@ -147,7 +145,6 @@ describe('BuildingService Controller – Test Toàn Diện', () => {
         });
     });
 
-    // ==================== update ====================
     describe('update', () => {
         test('thành công - cập nhật thông thường', async () => {
             const req = mockReq({
@@ -176,7 +173,7 @@ describe('BuildingService Controller – Test Toàn Diện', () => {
             await update(req, res);
             expect(BuildingService.findOneAndUpdate).toHaveBeenCalledWith(
                 { _id: serviceId, buildingId, isDeleted: false },
-                { $set: { name: 'ok' } }, // không có buildingId/landlordId
+                { $set: { name: 'ok' } },
                 { new: true }
             );
         });
@@ -193,7 +190,6 @@ describe('BuildingService Controller – Test Toàn Diện', () => {
         });
     });
 
-    // ==================== remove (soft delete) ====================
     describe('remove', () => {
         test('thành công - soft delete', async () => {
             const req = mockReq({ params: { buildingId, id: serviceId } });
@@ -213,7 +209,6 @@ describe('BuildingService Controller – Test Toàn Diện', () => {
         });
     });
 
-    // ==================== restore ====================
     describe('restore', () => {
         test('thành công - khôi phục dịch vụ đã xóa', async () => {
             const req = mockReq({ params: { buildingId, id: serviceId } });
