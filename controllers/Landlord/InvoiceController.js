@@ -2005,7 +2005,30 @@ exports.generateInvoice = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
 
-    const building = await Building.findById(room.buildingId)
+    const buildingId =
+      room.buildingId && typeof room.buildingId === "object"
+        ? room.buildingId._id
+        : room.buildingId;
+
+    // dùng buildingId này cho mọi query liên quan
+    const utilityReading = await UtilityReading.findOne({
+      landlordId,
+      buildingId,
+      roomId,
+      periodMonth: month,
+      periodYear: year,
+      status: "confirmed",
+      isDeleted: false,
+      invoiceId: null,
+    }).lean();
+
+    const buildingServices = await BuildingService.find({
+      landlordId,
+      buildingId,
+      isDeleted: false,
+    }).lean();
+
+    const building = await Building.findById(buildingId)
       .select("landlordId ePrice wPrice status isDeleted")
       .lean();
     if (!building || String(building.landlordId) !== String(landlordId)) {
@@ -2052,42 +2075,25 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // 3. Check đã có hoá đơn kỳ này chưa
     const existed = await Invoice.findOne({
       landlordId,
       roomId,
-      periodMonth: prevPeriod.month,
-      periodYear: prevPeriod.year,
+      periodMonth: month,
+      periodYear: year,
       invoiceKind: "periodic",
       status: { $in: ["draft", "sent"] },
       isDeleted: false,
-    }).lean();
+    })
+      .select("_id invoiceNumber status")
+      .lean();
 
     if (existed) {
       return res.status(409).json({
-        message: "Đã tồn tại hoá đơn cho phòng/hợp đồng/kỳ này",
-        invoiceId: existed._id,
+        message: `Kỳ ${month}/${year} đã có hoá đơn định kỳ (${existed.status}). Vui lòng huỷ hoặc thay thế hoá đơn cũ trước khi tạo mới.`,
+        duplicateInvoiceId: existed._id,
+        duplicateInvoiceNumber: existed.invoiceNumber,
       });
     }
-
-    // 4. Lấy utilityReading confirmed của kỳ này
-    const utilityReading = await UtilityReading.findOne({
-      landlordId,
-      buildingId: room.buildingId,
-      roomId,
-      periodMonth: prevPeriod.month,
-      periodYear: prevPeriod.year,
-      status: "confirmed",
-      isDeleted: false,
-      invoiceId: null,
-    }).lean();
-
-    // 5. Dịch vụ tòa nhà
-    const buildingServices = await BuildingService.find({
-      landlordId,
-      buildingId: room.buildingId,
-      isDeleted: false,
-    }).lean();
 
     const items = [];
 
@@ -2291,11 +2297,16 @@ exports.generateInvoice = async (req, res) => {
       data: invoice,
     });
   } catch (e) {
-    console.error("generateInvoice error:", e.message);
-    return res.status(500).json({
-      message: "Lỗi tạo hoá đơn",
-      error: e.message,
-    });
+    if (e?.code === 11000) {
+      return res.status(409).json({
+        message:
+          "Đã có hoá đơn định kỳ (draft/sent) cho phòng/kỳ này. Không thể tạo thêm.",
+        error: e.message,
+      });
+    }
+    return res
+      .status(500)
+      .json({ message: "Lỗi tạo hoá đơn", error: e.message });
   }
 };
 
