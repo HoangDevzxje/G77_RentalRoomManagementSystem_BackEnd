@@ -1,4 +1,3 @@
-// __tests__/LandlordController.test.js → COVERAGE >95%, 35+ TEST CASE
 const mongoose = require('mongoose');
 
 const {
@@ -53,7 +52,6 @@ jest.mock('../models/Regulation');
 describe('Post Controller – Test', () => {
     afterEach(() => jest.clearAllMocks());
 
-    // ==================== createPost ====================
     describe('createPost ', () => {
         const baseReq = {
             query: { buildingId },
@@ -103,7 +101,6 @@ describe('Post Controller – Test', () => {
 
             await createPost(req, res);
             expect(res.status).toHaveBeenCalledWith(201);
-            // expect(res.json.mock.calls[0][0].warnings).toBeDefined(); // nếu bạn trả warning ra response
         });
 
         test('xử lý roomIds dạng chuỗi có phẩy', async () => {
@@ -188,7 +185,7 @@ describe('Post Controller – Test', () => {
         });
         test('lỗi 400 - buildingId không hợp lệ', async () => {
             const req = mockReq({
-                query: { buildingId: '123' }, // không phải ObjectId
+                query: { buildingId: '123' },
                 body: { title: 'ok', description: 'ok', address: 'ok', roomIds: [room1Id] }
             });
             const res = mockRes();
@@ -200,7 +197,7 @@ describe('Post Controller – Test', () => {
         test('lỗi 400 - thiếu thông tin bài đăng', async () => {
             const req = mockReq({
                 query: { buildingId },
-                body: { description: 'ok', address: 'ok', roomIds: [room1Id] } // thiếu title
+                body: { description: 'ok', address: 'ok', roomIds: [room1Id] }
             });
             const res = mockRes();
 
@@ -239,7 +236,7 @@ describe('Post Controller – Test', () => {
         test('lỗi 403 - staff không được quản lý tòa nhà', async () => {
             const req = mockReq({
                 user: { role: 'staff', _id: staffId },
-                staff: { assignedBuildingIds: [] }, // không có quyền
+                staff: { assignedBuildingIds: [] },
                 query: { buildingId },
                 body: { title: 'ok', description: 'ok', address: 'ok', roomIds: [room1Id] }
             });
@@ -259,7 +256,7 @@ describe('Post Controller – Test', () => {
             const res = mockRes();
 
             Building.findById.mockReturnValue({
-                lean: jest.fn().mockResolvedValue({ landlordId: userId }) // userId != OTHER_USER
+                lean: jest.fn().mockResolvedValue({ landlordId: userId })
             });
 
             await createPost(req, res);
@@ -274,7 +271,7 @@ describe('Post Controller – Test', () => {
                     title: 'ok',
                     description: 'ok',
                     address: 'ok',
-                    roomIds: "abc, xyz" // sai định dạng ObjectId
+                    roomIds: "abc, xyz"
                 }
             });
             const res = mockRes();
@@ -329,7 +326,6 @@ describe('Post Controller – Test', () => {
 
     });
 
-    // ==================== updatePost – NÂNG CAO ====================
     describe('updatePost', () => {
         const basePost = {
             _id: postId,
@@ -443,7 +439,6 @@ describe('Post Controller – Test', () => {
         });
     });
 
-    // ==================== listByLandlord – phân trang ====================
     describe('listByLandlord', () => {
         test('phân trang đúng', async () => {
             const req = mockReq({ query: { page: '2', limit: '5' } });
@@ -471,7 +466,6 @@ describe('Post Controller – Test', () => {
             }));
         });
     });
-    // ==================== getPostDetail ====================
     describe('getPostDetail', () => {
         test('thành công', async () => {
             const req = mockReq({ params: { id: postId } });
@@ -508,7 +502,6 @@ describe('Post Controller – Test', () => {
             expect(res.json).toHaveBeenCalledWith({ message: 'postId không hợp lệ' });
         });
     });
-    // ==================== softDelete ====================
     describe('softDelete', () => {
         test('thành công', async () => {
             const req = mockReq({ params: { id: postId } });
@@ -543,7 +536,6 @@ describe('Post Controller – Test', () => {
             expect(res.json).toHaveBeenCalledWith({ message: 'id không hợp lệ' });
         });
     });
-    // ==================== getBuildingInfo ====================
     describe('getBuildingInfo', () => {
         test('thành công - landlord sở hữu', async () => {
             const req = mockReq({ params: { buildingId } });

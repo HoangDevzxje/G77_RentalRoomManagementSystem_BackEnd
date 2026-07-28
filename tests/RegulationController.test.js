@@ -32,7 +32,6 @@ const mockReq = (override = {}) => ({
     ...override,
 });
 
-// MOCK HOÀN CHỈNH – ĐÃ FIX TẤT CẢ LỖI MONGODB + JEST
 jest.mock('../models/Building', () => ({
     findOne: jest.fn(),
     findById: jest.fn(),
@@ -69,7 +68,6 @@ jest.mock('../models/Regulation', () => {
 describe('Regulation Controller – Test Toàn Diện', () => {
     afterEach(() => jest.clearAllMocks());
 
-    // ==================== getList ====================
     describe('getList', () => {
         it('tenant/landlord xem danh sách quy định → thành công', async () => {
             const req = mockReq({ query: { buildingId } });
@@ -130,7 +128,6 @@ describe('Regulation Controller – Test Toàn Diện', () => {
         });
     });
 
-    // ==================== create ====================
     describe('create', () => {
         it('landlord tạo quy định thành công', async () => {
             const req = mockReq({
@@ -184,7 +181,6 @@ describe('Regulation Controller – Test Toàn Diện', () => {
         });
     });
 
-    // ==================== update ====================
     describe('update', () => {
         it('landlord cập nhật quy định thành công', async () => {
             const req = mockReq({
@@ -224,7 +220,6 @@ describe('Regulation Controller – Test Toàn Diện', () => {
         });
     });
 
-    // ==================== remove ====================
     describe('remove', () => {
         it('landlord xóa quy định thành công', async () => {
             const req = mockReq({ params: { id: regulationId } });

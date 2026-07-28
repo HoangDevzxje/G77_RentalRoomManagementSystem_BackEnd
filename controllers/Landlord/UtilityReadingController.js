@@ -806,12 +806,7 @@ exports.confirmReading = async (req, res) => {
 
     if (wIndexTypeEffective === "byPerson") {
       // HĐ tính nước theo đầu người => không được có chỉ số nước
-      if (doc.wCurrentIndex != null) {
-        return res.status(400).json({
-          message:
-            "HĐ đang tính nước theo đầu người nên không được xác nhận khi có chỉ số nước",
-        });
-      }
+      
       // Đảm bảo không phát sinh tiền nước từ chỉ số
       doc.wUnitPrice = 0;
       doc.wConsumption = 0;

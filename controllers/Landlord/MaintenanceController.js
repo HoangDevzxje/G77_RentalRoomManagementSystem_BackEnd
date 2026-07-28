@@ -149,6 +149,7 @@ exports.getRequest = async (req, res) => {
           select: "fullName phoneNumber",
         },
       })
+      .populate("furnitureId", "name")
       .lean();
 
     if (!doc) return res.status(404).json({ success: false, message: "Không tìm thấy phiếu" });

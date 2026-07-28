@@ -69,7 +69,6 @@ jest.mock('../models/Term', () => {
 describe('Term Controller – Test', () => {
     afterEach(() => jest.clearAllMocks());
 
-    // ==================== createTerm ====================
     describe('createTerm', () => {
         it('landlord tạo điều khoản thành công', async () => {
             const req = mockReq({
@@ -126,7 +125,6 @@ describe('Term Controller – Test', () => {
         });
     });
 
-    // ==================== getTermsByBuilding ====================
     describe('getTermsByBuilding', () => {
         it('landlord xem danh sách điều khoản → thành công', async () => {
             const req = mockReq({ params: { buildingId }, query: { page: '1', limit: '10' } });
@@ -176,7 +174,6 @@ describe('Term Controller – Test', () => {
         });
     });
 
-    // ==================== getTermDetail ====================
     describe('getTermDetail', () => {
         it('landlord xem chi tiết → thành công', async () => {
             const req = mockReq({ params: { id: termId } });
@@ -221,7 +218,6 @@ describe('Term Controller – Test', () => {
         });
     });
 
-    // ==================== updateTerm ====================
     describe('updateTerm', () => {
         it('landlord cập nhật thành công', async () => {
             const req = mockReq({
@@ -272,7 +268,6 @@ describe('Term Controller – Test', () => {
         });
     });
 
-    // ==================== deleteTerm ====================
     describe('deleteTerm', () => {
         it('landlord xóa (soft delete) thành công', async () => {
             const req = mockReq({ params: { id: termId } });

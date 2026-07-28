@@ -215,9 +215,8 @@ async function sendInvoiceEmailCore(invoiceId, landlordId) {
     ? new Date(invoice.dueDate).toLocaleDateString("vi-VN")
     : "N/A";
 
-  let html = `<p>Chào ${
-    tenant.userInfo?.fullName || "Anh/Chị"
-  },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
+  let html = `<p>Chào ${tenant.userInfo?.fullName || "Anh/Chị"
+    },</p><p>Chủ trọ đã gửi hóa đơn tiền phòng cho bạn.</p>`;
   html += `<p><b>Tòa nhà:</b> ${buildingName}</p>`;
   html += `<p><b>Phòng:</b> ${roomNumber}</p>`;
   html += `<p><b>Số hóa đơn:</b> ${invoice.invoiceNumber}</p>`;
@@ -296,9 +295,8 @@ async function ensureRevenueLogForInvoicePaid(invoice, { actorId } = {}) {
     const amount = Number(invoice.totalAmount) || 0;
     if (amount <= 0) return;
 
-    const title = `Thu tiền hóa đơn ${
-      invoice.invoiceNumber || String(invoice._id)
-    }`;
+    const title = `Thu tiền hóa đơn ${invoice.invoiceNumber || String(invoice._id)
+      }`;
 
     const descParts = [];
     if (invoice.roomSnapshot?.roomNumber) {
@@ -547,12 +545,12 @@ exports.generateMonthlyInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
@@ -995,9 +993,9 @@ exports.updateInvoice = async (req, res) => {
               reading.eConsumption != null
                 ? reading.eConsumption
                 : Math.max(
-                    0,
-                    (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
-                  );
+                  0,
+                  (reading.eCurrentIndex || 0) - (reading.ePreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.eUnitPrice != null
@@ -1019,9 +1017,9 @@ exports.updateInvoice = async (req, res) => {
               reading.wConsumption != null
                 ? reading.wConsumption
                 : Math.max(
-                    0,
-                    (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
-                  );
+                  0,
+                  (reading.wCurrentIndex || 0) - (reading.wPreviousIndex || 0)
+                );
 
             const unitPrice =
               reading.wUnitPrice != null
@@ -1278,9 +1276,8 @@ exports.updateInvoice = async (req, res) => {
       }
 
       for (const oldItem of oldElectricWater) {
-        const key = `${oldItem.type || ""}:${
-          oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
-        }`;
+        const key = `${oldItem.type || ""}:${oldItem.utilityReadingId ? String(oldItem.utilityReadingId) : ""
+          }`;
         const touched = bodyElectricWater.some(
           (b) => `${b.type || ""}:${String(b.utilityReadingId || "")}` === key
         );
@@ -1724,62 +1721,74 @@ exports.markInvoicePaid = async (req, res) => {
 
     // Sau khi hóa đơn đã "paid" → tự động ghi log thu
     await ensureRevenueLogForInvoicePaid(invoice, { actorId: req.user?._id });
-    const room = invoice.roomId;
-    if (room && room.currentTenantIds && room.currentTenantIds.length > 0) {
-      const affectedTenantIds = room.currentTenantIds.map((id) =>
+    let affectedTenantIds = [];
+
+    if (
+      invoice.roomId?.currentTenantIds &&
+      invoice.roomId.currentTenantIds.length > 0
+    ) {
+      affectedTenantIds = invoice.roomId.currentTenantIds.map((id) =>
         id.toString()
       );
-      const roomNumber = room.roomNumber;
-      const buildingName = room.buildingId?.name;
+    }
+    else if (invoice?.tenantId) {
+      affectedTenantIds = [invoice.tenantId.toString()];
+    }
 
-      const paidDateStr = invoice.paidAt.toLocaleDateString("vi-VN");
-      const isDeposit = invoice.invoiceKind === "deposit";
+    if (affectedTenantIds.length === 0) {
+      return res.status(400).json({
+        message: "Không xác định được người nhận hóa đơn",
+      });
+    }
+    const roomNumber = invoice.roomId.roomNumber;
+    const buildingName = invoice.roomId.buildingId?.name;
 
-      const notification = await Notification.create({
-        landlordId,
-        createByRole: "system",
-        title: isDeposit
-          ? "Thanh toán tiền cọc thành công"
-          : "Thanh toán thành công",
-        content:
-          `${
-            isDeposit
-              ? "Hóa đơn tiền cọc\n"
-              : `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n`
-          }` +
-          `Phòng ${roomNumber} – ${buildingName}\n` +
-          `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
-          `Đã được ghi nhận thanh toán thành công vào ngày ${paidDateStr}.\n` +
-          `Cảm ơn bạn đã thanh toán đúng hạn!`,
-        type: "reminder",
-        target: { residents: affectedTenantIds },
+    const paidDateStr = invoice.paidAt.toLocaleDateString("vi-VN");
+    const isDeposit = invoice.invoiceKind === "deposit";
+
+    const notification = await Notification.create({
+      landlordId,
+      createByRole: "system",
+      title: isDeposit
+        ? "Thanh toán tiền cọc thành công"
+        : "Thanh toán thành công",
+      content:
+        `${isDeposit
+          ? "Hóa đơn tiền cọc\n"
+          : `Hóa đơn tháng ${invoice.periodMonth}/${invoice.periodYear}\n`
+        }` +
+        `Phòng ${roomNumber} – ${buildingName}\n` +
+        `Số tiền: ${invoice.totalAmount.toLocaleString("vi-VN")} ₫\n` +
+        `Đã được ghi nhận thanh toán thành công vào ngày ${paidDateStr}.\n` +
+        `Cảm ơn bạn đã thanh toán đúng hạn!`,
+      type: "reminder",
+      target: { residents: affectedTenantIds },
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      const payload = {
+        _id: notification._id,
+        title: notification.title,
+        content: notification.content,
+        type: notification.type,
+        createdAt: notification.createdAt,
+        relatedInvoiceId: invoice._id,
+        createBy: {
+          role: "system",
+        },
+      };
+
+      affectedTenantIds.forEach((tenantId) => {
+        io.to(`user:${tenantId}`).emit("new_notification", payload);
+        io.to(`user:${tenantId}`).emit("unread_count_increment", {
+          increment: 1,
+        });
       });
 
-      const io = req.app.get("io");
-      if (io) {
-        const payload = {
-          _id: notification._id,
-          title: notification.title,
-          content: notification.content,
-          type: notification.type,
-          createdAt: notification.createdAt,
-          relatedInvoiceId: invoice._id,
-          createBy: {
-            role: "system",
-          },
-        };
-
-        affectedTenantIds.forEach((tenantId) => {
-          io.to(`user:${tenantId}`).emit("new_notification", payload);
-          io.to(`user:${tenantId}`).emit("unread_count_increment", {
-            increment: 1,
-          });
-        });
-
-        console.log(
-          `[PAYMENT] ĐÃ XÁC NHẬN] Đã gửi thông báo thanh toán thành công đến ${affectedTenantIds.length} người – Hóa đơn ${invoice.invoiceNumber}`
-        );
-      }
+      console.log(
+        `[PAYMENT] ĐÃ XÁC NHẬN] Đã gửi thông báo thanh toán thành công đến ${affectedTenantIds.length} người – Hóa đơn ${invoice.invoiceNumber}`
+      );
     }
     return res.json({
       message: "Đã ghi nhận thanh toán hóa đơn",
@@ -2005,7 +2014,30 @@ exports.generateInvoice = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy phòng" });
     }
 
-    const building = await Building.findById(room.buildingId)
+    const buildingId =
+      room.buildingId && typeof room.buildingId === "object"
+        ? room.buildingId._id
+        : room.buildingId;
+
+    // dùng buildingId này cho mọi query liên quan
+    const utilityReading = await UtilityReading.findOne({
+      landlordId,
+      buildingId,
+      roomId,
+      periodMonth: month,
+      periodYear: year,
+      status: "confirmed",
+      isDeleted: false,
+      invoiceId: null,
+    }).lean();
+
+    const buildingServices = await BuildingService.find({
+      landlordId,
+      buildingId,
+      isDeleted: false,
+    }).lean();
+
+    const building = await Building.findById(buildingId)
       .select("landlordId ePrice wPrice status isDeleted")
       .lean();
     if (!building || String(building.landlordId) !== String(landlordId)) {
@@ -2052,42 +2084,25 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // 3. Check đã có hoá đơn kỳ này chưa
     const existed = await Invoice.findOne({
       landlordId,
       roomId,
-      periodMonth: prevPeriod.month,
-      periodYear: prevPeriod.year,
+      periodMonth: month,
+      periodYear: year,
       invoiceKind: "periodic",
       status: { $in: ["draft", "sent"] },
       isDeleted: false,
-    }).lean();
+    })
+      .select("_id invoiceNumber status")
+      .lean();
 
     if (existed) {
       return res.status(409).json({
-        message: "Đã tồn tại hoá đơn cho phòng/hợp đồng/kỳ này",
-        invoiceId: existed._id,
+        message: `Kỳ ${month}/${year} đã có hoá đơn định kỳ (${existed.status}). Vui lòng huỷ hoặc thay thế hoá đơn cũ trước khi tạo mới.`,
+        duplicateInvoiceId: existed._id,
+        duplicateInvoiceNumber: existed.invoiceNumber,
       });
     }
-
-    // 4. Lấy utilityReading confirmed của kỳ này
-    const utilityReading = await UtilityReading.findOne({
-      landlordId,
-      buildingId: room.buildingId,
-      roomId,
-      periodMonth: prevPeriod.month,
-      periodYear: prevPeriod.year,
-      status: "confirmed",
-      isDeleted: false,
-      invoiceId: null,
-    }).lean();
-
-    // 5. Dịch vụ tòa nhà
-    const buildingServices = await BuildingService.find({
-      landlordId,
-      buildingId: room.buildingId,
-      isDeleted: false,
-    }).lean();
 
     const items = [];
 
@@ -2165,20 +2180,19 @@ exports.generateInvoice = async (req, res) => {
         (sv.name === "internet"
           ? "Internet"
           : sv.name === "parking"
-          ? "Gửi xe"
-          : sv.name === "cleaning"
-          ? "Phí vệ sinh"
-          : sv.name === "security"
-          ? "Bảo vệ"
-          : "Dịch vụ khác");
+            ? "Gửi xe"
+            : sv.name === "cleaning"
+              ? "Phí vệ sinh"
+              : sv.name === "security"
+                ? "Bảo vệ"
+                : "Dịch vụ khác");
 
       items.push({
         type: "service",
         label,
         description:
           sv.description ||
-          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${
-            prevPeriod.year
+          `Dịch vụ ${label.toLowerCase()} tháng ${prevPeriod.month}/${prevPeriod.year
           }`,
         quantity,
         unitPrice,
@@ -2291,11 +2305,16 @@ exports.generateInvoice = async (req, res) => {
       data: invoice,
     });
   } catch (e) {
-    console.error("generateInvoice error:", e.message);
-    return res.status(500).json({
-      message: "Lỗi tạo hoá đơn",
-      error: e.message,
-    });
+    if (e?.code === 11000) {
+      return res.status(409).json({
+        message:
+          "Đã có hoá đơn định kỳ (draft/sent) cho phòng/kỳ này. Không thể tạo thêm.",
+        error: e.message,
+      });
+    }
+    return res
+      .status(500)
+      .json({ message: "Lỗi tạo hoá đơn", error: e.message });
   }
 };
 
