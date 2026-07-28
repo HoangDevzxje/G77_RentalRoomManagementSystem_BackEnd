@@ -1,0 +1,65 @@
+name: Deploy — Production
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI Check (Reused)
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: ci
+    environment: G77-BACKEND-ENV
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+
+            echo "=== [1/5] Chuyển vào thư mục dự án ==="
+            cd ${{ secrets.DEPLOY_PATH }}
+
+            echo "=== [2/5] Pull code mới nhất từ main ==="
+            git pull origin main
+
+            echo "=== [3/5] Cài đặt dependencies ==="
+            npm ci
+
+            echo "=== [4/5] Đảm bảo thư mục logs tồn tại ==="
+            mkdir -p logs
+
+            echo "=== [5/5] Reload / Start PM2 (g77-be, port 9999) ==="
+            PORT=9999 pm2 reload g77-be --update-env
+
+            echo "=== Deploy hoàn tất ==="
+
+      - name: Health check sau deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "=== Health check port 9999 ==="
+            sleep 5
+            curl -f http://localhost:9999/health || (echo "❌ Health check FAILED" && exit 1)
+            echo "✅ Health check PASSED"

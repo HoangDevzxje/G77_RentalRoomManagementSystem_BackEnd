@@ -161,6 +161,10 @@ app.get("/swagger.json", (req, res) => {
   res.send(swaggerDocs);
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // =========================================
 //  ROUTES
 // =========================================

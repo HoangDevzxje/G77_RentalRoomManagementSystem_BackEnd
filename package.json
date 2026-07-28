@@ -3,12 +3,17 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest --passWithNoTests",
     "start": "nodemon server.js",
     "dev": "nodemon server.js",
     "seed": "node seed/permissions.js",
-    "start:prod": "npm run seed && npm start",
-    "dev:seed": "npm run seed && npm run dev"
+    "start:prod": "node server.js",
+    "dev:seed": "npm run seed && npm run dev",
+    "ci:syntax": "node --check server.js",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:reload": "pm2 reload g77-be --update-env",
+    "pm2:stop": "pm2 stop g77-be",
+    "pm2:logs": "pm2 logs g77-be"
   },
   "keywords": [],
   "author": "",
